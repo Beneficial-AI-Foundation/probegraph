@@ -65,6 +65,7 @@ verus-analyzer scip . && scip print --json index.scip > index_scip.json
 ```
 
 The SCIP index generation can take several minutes for large projects, which is why we require it to be pre-generated rather than generating it on-demand.
+[Here](https://github.com/Beneficial-AI-Foundation/installers_for_various_tools) are some tools to install rust-analyzer/verus-analyzer/scip and also to generate the json file.
 
 ## How It Works
 
