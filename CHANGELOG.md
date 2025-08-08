@@ -30,7 +30,7 @@ All notable changes to the Call Graph Visualizer extension will be documented in
 
 ### Changed
 - **Performance Improvement**: Now downloads pre-built rust-analyzer-test binaries instead of building from source
-- **Major Performance Improvement**: Extension now expects pre-generated SCIP index file (`index_scip_curve.json`) rather than generating it on-demand
+- **Major Performance Improvement**: Extension now expects pre-generated SCIP index file (`index_scip.json`) rather than generating it on-demand
 - Replaced git clone and cargo build with direct binary download from GitHub releases
 - Added platform-specific binary detection (Linux, macOS Intel/ARM, Windows)
 - Binary is cached after first download to avoid repeated downloads
@@ -40,7 +40,7 @@ All notable changes to the Call Graph Visualizer extension will be documented in
 ### Fixed
 - Fixed slow extension startup times due to building rust-analyzer-test from source
 - Fixed extremely slow graph generation due to on-demand SCIP index generation
-- SCIP file now expected at fixed location: `<project-root>/index_scip_curve.json`
+- SCIP file now expected at fixed location: `<project-root>/index_scip.json`
 - Added clear error messages with instructions when SCIP file is missing
 
 ## [0.0.2] - 2025-08-04

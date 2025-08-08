@@ -52,16 +52,16 @@ dot -V
 
 ## Pre-requisite: SCIP Index
 
-**Important**: This extension requires a pre-generated SCIP index file named `index_scip_curve.json` in your project root.
+**Important**: This extension requires a pre-generated SCIP index file named `index_scip.json` in your project root.
 
 To generate this file, run one of these commands in your project root:
 
 ```bash
 # Using rust-analyzer:
-rust-analyzer scip . && scip print --json index.scip > index_scip_curve.json
+rust-analyzer scip . && scip print --json index.scip > index_scip.json
 
 # Using verus-analyzer:
-verus-analyzer scip . && scip print --json index.scip > index_scip_curve.json
+verus-analyzer scip . && scip print --json index.scip > index_scip.json
 ```
 
 The SCIP index generation can take several minutes for large projects, which is why we require it to be pre-generated rather than generating it on-demand.
@@ -71,7 +71,7 @@ The SCIP index generation can take several minutes for large projects, which is 
 The extension follows the same process as the GitHub workflow:
 
 1. **Tool Setup**: Downloads pre-built `rust-analyzer-test` binaries (cached after first download)
-2. **SCIP Data**: Uses the pre-generated `index_scip_curve.json` file from your project root
+2. **SCIP Data**: Uses the pre-generated `index_scip.json` file from your project root
 3. **Symbol Mapping**: Maps function names to their SCIP symbols using the same algorithm as the Python scripts
 4. **Graph Generation**: Uses the `generate_function_subgraph_dot` tool to create DOT format graphs
 5. **Visualization**: Converts to SVG and displays in an interactive webview

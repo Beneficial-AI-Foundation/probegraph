@@ -27,7 +27,7 @@ export class CallGraphGenerator {
         this.workspaceRoot = workspaceRoot;
         this.rustAnalyzerTestPath = path.join(outputDir, 'rust-analyzer-test');
         // Look for the SCIP JSON file in the workspace root
-        this.scipFilePath = path.join(workspaceRoot, 'index_scip_curve.json');
+        this.scipFilePath = path.join(workspaceRoot, 'index_scip.json');
     }
 
     /**
@@ -192,9 +192,9 @@ export class CallGraphGenerator {
             const errorMessage = `SCIP index file not found: ${this.scipFilePath}\n\n` +
                 `To generate the SCIP index, run one of these commands in your project root:\n\n` +
                 `  Using rust-analyzer:\n` +
-                `  rust-analyzer scip . && scip print --json index.scip > index_scip_curve.json\n\n` +
+                `  rust-analyzer scip . && scip print --json index.scip > index_scip.json\n\n` +
                 `  Using verus-analyzer:\n` +
-                `  verus-analyzer scip . && scip print --json index.scip > index_scip_curve.json\n\n` +
+                `  verus-analyzer scip . && scip print --json index.scip > index_scip.json\n\n` +
                 `After generating the file, try the command again.`;
             throw new Error(errorMessage);
         }
