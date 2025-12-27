@@ -1,70 +1,165 @@
 {
   "name": "call-graph-visualizer",
   "displayName": "Call Graph Visualizer",
-  "description": "Generate and display function call graphs for Rust code using pre-built rust-analyzer-test binaries and pre-generated SCIP indices",
-  "version": "0.0.5",
+  "description": "Interactive call graph explorer for Verus/Rust projects. Embeds the full scip-callgraph web app with depth slider, Source/Sink queries, and verification status visualization.",
+  "version": "0.1.0",
+  "publisher": "beneficial-ai-foundation",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Beneficial-AI-Foundation/call_graph_vs_code_extension"
+  },
   "engines": {
     "vscode": "^1.102.0"
   },
   "categories": [
+    "Visualization",
     "Other"
   ],
-  "activationEvents": [],
+  "keywords": [
+    "rust",
+    "verus",
+    "call graph",
+    "visualization",
+    "scip"
+  ],
+  "activationEvents": [
+    "onLanguage:rust"
+  ],
   "main": "./dist/extension.js",
   "contributes": {
     "commands": [
       {
+        "command": "callGraph.showGraph",
+        "title": "Show Call Graph (Bidirectional)",
+        "category": "Call Graph"
+      },
+      {
+        "command": "callGraph.showDependencies",
+        "title": "Show Dependencies (What This Function Calls)",
+        "category": "Call Graph"
+      },
+      {
+        "command": "callGraph.showDependents",
+        "title": "Show Dependents (What Calls This Function)",
+        "category": "Call Graph"
+      },
+      {
+        "command": "callGraph.regenerateIndex",
+        "title": "Regenerate Index",
+        "category": "Call Graph"
+      },
+      {
+        "command": "callGraph.cancelPipeline",
+        "title": "Cancel Pipeline",
+        "category": "Call Graph"
+      },
+      {
+        "command": "callGraph.checkPrerequisites",
+        "title": "Check Prerequisites",
+        "category": "Call Graph"
+      },
+      {
         "command": "call-graph-visualizer.displayCallGraph",
-        "title": "Display Call Graph"
+        "title": "Display Call Graph (Legacy)"
       }
     ],
     "menus": {
       "editor/context": [
         {
-          "command": "call-graph-visualizer.displayCallGraph",
-          "when": "resourceExtname == .rs",
-          "group": "navigation"
+          "submenu": "callGraph.submenu",
+          "when": "editorLangId == rust",
+          "group": "navigation@1"
+        }
+      ],
+      "callGraph.submenu": [
+        {
+          "command": "callGraph.showGraph",
+          "group": "1_graph@1"
+        },
+        {
+          "command": "callGraph.showDependencies",
+          "group": "1_graph@2"
+        },
+        {
+          "command": "callGraph.showDependents",
+          "group": "1_graph@3"
+        },
+        {
+          "command": "callGraph.regenerateIndex",
+          "group": "2_manage@1"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "callGraph.showGraph",
+          "when": "editorLangId == rust"
+        },
+        {
+          "command": "callGraph.showDependencies",
+          "when": "editorLangId == rust"
+        },
+        {
+          "command": "callGraph.showDependents",
+          "when": "editorLangId == rust"
+        },
+        {
+          "command": "callGraph.regenerateIndex"
+        },
+        {
+          "command": "callGraph.cancelPipeline"
+        },
+        {
+          "command": "callGraph.checkPrerequisites"
         }
       ]
     },
+    "submenus": [
+      {
+        "id": "callGraph.submenu",
+        "label": "Call Graph"
+      }
+    ],
     "configuration": {
       "title": "Call Graph Visualizer",
       "properties": {
-        "callGraphVisualizer.depth": {
+        "callGraph.depth": {
           "type": "number",
-          "default": 5,
-          "description": "Maximum depth for call graph analysis",
+          "default": 3,
           "minimum": 1,
-          "maximum": 10
+          "maximum": 10,
+          "description": "Maximum depth for call graph traversal"
         },
-        "callGraphVisualizer.filterSources": {
+        "callGraph.indexPath": {
           "type": "string",
-          "default": "none",
-          "enum": [
-            "none",
-            "filter-non-libsignal-sources"
-          ],
-          "description": "Source filtering mode for graph generation"
+          "default": ".vscode/call_graph_index.json",
+          "description": "Path to the call graph index file (relative to workspace root)"
         },
-        "callGraphVisualizer.includeCallers": {
+        "callGraph.defaultScipCallgraphPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the scip-callgraph repository (for running the pipeline)"
+        },
+        "callGraph.autoRegenerateOnSave": {
           "type": "boolean",
           "default": false,
-          "description": "Include callers in the graph (shows functions that call the target)"
+          "description": "Automatically regenerate the index when Rust files are saved"
         },
-        "callGraphVisualizer.includeCallees": {
+        "callGraph.debounceDelayMs": {
+          "type": "number",
+          "default": 3000,
+          "minimum": 1000,
+          "maximum": 30000,
+          "description": "Delay in milliseconds before auto-regenerating after a save"
+        },
+        "callGraph.skipVerification": {
+          "type": "boolean",
+          "default": false,
+          "description": "Skip Verus verification when regenerating (faster, but no verification status)"
+        },
+        "callGraph.skipSimilarLemmas": {
           "type": "boolean",
           "default": true,
-          "description": "Include callees in the graph (shows functions called by the target)"
-        },
-        "callGraphVisualizer.outputFormat": {
-          "type": "string",
-          "default": "svg",
-          "enum": [
-            "svg",
-            "png",
-            "dot"
-          ],
-          "description": "Output format for generated graphs"
+          "description": "Skip similar lemmas enrichment (no Python required)"
         }
       }
     }

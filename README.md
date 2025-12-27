@@ -1,195 +1,283 @@
 # Call Graph Visualizer Extension
 
-A VS Code extension that generates and displays function call graphs for Rust code, with special support for Verus-verified functions. This extension uses the same tools and analysis as the GitHub workflow to provide accurate call graph visualization.
+A VS Code extension that provides **interactive call graph exploration** for Verus/Rust projects. This extension embeds the full [scip-callgraph](https://github.com/Beneficial-AI-Foundation/scip-callgraph) web app directly in VS Code, giving you powerful filtering and visualization capabilities.
 
-## Features
+## ✨ Features
 
-- **Context Menu Integration**: Right-click on any function in a Rust file to generate its call graph
-- **Real Call Graph Analysis**: Uses `rust-analyzer-test` and SCIP (Symbol Code Intelligence Protocol) data for accurate analysis
-- **Interactive Visualization**: View graphs in an integrated webview with zoom and pan controls
-- **Verus Function Support**: Specifically designed to work with Verus-verified functions and show dependency paths to libsignal functions
-- **Fast Performance**: Uses pre-built binaries and pre-generated SCIP indices for instant graph generation
+- **🌐 Full Web App Integration**: Embeds the complete scip-callgraph web viewer in VS Code
+- **🎚️ Depth Slider**: Adjust traversal depth (0-10) in real-time
+- **🔍 Source/Sink Queries**: Powerful glob-pattern filtering with support for Rust-style paths (`module::function`)
+- **📁 File Filters**: Include/exclude files by name or pattern
+- **🎯 Function Mode Filters**: Show/hide exec, proof, and spec functions (Verus)
+- **✅ Verification Status**: Color-coded nodes showing Verus verification status
+- **🔗 Click to Navigate**: Click any node to jump to its source code
+- **👁️ Hide Nodes**: Shift+click to hide nodes from the graph
+- **🔄 Auto-regeneration**: Optionally regenerate the index on file save
 
-## Requirements
+## 🚀 Quick Start
 
-The extension requires the following tools to be installed on your system:
+### 1. Install Prerequisites
 
-### Essential Dependencies
-
-1. **Rust and Cargo** - Required for Rust projects
-   ```bash
-   # Install via rustup
-   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-   ```
-
-2. **curl** - For downloading pre-built binaries
-   ```bash
-   # Most systems have this pre-installed
-   curl --version
-   ```
-
-3. **Graphviz** - For rendering DOT files to SVG/PNG
-   ```bash
-   # Ubuntu/Debian
-   sudo apt-get install graphviz
-   
-   # macOS (with Homebrew)
-   brew install graphviz
-   
-   # Windows (with Chocolatey)
-   choco install graphviz
-   ```
-
-### Verification
-
-You can verify all dependencies are correctly installed by running:
-
+**verus-analyzer** (for SCIP generation):
 ```bash
-cargo --version
-curl --version
-dot -V
+# Install from: https://github.com/verus-lang/verus-analyzer
 ```
 
-## Pre-requisite: SCIP Index
-
-**Important**: This extension requires a pre-generated SCIP index file named `index_scip.json` in your project root.
-
-To generate this file, run one of these commands in your project root:
-
+**scip CLI** (for converting SCIP to JSON):
 ```bash
-# Using rust-analyzer:
-rust-analyzer scip . && scip print --json index.scip > index_scip.json
+# Download pre-built binaries from:
+# https://github.com/sourcegraph/scip/releases
 
-# Using verus-analyzer:
-verus-analyzer scip . && scip print --json index.scip > index_scip.json
+# Or build from source:
+git clone https://github.com/sourcegraph/scip.git --depth=1
+cd scip
+go build ./cmd/scip
 ```
 
-The SCIP index generation can take several minutes for large projects, which is why we require it to be pre-generated rather than generating it on-demand.
-[Here](https://github.com/Beneficial-AI-Foundation/installers_for_various_tools) are some tools to install rust-analyzer/verus-analyzer/scip and also to generate the json file.
+**Optional: cargo verus** (for verification status):
+```bash
+# Install from: https://github.com/verus-lang/verus
+```
 
-## How It Works
+### 2. Clone scip-callgraph
 
-The extension follows the same process as the GitHub workflow:
+```bash
+git clone --recurse-submodules https://github.com/Beneficial-AI-Foundation/scip-callgraph.git
+cd scip-callgraph
+cargo build --release --workspace
+```
 
-1. **Tool Setup**: Downloads pre-built `rust-analyzer-test` binaries (cached after first download)
-2. **SCIP Data**: Uses the pre-generated `index_scip.json` file from your project root
-3. **Symbol Mapping**: Maps function names to their SCIP symbols using the same algorithm as the Python scripts
-4. **Graph Generation**: Uses the `generate_function_subgraph_dot` tool to create DOT format graphs
-5. **Visualization**: Converts to SVG and displays in an interactive webview
+### 3. Configure the Extension
 
-## Usage
-
-1. Open a Rust file in VS Code
-2. Place your cursor on a function name
-3. Right-click to open the context menu
-4. Select "Display Call Graph"
-5. Wait for the graph to be generated and displayed
-
-## Graph Features
-
-The generated graphs show:
-
-- **Function Dependencies**: How functions call each other
-- **Depth Analysis**: Up to 5 levels of function calls (configurable)
-- **Source Filtering**: Filters to show paths to libsignal functions
-- **Interactive Controls**: Zoom, pan, and fit-to-window functionality
-
-## Configuration
-
-The extension uses the following default settings:
-
-- **Depth**: 5 levels of function calls
-- **Filter**: `none` (no filtering by default)
-- **Format**: SVG for best quality visualization
-- **Include Callers**: `false` (don't show functions that call the target by default)
-- **Include Callees**: `true` (show functions called by the target by default)
-
-These settings can be customized in VS Code settings under "Call Graph Visualizer".
-
-### Customizing Settings
-
-You can customize the graph generation behavior by modifying these VS Code settings:
-
-1. **Open Settings**: `Ctrl/Cmd + ,` or `File > Preferences > Settings`
-2. **Search for**: "Call Graph Visualizer"
-3. **Configure**:
-   - **Depth**: Maximum levels of function calls to analyze (1-10)
-   - **Filter Sources**: Choose `none` or `filter-non-libsignal-sources`
-   - **Output Format**: Choose between `svg`, `png`, or `dot`
-   - **Include Callers**: Show functions that call the target function
-   - **Include Callees**: Show functions called by the target function
-
-Alternatively, add these to your `settings.json`:
+Open VS Code settings (`Ctrl+,`) and set:
 
 ```json
 {
-  "callGraphVisualizer.depth": 5,
-  "callGraphVisualizer.filterSources": "none",
-  "callGraphVisualizer.outputFormat": "svg",
-  "callGraphVisualizer.includeCallers": false,
-  "callGraphVisualizer.includeCallees": true
+  "callGraph.defaultScipCallgraphPath": "/path/to/scip-callgraph"
 }
 ```
 
-## Troubleshooting
+Or add to your project's `.vscode/settings.json`.
 
-### Common Issues
+### 4. Generate the Index
 
-1. **"Tool not found" errors**: Ensure all required dependencies are installed and available in your PATH
-2. **"No symbol found" errors**: The function might not be in the SCIP analysis data
-3. **Build failures**: Make sure you have a working Rust toolchain and internet access
+1. Open your Verus/Rust project in VS Code
+2. Open Command Palette (`Ctrl+Shift+P`)
+3. Run: **"Call Graph: Regenerate Index"**
+4. Wait for the pipeline to complete (~30-60 seconds)
 
-### Debug Information
+### 5. Explore Call Graphs
 
-The extension logs detailed information to the VS Code console. To view:
+1. Open a Rust file
+2. Click on a function name
+3. Right-click → **Call Graph** → **Show Call Graph (Bidirectional)**
+4. Use the full web app UI:
+   - Adjust depth with the slider
+   - Enter Source/Sink queries to filter
+   - Toggle function modes (exec/proof/spec)
+   - Click nodes to navigate to source
 
-1. Open VS Code Developer Tools (`Help > Toggle Developer Tools`)
-2. Check the Console tab for debug output
-3. Look for messages from the Call Graph Visualizer extension
+## 📖 Usage
 
-## Technical Details
+### Commands
+
+| Command | Description |
+|---------|-------------|
+| `Call Graph: Show Call Graph (Bidirectional)` | Open graph explorer with full neighborhood |
+| `Call Graph: Show Dependencies` | Open graph explorer showing callees |
+| `Call Graph: Show Dependents` | Open graph explorer showing callers |
+| `Call Graph: Regenerate Index` | Run the scip-callgraph pipeline |
+| `Call Graph: Cancel Pipeline` | Stop the running pipeline |
+| `Call Graph: Check Prerequisites` | Verify all required tools are installed |
+
+### Graph Explorer UI
+
+The embedded web app provides:
+
+#### Source/Sink Queries
+- **Source only**: Shows what the function calls (callees)
+- **Sink only**: Shows what calls the function (callers)
+- **Same in both**: Shows full neighborhood (bidirectional)
+- **Different source & sink**: Shows paths between them
+
+#### Query Syntax
+- `decompress` - Exact match
+- `*decompress*` - Contains
+- `decompress*` - Starts with
+- `edwards::decompress` - Function in file/module matching "edwards"
+
+#### Filters
+- **Depth**: How many hops from source/sink (0 = unlimited)
+- **Function Mode**: exec, proof, spec (Verus modes)
+- **Call Types**: Body calls, requires, ensures
+- **Exclude Patterns**: Hide functions matching patterns
+- **Include Files**: Only show functions from specific files
+
+#### Interactions
+- **Click node**: Navigate to source code in editor
+- **Shift+click**: Hide the node
+- **Drag node**: Reposition
+- **Scroll**: Zoom
+- **Drag background**: Pan
+- **🔗 Copy Link**: Generate shareable URL with current filters
+
+## ⚙️ Configuration
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `callGraph.depth` | `3` | Initial depth for call graph traversal |
+| `callGraph.indexPath` | `.vscode/call_graph_index.json` | Path to the index file |
+| `callGraph.defaultScipCallgraphPath` | `""` | Path to scip-callgraph repository |
+| `callGraph.autoRegenerateOnSave` | `false` | Auto-regenerate on Rust file save |
+| `callGraph.debounceDelayMs` | `3000` | Delay before auto-regeneration (ms) |
+| `callGraph.skipVerification` | `false` | Skip Verus verification (faster) |
+| `callGraph.skipSimilarLemmas` | `true` | Skip similar lemmas enrichment |
+
+## 🎨 Node Colors (Verification Status)
+
+| Color | Status | Meaning |
+|-------|--------|---------|
+| 🟢 Green | Verified | Function passed Verus verification |
+| 🔴 Red | Failed | Function failed Verus verification |
+| ⚫ Gray | Unverified | Function not verified (uses assume/admit) |
+| 🔵 Blue | Unknown | Not a Verus function or no verification data |
+
+## 🔧 How It Works
 
 ### Architecture
 
-The extension consists of several components:
-
-- **Extension Host** (`extension.ts`): Main VS Code integration and command handling
-- **Graph Generator** (`graphGenerator.ts`): Core logic for setting up tools and generating graphs
-- **Rust Analyzer Client** (`rustAnalyzer.ts`): Helper for Rust code analysis (legacy, kept for compatibility)
-
-### Dependencies
-
-The extension automatically downloads and builds:
-
-- [rust-analyzer-test](https://github.com/Beneficial-AI-Foundation/rust-analyzer-test) - Contains the graph generation tool
-- SCIP analysis data for libsignal dependencies
-
-### Data Flow
-
 ```
-Function Name → SCIP Symbol Mapping → Graph Tool → DOT File → SVG → Webview
+┌─────────────────────────────────────────────────────────────────┐
+│                    BUILD TIME (pipeline)                         │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  Source Code → verus-analyzer scip → SCIP JSON → D3 Graph JSON  │
+│                                        ↓                        │
+│                              cargo verus verify                  │
+│                                        ↓                        │
+│                         call_graph_index.json                   │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│                    VIEW TIME (VS Code)                           │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  User clicks function → Load embedded web app → Send graph data │
+│                              ↓                                   │
+│                    Full scip-callgraph UI                        │
+│           (filters, depth slider, D3 visualization)             │
+│                              ↓                                   │
+│                  Click node → Navigate to source                 │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-## Development
+### Index Structure
 
-To develop or modify this extension:
+The pre-computed index contains:
+- All function nodes with metadata (file, line, mode, etc.)
+- **dependencies**: What each function calls (O(1) lookup)
+- **dependents**: What calls each function (O(1) lookup)
+- **verification_status**: `verified`, `failed`, or `unverified`
 
-1. Clone the repository
-2. Install dependencies: `npm install`
-3. Open in VS Code and press F5 to launch in debug mode
-4. Make changes and test with the development instance
+## 🐛 Troubleshooting
+
+### "Call graph index not found"
+Run **"Call Graph: Regenerate Index"** to generate the index.
+
+### "Pipeline command not found"
+Set `callGraph.defaultScipCallgraphPath` to your scip-callgraph repository path:
+```json
+{
+  "callGraph.defaultScipCallgraphPath": "/home/user/git/scip-callgraph"
+}
+```
+
+### "verus-analyzer not found"
+Ensure `verus-analyzer` is in your PATH:
+```bash
+which verus-analyzer
+```
+
+### "scip not found"
+Install the SCIP CLI from [sourcegraph/scip](https://github.com/sourcegraph/scip):
+```bash
+# Download from releases:
+# https://github.com/sourcegraph/scip/releases
+
+# Or build from source:
+git clone https://github.com/sourcegraph/scip.git --depth=1
+cd scip
+go build ./cmd/scip
+```
+
+### Graph shows but no nodes visible
+- Check that the index was generated successfully
+- Try adjusting the depth slider
+- Enter a Source or Sink query to filter
+
+### Debug Information
+- View pipeline output: `Output` panel → `Call Graph Pipeline`
+- View logs: `Help > Toggle Developer Tools` → Console tab
+
+## 🛠️ Development
 
 ### Building
 
 ```bash
-npm run compile  # Compile TypeScript
-npm run package  # Create production build
+git clone https://github.com/Beneficial-AI-Foundation/call_graph_vs_code_extension.git
+cd call_graph_vs_code_extension
+npm install
+npm run compile
 ```
 
-## Contributing
+### Running in Development
 
-This extension is part of the curve25519-dalek project. Please follow the project's contribution guidelines when submitting changes.
+1. Open the project in VS Code/Cursor
+2. Press `F5` to launch the Extension Development Host
+3. Open your Rust project in the new window
+4. Test the extension
 
-## License
+### Project Structure
 
-This extension is licensed under the same terms as the curve25519-dalek project.
+```
+src/
+├── extension.ts           # Entry point, command registration
+├── indexLoader.ts         # Load and cache D3 graph index
+├── webviewLoader.ts       # Embed scip-callgraph web app
+├── pipelineRunner.ts      # Run scip-callgraph pipeline
+└── test/
+    └── indexLoader.test.ts
+
+webview/                   # Embedded scip-callgraph web app
+├── index.html
+└── assets/
+    ├── main.js
+    └── main.css
+```
+
+### Updating the Web App
+
+To update the embedded web app:
+
+```bash
+# In scip-callgraph/web/
+npm run build:vscode
+
+# Copy to extension
+cp -r dist-vscode/* /path/to/call_graph_vs_code_extension/webview/
+```
+
+## 📚 Related Projects
+
+- [scip-callgraph](https://github.com/Beneficial-AI-Foundation/scip-callgraph) - Call graph generation from SCIP indices
+- [SCIP](https://github.com/sourcegraph/scip) - Source Code Intelligence Protocol
+- [verus-analyzer](https://github.com/verus-lang/verus-analyzer) - Fork of rust-analyzer with Verus support
+- [Verus](https://github.com/verus-lang/verus) - Verified Rust for low-level systems code
+
+## 📄 License
+
+MIT OR Apache-2.0
+
+🤖 Generated with Claude Opus 4.5
