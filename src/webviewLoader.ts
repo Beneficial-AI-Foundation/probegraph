@@ -25,6 +25,13 @@ export interface ShowGraphOptions {
     
     /** Initial depth limit */
     depth?: number;
+    
+    /** 
+     * Unique SCIP ID of the selected node.
+     * When provided, the web app will filter to show only this exact function,
+     * even if multiple functions have the same display name.
+     */
+    selectedNodeId?: string;
 }
 
 /**
@@ -127,7 +134,9 @@ function sendGraphToWebview(
             source: options.sourceQuery || '',
             sink: options.sinkQuery || '',
             depth: options.depth ?? 3
-        }
+        },
+        // Pass the unique node ID for exact matching
+        selectedNodeId: options.selectedNodeId || null
     });
 }
 

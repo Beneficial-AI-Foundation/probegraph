@@ -6,14 +6,18 @@
  */
 
 import * as vscode from 'vscode';
+import * as path from 'path';
 import { 
     loadIndex, 
     getIndexInfo, 
-    indexExists
+    indexExists,
+    findNodeAtPosition,
+    findNodesByName,
+    CallGraphIndex,
+    D3Node
 } from './indexLoader';
 import { 
     showCallGraphWebview,
-    getFunctionNameAtCursor,
     ShowGraphOptions
 } from './webviewLoader';
 import { 
@@ -191,9 +195,9 @@ async function showCallGraph(
             progress.report({ message: 'Loading index...' });
             const index = await loadIndex(workspaceRoot);
             
-            // Find the function at cursor
+            // Find the exact function at cursor position
             progress.report({ message: 'Finding function...' });
-            const functionName = getFunctionNameAtCursor(editor);
+            const node = await findFunctionAtCursor(editor, index);
             
             // Prepare options based on direction
             const config = vscode.workspace.getConfiguration('callGraph');
@@ -203,7 +207,13 @@ async function showCallGraph(
                 depth
             };
             
-            if (functionName) {
+            if (node) {
+                // Pass the unique node ID for exact matching
+                options.selectedNodeId = node.id;
+                
+                // Also set the display name for the query UI
+                const functionName = node.display_name;
+                
                 switch (direction) {
                     case 'both':
                         // Same query in source and sink shows full neighborhood
@@ -219,6 +229,8 @@ async function showCallGraph(
                         options.sinkQuery = functionName;
                         break;
                 }
+                
+                console.log(`[Extension] Selected node: ${node.display_name} (${node.id.slice(-50)}...)`);
             }
             
             // Show the graph
@@ -230,6 +242,78 @@ async function showCallGraph(
             console.error('[Extension] Error showing call graph:', error);
         }
     });
+}
+
+/**
+ * Find the function at the current cursor position
+ * Returns the exact node from the index, or null if not found
+ */
+async function findFunctionAtCursor(
+    editor: vscode.TextEditor,
+    index: CallGraphIndex
+): Promise<D3Node | null> {
+    const document = editor.document;
+    const position = editor.selection.active;
+    const line = position.line + 1; // Convert to 1-based
+    
+    // Get the relative path
+    const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
+    if (!workspaceFolder) {
+        return null;
+    }
+    
+    const relativePath = path.relative(workspaceFolder.uri.fsPath, document.uri.fsPath);
+    
+    // Try to find by file + line (most accurate)
+    let node = findNodeAtPosition(index, relativePath, line);
+    
+    if (node) {
+        console.log(`[Extension] Found node by file+line: ${node.display_name}`);
+        return node;
+    }
+    
+    // Fallback: try to find by function name at cursor
+    const wordRange = document.getWordRangeAtPosition(position);
+    if (wordRange) {
+        const functionName = document.getText(wordRange);
+        const nodes = findNodesByName(index, functionName);
+        
+        if (nodes.length === 1) {
+            console.log(`[Extension] Found unique node by name: ${nodes[0].display_name}`);
+            return nodes[0];
+        } else if (nodes.length > 1) {
+            // Multiple matches - try to find the one in this file
+            const fileName = path.basename(relativePath);
+            node = nodes.find(n => 
+                n.relative_path?.endsWith(relativePath) ||
+                n.relative_path?.endsWith(fileName) ||
+                n.file_name === fileName
+            ) || null;
+            
+            if (node) {
+                console.log(`[Extension] Found node by name + file: ${node.display_name}`);
+                return node;
+            }
+            
+            // If still ambiguous, let user choose
+            const picked = await vscode.window.showQuickPick(
+                nodes.map(n => ({
+                    label: n.display_name,
+                    description: n.relative_path || n.file_name,
+                    detail: `Line ${n.start_line || 'N/A'} - ${n.mode || 'exec'}`,
+                    node: n
+                })),
+                { placeHolder: 'Multiple functions found. Select one:' }
+            );
+            
+            if (picked) {
+                console.log(`[Extension] User selected: ${picked.node.display_name}`);
+                return picked.node;
+            }
+        }
+    }
+    
+    return null;
 }
 
 /**
