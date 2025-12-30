@@ -158,7 +158,7 @@
         },
         "callGraph.skipSimilarLemmas": {
           "type": "boolean",
-          "default": true,
+          "default": false,
           "description": "Skip similar lemmas enrichment (no Python required)"
         }
       }

@@ -144,6 +144,7 @@ export async function runPipeline(options?: PipelineOptions): Promise<void> {
             // Use the pre-built binary
             command = releaseBinary;
             args = [workspaceRoot, '-o', indexPath];
+            cwd = scipCallgraphPath; // Run from scip-callgraph dir for script paths
         } else {
             // Use cargo run from scip-callgraph directory
             command = 'cargo';
