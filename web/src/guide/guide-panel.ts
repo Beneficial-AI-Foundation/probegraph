@@ -6,6 +6,7 @@
  */
 
 import type { GraphSummary, SuggestedAction, GuideActions } from './types';
+import { escapeHtml } from '../html';
 import { formatSummaryText } from './static-analysis';
 
 export class GuidePanel {
@@ -96,10 +97,6 @@ export class GuidePanel {
       this.switchTab('node-details');
     }
   }
-}
-
-function escapeHtml(str: string): string {
-  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 /**
