@@ -46,6 +46,7 @@ function createFilters(overrides: Partial<FilterOptions> = {}): FilterOptions {
     showVerifiedNodes: true,
     showFailedNodes: true,
     showUnverifiedNodes: true,
+    exactStatuses: null,
     excludeNamePatterns: '',
     excludePathPatterns: '',
     includeFiles: '',

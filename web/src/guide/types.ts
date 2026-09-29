@@ -1,4 +1,4 @@
-import type { ProjectLanguage } from '../types';
+import type { ProjectLanguage, VerificationStatus } from '../types';
 import type { QueryIntent } from '../intent';
 import type { ActiveView } from '../url-state';
 
@@ -13,10 +13,21 @@ export interface CrateSummary {
   isExternal: boolean;
 }
 
+/** Node counts per verification status, over the full graph. */
 export interface VerificationBreakdown {
-  verified: number;
+  verified: number;              // locally verified only
+  transitivelyVerified: number;  // verified with every dependency verified or trusted
+  trusted: number;
   failed: number;
   unverified: number;
+  unknown: number;               // no status
+}
+
+/** The busiest directed pair of groups (crates, namespaces). */
+export interface GroupBoundary {
+  source: string;     // group of the callers
+  target: string;     // group of the callees
+  edgeCount: number;
 }
 
 export interface KindBreakdown {
@@ -46,7 +57,7 @@ export interface SuggestedQuery {
 export type SuggestedAction =
   | { type: 'setSource'; id: string; label: string }
   | { type: 'setSink'; id: string; label: string }
-  | { type: 'filterVerification'; statuses: ('verified' | 'failed' | 'unverified')[] }
+  | { type: 'filterVerification'; statuses: VerificationStatus[] }
   | { type: 'setCrateBoundary'; source: string; target: string }
   | { type: 'switchView'; view: ActiveView };
 
@@ -55,6 +66,7 @@ export interface GraphSummary {
   totalNodes: number;
   totalEdges: number;
   crates: CrateSummary[];
+  boundary: GroupBoundary | null;
   files: string[];
   verification: VerificationBreakdown;
   kinds: KindBreakdown;
@@ -68,12 +80,8 @@ export interface GraphSummary {
 // Viewer actions the guide panel can trigger
 // ============================================================================
 
-/** Status filter a transition sets (the three status toggles). */
-export interface StatusSelection {
-  verified: boolean;
-  failed: boolean;
-  unverified: boolean;
-}
+/** Exact status set a transition selects (the status toggles follow it). */
+export type StatusSelection = VerificationStatus[];
 
 /**
  * One Guide action as a single state transition. The intent replaces the
@@ -87,6 +95,14 @@ export interface GuideTransition {
   label: string;
 }
 
+/** What an applied transition rendered; null for aggregated views (Crate Map, Hierarchy). */
+export interface GuideResult {
+  shown: number;           // nodes rendered
+  total: number;           // nodes in the result before the render cap
+  missingAnchor: boolean;  // the exact target itself is filtered out
+  seeded: boolean;         // large graph without a query: the entry-point view
+}
+
 export interface GuideActions {
-  apply(t: GuideTransition): void;
+  apply(t: GuideTransition): GuideResult | null;
 }

@@ -5,7 +5,7 @@
  * queries that execute directly against the viewer state. No LLM involved.
  */
 
-import type { GraphSummary, SuggestedAction, GuideActions, GuideTransition } from './types';
+import type { GraphSummary, SuggestedAction, GuideActions, GuideResult, GuideTransition } from './types';
 import { NONE_INTENT, exactIntent, boundaryIntent } from '../intent';
 import { escapeHtml } from '../html';
 import { formatSummaryText } from './static-analysis';
@@ -53,13 +53,30 @@ export class GuidePanel {
   }
 
   private executeAction(action: SuggestedAction, label: string): void {
-    this.actions.apply(guideTransition(action, label));
+    // Stay on the Guide tab; the toast reports what the graph now shows
+    const result = this.actions.apply(guideTransition(action, label));
+    showToast(resultMessage(action, label, result));
+  }
+}
 
-    // Show feedback and switch to the graph view so the user sees the result
-    showToast(label);
-    if (action.type !== 'switchView') {
-      this.switchTab('node-details');
-    }
+/** What the graph shows after an action, e.g. "180 nodes: callers of GF16". */
+export function resultMessage(action: SuggestedAction, label: string, result: GuideResult | null): string {
+  if (!result || action.type === 'switchView') return label;
+  if (result.missingAnchor && (action.type === 'setSource' || action.type === 'setSink')) {
+    return `${action.label} is hidden by the current filters`;
+  }
+  const noun = result.shown === 1 ? 'node' : 'nodes';
+  const note = result.seeded ? ' (entry points view)'
+    : result.shown < result.total ? ` (truncated from ${result.total})` : '';
+  return `${result.shown} ${noun}: ${describeAction(action)}${note}`;
+}
+
+function describeAction(action: Exclude<SuggestedAction, { type: 'switchView' }>): string {
+  switch (action.type) {
+    case 'setSource': return `callees of ${action.label}`;
+    case 'setSink': return `callers of ${action.label}`;
+    case 'setCrateBoundary': return `${action.source} → ${action.target}`;
+    case 'filterVerification': return `${action.statuses.join(', ')} only`;
   }
 }
 
@@ -76,15 +93,7 @@ export function guideTransition(action: SuggestedAction, label: string): GuideTr
     case 'setCrateBoundary':
       return { intent: boundaryIntent(action.source, action.target), status: null, depth: null, label };
     case 'filterVerification':
-      return {
-        intent: NONE_INTENT,
-        status: {
-          verified: action.statuses.includes('verified'),
-          failed: action.statuses.includes('failed'),
-          unverified: action.statuses.includes('unverified'),
-        },
-        label,
-      };
+      return { intent: NONE_INTENT, status: [...action.statuses], label };
     case 'switchView':
       return { intent: NONE_INTENT, status: null, view: action.view, label };
   }
