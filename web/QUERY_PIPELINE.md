@@ -181,6 +181,15 @@ Five link types (`LinkTypeFilter` in `query.ts`):
 
 Requires/Ensures edges typically target spec functions. Enable **both** the call-type toggle and "Show Spec Functions" to see them.
 
+Lean `inner` links carry a `role` when probe-lean emits the `type-dependencies` / `term-dependencies` split: `type` (statement), `term` (definition body or proof) or `both`. Two more toggles select them:
+
+| Toggle | Default | Passes roles |
+|--------|---------|--------------|
+| `showStatementDeps` | true | `type`, `both` |
+| `showBodyDeps` | true | `term`, `both` |
+
+They combine with `showInnerCalls` by AND. Links without a role (`spec`, `mapping`, graphs without split data) always pass them. Unlike the other link toggles, they restrict **traversal**: `selectNodes` drops the links they reject (`TraversalPredicates.linkFilter`), and the seeded view expands over `roleFilteredGraph`. With A -term→ B -type→ C and body/proof off, a query from A does not reach C. The checkboxes only appear when the graph has role data.
+
 ### 3.9 Display Predicates
 
 Applied **after** traversal, so they don't affect reachability:
@@ -218,7 +227,7 @@ The `executeQuery` function runs 7 steps (plus a 5b):
 selectNodes(fullGraph, traversalPredicates) → traversableGraph
 ```
 
-Keeps only nodes that pass **all** traversal predicates: kind filter, exclude-name, exclude-path, include-file, hidden-nodes, build-artifact exclusion.
+Keeps only nodes that pass **all** traversal predicates: kind filter, exclude-name, exclude-path, include-file, hidden-nodes, build-artifact exclusion. Links rejected by the statement / body-or-proof toggles are dropped here (§3.8).
 
 ### Step 2 — Resolve matchers
 
@@ -262,7 +271,7 @@ Three passes over links:
 
 1. **Endpoint filter** — keep only links where both source and target are in the result node set.
 2. **Depth filter** — when a depth limit is active, keep only BFS-tree edges (no shortcut edges). Uses `calleeDepths` / `callerDepths` from the traversal result.
-3. **Link type filter** — apply `showInnerCalls`, `showPreconditionCalls`, `showPostconditionCalls`, `showMappingLinks`, `showSpecLinks`.
+3. **Link type filter** — apply `showInnerCalls`, `showPreconditionCalls`, `showPostconditionCalls`, `showMappingLinks`, `showSpecLinks`, and for inner links the role toggles.
 
 For `crateBoundary` queries, only links whose `(source, target)` pair is in `boundaryLinkPairs` survive step 1.
 
@@ -350,6 +359,7 @@ Other state:
 | `axioms` / `types` / `proj` / `inst` | `showAxioms` / `showTypes` / `showProjections` / `showInstances` (0/1) | `?types=1` |
 | `inner` / `pre` / `post` | `showInnerCalls` / `showPreconditionCalls` / `showPostconditionCalls` (0/1) | `?pre=1` |
 | `mapping` / `speclinks` | `showMappingLinks` / `showSpecLinks` (0/1) | `?mapping=0` |
+| `statement` / `body` | `showStatementDeps` / `showBodyDeps` (0/1) | `?body=0` |
 | `libsignal` / `external` | `showLibsignal` / `showNonLibsignal` (0/1) | `?external=0` |
 | `rust` / `lean` | `showRustNodes` / `showLeanNodes` (0/1) | `?lean=0` |
 | `verified` / `failed` / `unverified` | `showVerifiedNodes` / `showFailedNodes` / `showUnverifiedNodes` (0/1) | `?unverified=0` |
@@ -366,7 +376,7 @@ A link with only `source-crate` / `target-crate` no longer runs a boundary query
 
 Graph-source parameters (`json` / `url`, `github`, `github_prefix` / `prefix`) are handled separately in `autoLoadGraph()` and are preserved when the share link is generated.
 
-When the project language is Lean, the generator deliberately omits the call-type params (`inner`, `pre`, `post`, `mapping`, `speclinks`) since those toggles are hidden for Lean graphs.
+When the project language is Lean, the generator omits `inner`, `pre` and `post`: those toggles are hidden and forced on for Lean graphs. `mapping`, `speclinks`, `statement` and `body` are written for every language.
 
 ---
 

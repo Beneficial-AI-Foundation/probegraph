@@ -7,7 +7,9 @@
 
 import { describe, it, expect } from 'vitest';
 import { globToRegex, asSubstringGlob, matchesQuery, applyFilters, pathPatternToRegex } from './filters';
-import { D3Graph, D3Node, D3Link, FilterOptions } from './types';
+import { D3Graph, D3Node, D3Link, FilterOptions, LinkRole } from './types';
+import { getLinkId, roleFilteredGraph } from './query';
+import { expandFromSeeds } from './graph-utils';
 import { NONE_INTENT, textIntent } from './intent';
 
 // ============================================================================
@@ -56,6 +58,8 @@ function createFilters(overrides: Partial<FilterOptions> = {}): FilterOptions {
     showPostconditionCalls: true,
     showMappingLinks: true,
     showSpecLinks: true,
+    showStatementDeps: true,
+    showBodyDeps: true,
     showExecFunctions: true,
     showProofFunctions: true,
     showSpecFunctions: true,
@@ -1073,5 +1077,81 @@ describe('Crate-level source/sink queries', () => {
       expect(nodeNames).toContain('fn_b1');
       expect(nodeNames).toContain('fn_a1');
     });
+  });
+});
+describe('Statement / body-or-proof edge filter', () => {
+  const role = (source: string, target: string, r: LinkRole, type = 'inner'): D3Link =>
+    ({ source, target, type, role: r });
+  const pairs = (g: D3Graph) =>
+    g.links.map(l => `${getLinkId(l).sourceId}>${getLinkId(l).targetId}:${l.type}:${l.role ?? '-'}`).sort();
+  const ids = (g: D3Graph) => g.nodes.map(n => n.id).sort();
+
+  // x -type-> t, x -term-> p, x -both-> b, x -> u (no role)
+  const star: D3Graph = {
+    nodes: ['x', 't', 'p', 'b', 'u'].map(id => createNode({ id, display_name: id })),
+    links: [
+      role('x', 't', 'type'), role('x', 'p', 'term'), role('x', 'b', 'both'), createLink('x', 'u'),
+    ],
+    metadata: { total_nodes: 5, total_edges: 4, project_root: '/test', generated_at: '2024-01-01' },
+  };
+
+  it.each([
+    [true, true, ['b', 'p', 't', 'u', 'x']],
+    [true, false, ['b', 't', 'u', 'x']],
+    [false, true, ['b', 'p', 'u', 'x']],
+    [false, false, ['u', 'x']],
+  ])('statement=%s body=%s shows %j', (showStatementDeps, showBodyDeps, expected) => {
+    const result = applyFilters(star, createFilters({
+      showStatementDeps, showBodyDeps, intent: textIntent('x', ''),
+    }));
+    expect(ids(result)).toEqual(expected);
+  });
+
+  it('hides every inner link when body calls are off, whatever the role', () => {
+    const result = applyFilters(star, createFilters({ showInnerCalls: false }));
+    expect(result.links).toEqual([]);
+  });
+
+  // a -term-> b -type-> c
+  const bridge: D3Graph = {
+    nodes: ['a', 'b', 'c'].map(id => createNode({ id, display_name: `n_${id}` })),
+    links: [role('a', 'b', 'term'), role('b', 'c', 'type')],
+    metadata: { total_nodes: 3, total_edges: 2, project_root: '/test', generated_at: '2024-01-01' },
+  };
+
+  it('restricts query traversal: with body/proof off, a does not reach c', () => {
+    // a has no statement link, so nothing is reached (isolated a is dropped)
+    const off = createFilters({ showBodyDeps: false, intent: textIntent('n_a', '') });
+    expect(ids(applyFilters(bridge, off))).toEqual([]);
+    const callers = createFilters({ showBodyDeps: false, intent: textIntent('', 'n_c') });
+    expect(ids(applyFilters(bridge, callers))).toEqual(['b', 'c']);
+    const paths = createFilters({ showBodyDeps: false, intent: textIntent('n_a', 'n_c') });
+    expect(ids(applyFilters(bridge, paths))).toEqual([]);
+    const on = createFilters({ intent: textIntent('n_a', '') });
+    expect(ids(applyFilters(bridge, on))).toEqual(['a', 'b', 'c']);
+  });
+
+  it('restricts seed expansion: with body/proof off, seed a does not reach c', () => {
+    const budget = { maxNodes: 100, maxLinks: 100 };
+    const off = expandFromSeeds(
+      roleFilteredGraph(bridge, { showStatementDeps: true, showBodyDeps: false }), ['a'], 2, budget,
+    );
+    expect(off.ok && [...off.nodeIds].sort()).toEqual(['a']);
+    const on = expandFromSeeds(
+      roleFilteredGraph(bridge, { showStatementDeps: true, showBodyDeps: true }), ['a'], 2, budget,
+    );
+    expect(on.ok && [...on.nodeIds].sort()).toEqual(['a', 'b', 'c']);
+  });
+
+  it('keeps roles in the result and parallel inner and spec links apart', () => {
+    const g: D3Graph = {
+      nodes: ['thm', 'def'].map(id => createNode({ id, display_name: id })),
+      links: [role('thm', 'def', 'term'), createLink('thm', 'def', 'spec')],
+      metadata: { total_nodes: 2, total_edges: 2, project_root: '/test', generated_at: '2024-01-01' },
+    };
+    expect(pairs(applyFilters(g, createFilters()))).toEqual(['thm>def:inner:term', 'thm>def:spec:-']);
+    // The spec link is governed by its own toggle, not the role boxes
+    const bodyOff = applyFilters(g, createFilters({ showBodyDeps: false }));
+    expect(pairs(bodyOff)).toEqual(['thm>def:spec:-']);
   });
 });

@@ -17,6 +17,7 @@ import type {
 export interface SummaryVisibility {
   isCandidate: (node: D3Node) => boolean;  // kind filters
   isLinkShown: (link: D3Link) => boolean;  // link type filters
+  roleFilterActive?: boolean;  // a statement / body-or-proof box is off
 }
 
 const SHOW_ALL: SummaryVisibility = { isCandidate: () => true, isLinkShown: () => true };
@@ -58,6 +59,7 @@ export function buildGraphSummary(graph: D3Graph, visibility: SummaryVisibility 
     unverifiedHotspots,
     failedNodes,
     suggestedQueries,
+    roleFilterActive: visibility.roleFilterActive ?? false,
   };
 }
 
@@ -311,6 +313,9 @@ export function formatSummaryText(summary: GraphSummary): string {
   // Most connected
   if (summary.topConnected.length > 0) {
     lines.push('');
+    if (summary.roleFilterActive) {
+      lines.push('Caller counts include statement and body/proof dependencies; the edge type filter does not apply to them.');
+    }
     lines.push(`Most connected functions: ${summary.topConnected.map(n => `${n.displayName} (${n.dependentCount} callers)`).join(', ')}.`);
   }
 

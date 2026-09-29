@@ -1,5 +1,5 @@
 import {
-  D3Graph, D3Node, D3Link, SimplifiedNode, ProbeAtom, SourceConfig,
+  D3Graph, D3Node, D3Link, LinkRole, SimplifiedNode, ProbeAtom, SourceConfig,
   Schema2Envelope, Schema2Source,
   isSimplifiedFormat, isD3GraphFormat, isAtomDictFormat, isSchema2Envelope,
   VerificationStatus,
@@ -83,6 +83,24 @@ function resolvedExternalDeps(atom: ProbeAtom, knownIds: Set<string>): string[] 
   return [...new Set(external)].filter(
     dep => knownIds.has(dep) && !atom.dependencies.includes(dep)
   );
+}
+
+/**
+ * Role lookup for one atom's dependencies from its statement / body-or-proof
+ * split. Both arrays must be present: an absent array means the extractor
+ * recorded no split (no role), an empty one means no edges of that role.
+ */
+function roleClassifier(
+  typeDeps: string[] | undefined,
+  termDeps: string[] | undefined,
+): (dep: string) => LinkRole | undefined {
+  if (!typeDeps || !termDeps) return () => undefined;
+  const inType = new Set(typeDeps);
+  const inTerm = new Set(termDeps);
+  return dep => {
+    if (inType.has(dep)) return inTerm.has(dep) ? 'both' : 'type';
+    return inTerm.has(dep) ? 'term' : undefined;
+  };
 }
 
 /**
@@ -172,34 +190,48 @@ export function convertAtomDictToD3Graph(atoms: Record<string, ProbeAtom>): D3Gr
   const links: D3Link[] = [];
   for (const [atomName, atom] of Object.entries(atoms)) {
     const srcLang = atom.language;
+    const isCrossLang = (dep: string) => {
+      const tgtLang = atoms[dep]?.language;
+      return Boolean(srcLang && tgtLang && srcLang !== tgtLang);
+    };
 
     if (atom["dependencies-with-locations"] && atom["dependencies-with-locations"].length > 0) {
       for (const dep of atom["dependencies-with-locations"]) {
         if (knownIds.has(dep["code-name"])) {
-          const tgtLang = atoms[dep["code-name"]]?.language;
-          const isCrossLang = srcLang && tgtLang && srcLang !== tgtLang;
           links.push({
             source: atomName,
             target: dep["code-name"],
-            type: isCrossLang ? 'mapping' : (dep.location || 'inner'),
+            type: isCrossLang(dep["code-name"]) ? 'mapping' : (dep.location || 'inner'),
           });
         }
       }
     } else {
+      // One inner link per target; its role comes from the split arrays
+      const internalRole = roleClassifier(atom["type-dependencies"], atom["term-dependencies"]);
+      const seen = new Set<string>();
       for (const dep of atom.dependencies) {
-        if (knownIds.has(dep)) {
-          const tgtLang = atoms[dep]?.language;
-          const isCrossLang = srcLang && tgtLang && srcLang !== tgtLang;
-          links.push({ source: atomName, target: dep, type: isCrossLang ? 'mapping' : 'inner' });
+        if (!knownIds.has(dep) || seen.has(dep)) continue;
+        seen.add(dep);
+        if (isCrossLang(dep)) {
+          links.push({ source: atomName, target: dep, type: 'mapping' });
+          continue;
         }
+        const role = internalRole(dep);
+        links.push({ source: atomName, target: dep, type: 'inner', ...(role && { role }) });
       }
     }
 
     // Cross-project edges: externals that resolve after a merge
+    const externalRole = roleClassifier(
+      atom["type-dependencies-external"], atom["term-dependencies-external"],
+    );
     for (const dep of resolvedExternalDeps(atom, knownIds)) {
-      const tgtLang = atoms[dep]?.language;
-      const isCrossLang = srcLang && tgtLang && srcLang !== tgtLang;
-      links.push({ source: atomName, target: dep, type: isCrossLang ? 'mapping' : 'inner' });
+      if (isCrossLang(dep)) {
+        links.push({ source: atomName, target: dep, type: 'mapping' });
+        continue;
+      }
+      const role = externalRole(dep);
+      links.push({ source: atomName, target: dep, type: 'inner', ...(role && { role }) });
     }
 
     // Rust -> Lean mapping link

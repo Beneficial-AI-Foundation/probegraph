@@ -151,4 +151,25 @@ test.describe('Guide on the Lean graph', () => {
     expect(param(page, 'status')).toBeNull();
     await expect(page.locator('#show-failed-nodes')).not.toBeChecked();
   });
+
+  test('body/proof box drops term links from the view, and survives a reload', async ({ page }) => {
+    await open(page);
+    await clickChip(page, /most connected/);
+    const roles = () => page.locator('path.link').evaluateAll(els => els.map(el => {
+      const d = (el as any).__data__;
+      return `${d.type}:${d.role ?? '-'}`;
+    }));
+    await expect.poll(async () => (await roles()).some(r => r === 'inner:term')).toBe(true);
+
+    await page.locator('#show-body-deps').uncheck();
+    expect(param(page, 'body')).toBe('0');
+    await expect.poll(async () => (await roles()).some(r => r === 'inner:term')).toBe(false);
+    expect((await roles()).every(r => ['inner:type', 'inner:both', 'spec:-'].includes(r))).toBe(true);
+    await expect(page.locator('#guide-summary')).toContainText('the edge type filter does not apply');
+
+    await page.reload();
+    await expect(page.locator('#stats')).toContainText('Total Nodes', { timeout: 30000 });
+    await expect(page.locator('#show-body-deps')).not.toBeChecked();
+    await expect(page.locator('#show-statement-deps')).toBeChecked();
+  });
 });

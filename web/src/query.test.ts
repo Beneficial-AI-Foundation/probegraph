@@ -78,6 +78,8 @@ function createFilters(overrides: Partial<FilterOptions> = {}): FilterOptions {
     showPostconditionCalls: true,
     showMappingLinks: true,
     showSpecLinks: true,
+    showStatementDeps: true,
+    showBodyDeps: true,
     showExecFunctions: true,
     showProofFunctions: true,
     showSpecFunctions: true,
@@ -357,6 +359,8 @@ describe('filterLinksByType', () => {
       showPostconditionCalls: true,
       showMappingLinks: true,
       showSpecLinks: true,
+      showStatementDeps: true,
+      showBodyDeps: true,
     });
     expect(result.length).toBe(3);
   });
@@ -368,6 +372,8 @@ describe('filterLinksByType', () => {
       showPostconditionCalls: true,
       showMappingLinks: true,
       showSpecLinks: true,
+      showStatementDeps: true,
+      showBodyDeps: true,
     });
     expect(result.length).toBe(2);
     expect(result.every(l => l.type !== 'precondition')).toBe(true);
@@ -380,6 +386,8 @@ describe('filterLinksByType', () => {
       showPostconditionCalls: false,
       showMappingLinks: true,
       showSpecLinks: true,
+      showStatementDeps: true,
+      showBodyDeps: true,
     });
     expect(result.length).toBe(1);
     expect(result[0].type).toBe('inner');
@@ -393,6 +401,8 @@ describe('filterLinksByType', () => {
       showPostconditionCalls: true,
       showMappingLinks: true,
       showSpecLinks: true,
+      showStatementDeps: true,
+      showBodyDeps: true,
     });
     expect(result.length).toBe(0);
   });
@@ -409,6 +419,8 @@ describe('filterLinksByType', () => {
       showPostconditionCalls: true,
       showMappingLinks: false,
       showSpecLinks: true,
+      showStatementDeps: true,
+      showBodyDeps: true,
     });
     expect(result.length).toBe(2);
     expect(result.every(l => l.type !== 'mapping')).toBe(true);
@@ -426,6 +438,8 @@ describe('filterLinksByType', () => {
       showPostconditionCalls: true,
       showMappingLinks: true,
       showSpecLinks: false,
+      showStatementDeps: true,
+      showBodyDeps: true,
     });
     expect(result.length).toBe(2);
     expect(result.every(l => l.type !== 'spec')).toBe(true);

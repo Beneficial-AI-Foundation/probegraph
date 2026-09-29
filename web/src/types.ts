@@ -225,10 +225,18 @@ export interface D3Node {
 /** The type of a call/dependency link */
 export type LinkType = 'inner' | 'precondition' | 'postcondition' | 'mapping' | 'spec';
 
+/**
+ * Which part of the caller a Lean dependency comes from: its statement
+ * (probe-lean `type-dependencies`), its body or proof (`term-dependencies`),
+ * or both.
+ */
+export type LinkRole = 'type' | 'term' | 'both';
+
 export interface D3Link {
   source: string | D3Node;
   target: string | D3Node;
   type: LinkType | string;  // 'inner' | 'precondition' | 'postcondition' (or legacy 'calls')
+  role?: LinkRole;  // Only on Lean `inner` links with type/term split data
 }
 
 /** Per-language GitHub source config derived from Schema 2.0 envelope inputs. */
@@ -265,6 +273,8 @@ export interface FilterOptions {
   showPostconditionCalls: boolean; // Show calls from ensures clauses (default: false)
   showMappingLinks: boolean;       // Show cross-language mapping edges (default: true)
   showSpecLinks: boolean;          // Show spec theorem edges (default: true)
+  showStatementDeps: boolean;      // Show/traverse statement dependencies, role type or both (default: true)
+  showBodyDeps: boolean;           // Show/traverse body/proof dependencies, role term or both (default: true)
   // Declaration kind filters
   showExecFunctions: boolean;      // Show exec/def/abbrev/opaque/... (default: true)
   showProofFunctions: boolean;     // Show proof/theorem (default: true)
@@ -305,6 +315,10 @@ export interface FilterOptions {
 export interface ProbeAtom {
   "display-name": string;
   dependencies: string[];
+  /** probe-lean: in-project names referenced by the type signature (statement). */
+  "type-dependencies"?: string[];
+  /** probe-lean: in-project names referenced by the body/proof. */
+  "term-dependencies"?: string[];
   /** probe-lean: names outside the extracted project referenced by the type signature. */
   "type-dependencies-external"?: string[];
   /** probe-lean: names outside the extracted project referenced by the body/proof. */

@@ -254,6 +254,7 @@ describe('URL round trip for state outside the intent', () => {
       showAxioms: false, showTypes: true, showProjections: true, showInstances: true,
       showInnerCalls: false, showPreconditionCalls: true, showPostconditionCalls: true,
       showMappingLinks: false, showSpecLinks: false,
+      showStatementDeps: false, showBodyDeps: false,
       showLibsignal: false, showNonLibsignal: false,
       showRustNodes: false, showLeanNodes: false,
       showVerifiedNodes: false, showFailedNodes: false, showUnverifiedNodes: false,
@@ -270,6 +271,15 @@ describe('URL round trip for state outside the intent', () => {
 });
 
 describe('URL reading', () => {
+  it('edge role boxes round-trip on Lean graphs', () => {
+    const f = filtersWith({ showStatementDeps: false, showBodyDeps: true });
+    const params = write(f, { projectLanguage: 'lean' });
+    expect(params.get('statement')).toBe('0');
+    expect(params.has('body')).toBe(false);
+    const parsed = readURLState(params, defaultFilters(), graph()).filters;
+    expect([parsed.showStatementDeps, parsed.showBodyDeps]).toEqual([false, true]);
+  });
+
   it('precedence: id > focus > boundary > source/sink', () => {
     const all = 'id=a&dir=callers&label=dup&focus=f.json&boundary-source=x&boundary-target=y&source=s';
     const read = (q: string) => readURLState(new URLSearchParams(q), defaultFilters(), graph());

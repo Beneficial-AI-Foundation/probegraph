@@ -74,6 +74,7 @@ export interface GraphSummary {
   unverifiedHotspots: NodeRank[];
   failedNodes: NodeRank[];
   suggestedQueries: SuggestedQuery[];
+  roleFilterActive: boolean;  // rankings use the full relation while a role box is off
 }
 
 // ============================================================================

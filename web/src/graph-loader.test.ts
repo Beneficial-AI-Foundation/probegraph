@@ -165,3 +165,84 @@ describe('pickSourceConfig', () => {
     expect(pickSourceConfig(configs, undefined, 'Imported/File.lean')).toBeUndefined();
   });
 });
+
+describe('convertAtomDictToD3Graph statement / body-or-proof roles', () => {
+  const roleOf = (g: ReturnType<typeof convertAtomDictToD3Graph>, s: string, t: string) =>
+    g.links.filter(l => l.source === s && l.target === t).map(l => l.role);
+
+  it('tags inner links type, term or both from the split arrays', () => {
+    const g = convertAtomDictToD3Graph({
+      'probe:a': atom({
+        dependencies: ['probe:t', 'probe:p', 'probe:b', 'probe:none'],
+        "type-dependencies": ['probe:t', 'probe:b'],
+        "term-dependencies": ['probe:p', 'probe:b'],
+      }),
+      'probe:t': atom({}),
+      'probe:p': atom({}),
+      'probe:b': atom({}),
+      'probe:none': atom({}),
+    });
+    expect(roleOf(g, 'probe:a', 'probe:t')).toEqual(['type']);
+    expect(roleOf(g, 'probe:a', 'probe:p')).toEqual(['term']);
+    expect(roleOf(g, 'probe:a', 'probe:b')).toEqual(['both']);
+    // In dependencies but in neither array: no role
+    expect(roleOf(g, 'probe:a', 'probe:none')).toEqual([undefined]);
+    expect(g.links.every(l => l.type === 'inner')).toBe(true);
+  });
+
+  it('merges a repeated dependency into one link', () => {
+    const g = convertAtomDictToD3Graph({
+      'probe:a': atom({
+        dependencies: ['probe:b', 'probe:b'],
+        "type-dependencies": ['probe:b'],
+        "term-dependencies": ['probe:b'],
+      }),
+      'probe:b': atom({}),
+    });
+    expect(roleOf(g, 'probe:a', 'probe:b')).toEqual(['both']);
+  });
+
+  it('gives no role when a split array is absent, and reads empty arrays as no edges of that role', () => {
+    const g = convertAtomDictToD3Graph({
+      'probe:absent': atom({ dependencies: ['probe:x'], "type-dependencies": ['probe:x'] }),
+      'probe:empty': atom({
+        dependencies: ['probe:x'],
+        "type-dependencies": [],
+        "term-dependencies": ['probe:x'],
+      }),
+      'probe:x': atom({}),
+    });
+    expect(roleOf(g, 'probe:absent', 'probe:x')).toEqual([undefined]);
+    expect(roleOf(g, 'probe:empty', 'probe:x')).toEqual(['term']);
+  });
+
+  it('classifies resolved externals from the external split arrays', () => {
+    const g = convertAtomDictToD3Graph({
+      'probe:a': atom({
+        "type-dependencies-external": ['probe:other.Type', 'probe:other.both'],
+        "term-dependencies-external": ['probe:other.thm', 'probe:other.both'],
+      }),
+      'probe:only-term': atom({ "term-dependencies-external": ['probe:other.thm'] }),
+      'probe:other.Type': atom({}),
+      'probe:other.thm': atom({}),
+      'probe:other.both': atom({}),
+    });
+    expect(roleOf(g, 'probe:a', 'probe:other.Type')).toEqual(['type']);
+    expect(roleOf(g, 'probe:a', 'probe:other.thm')).toEqual(['term']);
+    expect(roleOf(g, 'probe:a', 'probe:other.both')).toEqual(['both']);
+    expect(roleOf(g, 'probe:only-term', 'probe:other.thm')).toEqual([undefined]);
+  });
+
+  it('gives spec links no role and keeps them apart from a parallel inner link', () => {
+    const g = convertAtomDictToD3Graph({
+      'probe:thm': atom({
+        dependencies: ['probe:def'],
+        "type-dependencies": ['probe:def'],
+        "term-dependencies": [],
+      }),
+      'probe:def': atom({ kind: 'def', specs: ['probe:thm'] }),
+    });
+    const links = g.links.filter(l => l.source === 'probe:thm' && l.target === 'probe:def');
+    expect(links.map(l => [l.type, l.role]).sort()).toEqual([['inner', 'type'], ['spec', undefined]]);
+  });
+});
