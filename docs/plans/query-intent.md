@@ -97,6 +97,7 @@ Guide actions become one transition each:
 interface GuideTransition {
   intent: QueryIntent;
   status: StatusSelection | null;  // null: keep the user's status filter
+  depth?: number | null;           // absent: keep the user's depth; null: unlimited
   view?: ActiveView;
   label: string;
 }
@@ -107,6 +108,12 @@ interface GuideTransition {
 state. "Show only verified" is `{ intent: none, status: verified }`;
 "View namespace map" is `{ intent: none, view: 'crate-map' }`. Kind,
 language, include/exclude patterns and hidden nodes are never touched.
+Directional transitions (`ids` with a direction, `boundary`) set
+`depth: null`, as the chips do today (`guide-panel.ts:58`): with the
+default depth of 1, "callers of GF16" would show direct callers only, and
+Phase 4's BFS truncation assumes an unlimited traversal. Other
+transitions omit `depth`. This departs from the parent plan, which listed
+depth as a kept preference.
 `StatusSelection` is the exact status set of Phase 1.6; this note only
 fixes that the transition carries it.
 
@@ -197,15 +204,11 @@ in `filters.test.ts`, `query.test.ts` and `query.integration.test.ts`
 construct `sourceQuery`/`sinkQuery`; they move to a `textIntent(source,
 sink)` helper.
 
-## Open questions
+## Inputs while an `ids` intent is active
 
-1. **Depth on Guide actions.** The plan lists depth as a kept preference,
-   but directional chips set unlimited depth today (`guide-panel.ts:58`),
-   and Phase 4's BFS truncation assumes that. With the default depth of 1,
-   "callers of GF16" would show direct callers only. Proposal: a
-   `GuideTransition` may set depth, and directional ones set unlimited.
-2. **Typing over an `ids` intent.** The inputs show `label` while an `ids`
-   intent is active. Editing either input switches to a `text` intent from
-   the input contents, matching how typing clears `selectedNodeId` today.
-   Is that acceptable, or should the inputs be read-only with a clear
-   button while an `ids` intent is active?
+The source/sink inputs show `label`, marked as exact, with the full ID in
+the tooltip. Editing either input switches to a `text` intent from the
+input contents, matching how typing clears `selectedNodeId` today; the
+marker disappears. No read-only mode: typing is already a signal for a
+new query, and browser back restores the replaced intent when it came
+from a Guide action.
