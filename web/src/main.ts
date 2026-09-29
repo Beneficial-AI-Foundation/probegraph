@@ -8,6 +8,7 @@ import { CrateMapVisualization, buildCrateGraph } from './crate-map';
 import { HierarchyMapVisualization } from './hierarchy-map';
 import { computeDerivedStatuses } from './status';
 import { parseAndNormalizeGraph, pickSourceConfig } from './graph-loader';
+import { escapeHtml } from './html';
 
 import { GuidePanel } from './guide/guide-panel';
 import { buildGraphSummary } from './guide/static-analysis';
@@ -2364,8 +2365,8 @@ const MAX_RENDERED_NODES = 200;
 
 function formatMatcher(m: NodeMatcher): string {
   switch (m.kind) {
-    case 'pattern': return m.query;
-    case 'crate': return `crate:${m.pattern}`;
+    case 'pattern': return escapeHtml(m.query);
+    case 'crate': return `crate:${escapeHtml(m.pattern)}`;
     case 'nodeIds': return `[${m.ids.size} node${m.ids.size !== 1 ? 's' : ''}]`;
   }
 }
@@ -2387,7 +2388,7 @@ function formatQueryLabel(q: GraphQuery): string {
     case 'paths':
       return `<span class="query-type">paths</span> <span class="query-param">${formatMatcher(q.from)}</span> <span class="query-dim">→</span> <span class="query-param">${formatMatcher(q.to)}</span>`;
     case 'crateBoundary':
-      return `<span class="query-type">boundary</span> <span class="query-param">crate:${q.sourceCrate}</span> <span class="query-dim">→</span> <span class="query-param">crate:${q.targetCrate}</span>`;
+      return `<span class="query-type">boundary</span> <span class="query-param">crate:${escapeHtml(q.sourceCrate)}</span> <span class="query-dim">→</span> <span class="query-param">crate:${escapeHtml(q.targetCrate)}</span>`;
     case 'depthFromSelected':
       return `<span class="query-type">depth</span> <span class="query-dim">from</span> <span class="query-param">${q.selectedNodes.size} selected</span> depth=${q.maxDepth}`;
     case 'noTraversal':
@@ -2628,7 +2629,7 @@ function updateStats(truncatedTo?: number): void {
     </div>
     <div class="stat-item">
       <span class="stat-label">Project:</span>
-      <span class="stat-value" style="font-size: 10px;">${state.fullGraph.metadata.project_root}</span>
+      <span class="stat-value" style="font-size: 10px;">${escapeHtml(state.fullGraph.metadata.project_root)}</span>
     </div>
   `;
 }
@@ -2658,14 +2659,14 @@ function updateNodeInfo(): void {
   const callersHtml = allCallers.length > 0
     ? allCallers.map(n => {
         const isVisible = visibleCallers.some(vc => vc.id === n.id);
-        return `<li${!isVisible ? ' style="opacity: 0.5;"' : ''}>${n.display_name}${!isVisible ? ' <em>(filtered)</em>' : ''}</li>`;
+        return `<li${!isVisible ? ' style="opacity: 0.5;"' : ''}>${escapeHtml(n.display_name)}${!isVisible ? ' <em>(filtered)</em>' : ''}</li>`;
       }).join('')
     : '<li><em>None</em></li>';
 
   const calleesHtml = allCallees.length > 0
     ? allCallees.map(n => {
         const isVisible = visibleCallees.some(vc => vc.id === n.id);
-        return `<li${!isVisible ? ' style="opacity: 0.5;"' : ''}>${n.display_name}${!isVisible ? ' <em>(filtered)</em>' : ''}</li>`;
+        return `<li${!isVisible ? ' style="opacity: 0.5;"' : ''}>${escapeHtml(n.display_name)}${!isVisible ? ' <em>(filtered)</em>' : ''}</li>`;
       }).join('')
     : '<li><em>None</em></li>';
 
@@ -2700,7 +2701,7 @@ function updateNodeInfo(): void {
     let badgeClass = 'exec-badge';
     if (proofKinds.has(kind)) badgeClass = 'proof-badge';
     else if (specKinds.has(kind) || axiomKinds.has(kind)) badgeClass = 'spec-badge';
-    return `<span class="${badgeClass}" style="font-size: 0.75rem;">${kind}</span>`;
+    return `<span class="${badgeClass}" style="font-size: 0.75rem;">${escapeHtml(kind)}</span>`;
   };
 
   const getLanguageBadge = (lang: string | undefined): string => {
@@ -2723,7 +2724,7 @@ function updateNodeInfo(): void {
         <strong>Lean Translation:</strong>
         <ul class="node-list">
           <li><a href="#" class="navigate-to-node" data-node-id="${escapeHtml(node.mapping_id)}" style="cursor:pointer; text-decoration:underline; color:var(--pg-edge-mapping);">${escapeHtml(mappingName)}</a>
-          <span style="color: var(--pg-text-faint); font-size: 0.85rem;">${node.mapping_path || ''}${mappingLineInfo}</span></li>
+          <span style="color: var(--pg-text-faint); font-size: 0.85rem;">${escapeHtml(node.mapping_path)}${escapeHtml(mappingLineInfo)}</span></li>
         </ul>
       </div>`;
   }
@@ -2762,7 +2763,7 @@ function updateNodeInfo(): void {
 
   nodeInfoDiv.innerHTML = `
     <div class="node-detail">
-      <h3>${node.display_name}</h3>
+      <h3>${escapeHtml(node.display_name)}</h3>
       <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
         <div class="node-badge ${node.is_libsignal ? 'badge-libsignal' : 'badge-other'}">
           ${node.is_libsignal ? 'Libsignal' : 'External'}
@@ -2773,12 +2774,12 @@ function updateNodeInfo(): void {
       </div>
     </div>
     <div class="node-detail">
-      <strong>File:</strong> ${node.file_name}
-      ${lineInfo ? `<span style="color: var(--pg-text-faint); margin-left: 0.5rem;">(${lineInfo})</span>` : ''}
+      <strong>File:</strong> ${escapeHtml(node.file_name)}
+      ${lineInfo ? `<span style="color: var(--pg-text-faint); margin-left: 0.5rem;">(${escapeHtml(lineInfo)})</span>` : ''}
     </div>
     <div class="node-detail">
       <strong>Path:</strong>
-      <code class="code-block">${node.relative_path}</code>
+      <code class="code-block">${escapeHtml(node.relative_path)}</code>
     </div>
     <div class="node-detail">
       <button id="navigate-to-source-btn" class="github-link" style="background: none; border: none; cursor: pointer; padding: 0; text-decoration: underline; color: inherit;">
@@ -2805,7 +2806,7 @@ function updateNodeInfo(): void {
               <span class="similar-lemma-name">${escapeHtml(lemma.name)}</span>
               <span class="similar-lemma-score">${(lemma.score * 100).toFixed(0)}%</span>
               <div class="similar-lemma-meta">
-                ${escapeHtml(lemma.file_path)}${lemma.line_number ? `:${lemma.line_number}` : ''}
+                ${escapeHtml(lemma.file_path)}${lemma.line_number ? `:${escapeHtml(lemma.line_number)}` : ''}
               </div>
             </li>
           `).join('')}
@@ -3618,15 +3619,6 @@ function handleResize(): void {
   
   const rect = graphContainer.getBoundingClientRect();
   visualization.resize(rect.width, rect.height);
-}
-
-/**
- * Escape HTML for safe display
- */
-function escapeHtml(text: string): string {
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
 }
 
 // ============================================================================

@@ -3,6 +3,7 @@ import dagreModule from '@dagrejs/dagre';
 const dagre = dagreModule as any;
 import { D3Graph, D3Node, GraphState, CrateNode, CrateEdge, CrateGraph } from './types';
 import { edgeTypeColor, groupColors, ACCENT } from './theme';
+import { escapeHtml } from './html';
 
 // --- Color palette for crate boxes ---
 
@@ -960,27 +961,25 @@ export class CrateMapVisualization {
       .sort((a, b) => b[1] - a[1])
       .slice(0, 8);
 
-    const escHtml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-
     const role = this.boundarySource === cn.name ? ' (Source)' :
                  this.boundaryTarget === cn.name ? ' (Target)' : '';
 
     nodeInfoDiv.innerHTML = `
       <div class="cm-info">
-        <h3>${escHtml(cn.name)}${role}</h3>
+        <h3>${escapeHtml(cn.name)}${role}</h3>
         <p><strong>${cn.functionCount}</strong> functions, <strong>${cn.fileCount}</strong> files</p>
         ${cn.isExternal ? '<p><em>External dependency</em></p>' : ''}
         ${outgoing.length > 0 ? `
           <h4>Calls into:</h4>
-          <ul>${outgoing.map(e => `<li>${escHtml(e.target)} (${e.callCount} calls)</li>`).join('')}</ul>
+          <ul>${outgoing.map(e => `<li>${escapeHtml(e.target)} (${e.callCount} calls)</li>`).join('')}</ul>
         ` : ''}
         ${incoming.length > 0 ? `
           <h4>Called by:</h4>
-          <ul>${incoming.map(e => `<li>${escHtml(e.source)} (${e.callCount} calls)</li>`).join('')}</ul>
+          <ul>${incoming.map(e => `<li>${escapeHtml(e.source)} (${e.callCount} calls)</li>`).join('')}</ul>
         ` : ''}
         ${topFiles.length > 0 ? `
           <h4>Top files:</h4>
-          <ul>${topFiles.map(([f, c]) => `<li>${escHtml(shortPath(f))} (${c} fn)</li>`).join('')}</ul>
+          <ul>${topFiles.map(([f, c]) => `<li>${escapeHtml(shortPath(f))} (${c} fn)</li>`).join('')}</ul>
         ` : ''}
         <p class="cm-hint"><em>Double-click to view in Call Graph</em></p>
       </div>
