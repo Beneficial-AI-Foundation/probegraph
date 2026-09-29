@@ -2365,8 +2365,8 @@ const MAX_RENDERED_NODES = 200;
 
 function formatMatcher(m: NodeMatcher): string {
   switch (m.kind) {
-    case 'pattern': return m.query;
-    case 'crate': return `crate:${m.pattern}`;
+    case 'pattern': return escapeHtml(m.query);
+    case 'crate': return `crate:${escapeHtml(m.pattern)}`;
     case 'nodeIds': return `[${m.ids.size} node${m.ids.size !== 1 ? 's' : ''}]`;
   }
 }
@@ -2388,7 +2388,7 @@ function formatQueryLabel(q: GraphQuery): string {
     case 'paths':
       return `<span class="query-type">paths</span> <span class="query-param">${formatMatcher(q.from)}</span> <span class="query-dim">→</span> <span class="query-param">${formatMatcher(q.to)}</span>`;
     case 'crateBoundary':
-      return `<span class="query-type">boundary</span> <span class="query-param">crate:${q.sourceCrate}</span> <span class="query-dim">→</span> <span class="query-param">crate:${q.targetCrate}</span>`;
+      return `<span class="query-type">boundary</span> <span class="query-param">crate:${escapeHtml(q.sourceCrate)}</span> <span class="query-dim">→</span> <span class="query-param">crate:${escapeHtml(q.targetCrate)}</span>`;
     case 'depthFromSelected':
       return `<span class="query-type">depth</span> <span class="query-dim">from</span> <span class="query-param">${q.selectedNodes.size} selected</span> depth=${q.maxDepth}`;
     case 'noTraversal':
@@ -2629,7 +2629,7 @@ function updateStats(truncatedTo?: number): void {
     </div>
     <div class="stat-item">
       <span class="stat-label">Project:</span>
-      <span class="stat-value" style="font-size: 10px;">${state.fullGraph.metadata.project_root}</span>
+      <span class="stat-value" style="font-size: 10px;">${escapeHtml(state.fullGraph.metadata.project_root)}</span>
     </div>
   `;
 }
