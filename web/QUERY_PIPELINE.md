@@ -325,7 +325,7 @@ Rather than encoding depth information in the node objects, traversal operators 
 
 ## 7. URL Parameters
 
-Filter state is encoded in shareable URLs by `writeURLState` / `readURLState` (`src/url-state.ts`). Reload and browser back both rebuild the state from defaults plus the URL. Guide actions push a history entry; other edits replace the current one.
+Filter state is encoded in shareable URLs by `writeURLState` / `readURLState` (`src/url-state.ts`). Reload and browser back both rebuild the state from defaults plus the URL. Guide actions push a history entry. The first source/sink edit on a Guide entry also pushes; later typing replaces. Other filter edits replace the entry and keep its marker.
 
 Query intent (exactly one is written):
 

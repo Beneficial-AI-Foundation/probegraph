@@ -137,6 +137,12 @@ describe('inputs for non-text intents', () => {
     expect(intentAfterInputEdit(both, 'sink', 'dup', 'dupx')).toEqual(textIntent('', 'dupx'));
   });
 
+  it('editing the empty side of callers/callees drops the exact label', () => {
+    const callees = exactIntent(['a'], 'callees', 'dup', { type: 'guide' });
+    expect(intentAfterInputEdit(callers, 'source', 'mul', 'dup')).toEqual(textIntent('mul', ''));
+    expect(intentAfterInputEdit(callees, 'sink', 'dup', 'mul')).toEqual(textIntent('', 'mul'));
+  });
+
   it('editing a text intent keeps both sides', () => {
     expect(intentAfterInputEdit(textIntent('a', 'b'), 'source', 'ab', 'b')).toEqual(textIntent('ab', 'b'));
   });

@@ -83,11 +83,6 @@ export function anchorIds(intent: QueryIntent): string[] {
   return intent.kind === 'ids' ? intent.ids : [];
 }
 
-/** Structural equality (IDs compared in order). */
-export function intentsEqual(a: QueryIntent, b: QueryIntent): boolean {
-  return JSON.stringify(a) === JSON.stringify(b);
-}
-
 /** Contents of the source and sink inputs for an intent. */
 export interface IntentInputs {
   source: string;
@@ -117,9 +112,9 @@ export function inputsForIntent(intent: QueryIntent): IntentInputs {
 }
 
 /**
- * Intent after the user edits one input. Over an exact `both` intent the
- * other input is dropped, so the edit gives callees (source) or callers
- * (sink) of the typed text instead of a paths query on the label.
+ * Intent after the user edits one input. The other input is dropped when it
+ * shows an exact label, so the label never becomes a substring pattern
+ * (callers of X plus a typed source would otherwise run paths to "*X*").
  */
 export function intentAfterInputEdit(
   current: QueryIntent,
@@ -127,10 +122,10 @@ export function intentAfterInputEdit(
   sourceValue: string,
   sinkValue: string,
 ): QueryIntent {
-  if (current.kind === 'ids' && current.dir === 'both') {
-    return edited === 'source' ? textIntent(sourceValue, '') : textIntent('', sinkValue);
-  }
-  return textIntent(sourceValue, sinkValue);
+  const { sourceExact, sinkExact } = inputsForIntent(current);
+  const source = edited === 'sink' && sourceExact ? '' : sourceValue;
+  const sink = edited === 'source' && sinkExact ? '' : sinkValue;
+  return textIntent(source, sink);
 }
 
 /** Intent for a VS Code loadGraph message with an exact node. */

@@ -264,3 +264,62 @@ test('the query label renders URL params as text', async ({ page }) => {
   await expect(page.locator('#query-label')).toContainText(label);
   await expect(page.locator('#label-injected')).toHaveCount(0);
 });
+
+// Two unrelated boundaries: p → q and r → s
+function boundaryGraph() {
+  const pairs: [string, string][] = [['probe:p/f', 'probe:q/g'], ['probe:r/h', 'probe:s/k']];
+  const nodes = pairs.flat().map(id => {
+    const name = `func_${id.slice(-1)}`;
+    return {
+      id, display_name: name, symbol: id,
+      full_path: `/t/${name}.rs`, relative_path: `src/${name}.rs`, file_name: `${name}.rs`,
+      parent_folder: 'src', crate_name: '', is_libsignal: false, kind: 'exec',
+      dependencies: pairs.filter(([s]) => s === id).map(([, t]) => t),
+      dependents: pairs.filter(([, t]) => t === id).map(([s]) => s),
+    };
+  });
+  return {
+    nodes,
+    links: pairs.map(([source, target]) => ({ source, target, type: 'inner' })),
+    metadata: { total_nodes: nodes.length, total_edges: pairs.length, project_root: '/t', generated_at: '2026-01-01' },
+  };
+}
+
+test.describe('Back restores the controls', () => {
+  test('crate dropdowns follow the restored boundary', async ({ page }) => {
+    await page.route('**/intent-boundary.json', route => json(route, boundaryGraph()));
+    await page.goto('/probegraph/?json=intent-boundary.json&boundary-source=p&boundary-target=q');
+    await expect(page.locator('#stats')).toContainText('Total Nodes', { timeout: 15000 });
+    await expect(page.locator('#source-crate-select')).toHaveValue('p');
+
+    // A chip pushes an entry; the dropdowns then select the other boundary
+    await page.locator('#tab-guide').click();
+    await page.locator('.guide-chip').first().click();
+    await page.locator('#source-crate-select').selectOption('r');
+    await page.locator('#target-crate-select').selectOption('s');
+    expect(new URL(page.url()).searchParams.get('boundary-source')).toBe('r');
+
+    // r is not a caller of q: the old DOM value must not clear the restored p
+    await page.goBack();
+    await expect.poll(() => new URL(page.url()).searchParams.get('boundary-source')).toBe('p');
+    await expect(page.locator('#source-crate-select')).toHaveValue('p');
+    await expect(page.locator('#target-crate-select')).toHaveValue('q');
+  });
+
+  test('Hierarchy expansion collapses back to an entry without expanded=', async ({ page }) => {
+    await serve(page);
+    await open(page, '&view=hierarchy');
+    await expect(page.locator('.hm-group').first()).toBeVisible();
+    await expect(page.locator('.hm-container')).toHaveCount(0);
+
+    await clickChip(page, MOST_CONNECTED);
+    await expect(page.locator('.hm-group').first()).toBeVisible();
+    await page.locator('.hm-group').first().dispatchEvent('click');
+    await expect(page.locator('.hm-container')).toHaveCount(1);
+    expect(page.url()).toContain('expanded=');
+
+    await page.goBack();
+    await expect.poll(() => page.url()).not.toContain('expanded=');
+    await expect(page.locator('.hm-container')).toHaveCount(0);
+  });
+});

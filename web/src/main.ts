@@ -340,10 +340,6 @@ function syncIntentInputs(): void {
       selectedTargetCrate = '';
     }
     populateCrateDropdowns();
-    const srcSel = document.getElementById('source-crate-select') as HTMLSelectElement | null;
-    const tgtSel = document.getElementById('target-crate-select') as HTMLSelectElement | null;
-    if (srcSel) srcSel.value = selectedSourceCrate;
-    if (tgtSel) tgtSel.value = selectedTargetCrate;
   }
 }
 
@@ -468,11 +464,13 @@ function handlePopState(): void {
     if (activeView === 'crate-map' && visualization instanceof CrateMapVisualization) {
       visualization.setBoundaryCrates(selectedSourceCrate || null, selectedTargetCrate || null);
     }
-    if (hierarchyExpanded.length > 0 && visualization instanceof HierarchyMapVisualization) {
-      visualization.setExpanded(hierarchyExpanded);
-    }
     if (!focusUrl && !isFocusIntent(state.filters.intent)) resumeDeferredEntrypoints();
     applyFiltersAndUpdate();
+    // After the apply, so the expansion is pruned against the restored
+    // graph; an empty list is restored too (collapse everything)
+    if (visualization instanceof HierarchyMapVisualization) {
+      visualization.setExpanded(hierarchyExpanded);
+    }
   } finally {
     urlWritesSuppressed--;
   }
@@ -2823,11 +2821,20 @@ function computeDisambiguatedPaths(paths: string[]): Map<string, string> {
   return result;
 }
 
+/** Graph and selection the crate dropdowns were last built for. */
+let crateDropdownKey = '';
+
 /**
- * Populate the Source Crate / Target Crate dropdowns with unique crate names.
+ * Populate the Source Crate / Target Crate dropdowns with unique crate names
+ * and select selectedSourceCrate / selectedTargetCrate. A selection missing
+ * from its filtered list is cleared. Skipped when nothing changed, since
+ * setIntent calls this on every keystroke.
  */
 function populateCrateDropdowns(): void {
   if (!state.fullGraph) return;
+
+  const key = `${graphLoadGeneration}\0${selectedSourceCrate}\0${selectedTargetCrate}`;
+  if (key === crateDropdownKey) return;
 
   ensureCrateGraphBuilt();
 
@@ -2840,47 +2847,36 @@ function populateCrateDropdowns(): void {
 
   const allSorted = [...allCrateNames].sort((a, b) => a.localeCompare(b));
 
-  // Source dropdown: filtered to callers of the selected target crate (or all if none)
-  const srcSel = document.getElementById('source-crate-select') as HTMLSelectElement | null;
-  if (srcSel) {
-    const prev = srcSel.value;
-    const rdeps = selectedTargetCrate ? crateReverseDependencyMap.get(selectedTargetCrate) : null;
-    const sourceList = rdeps ? allSorted.filter(n => rdeps.has(n)) : allSorted;
-
-    srcSel.innerHTML = '<option value="">--</option>';
-    for (const name of sourceList) {
+  const fill = (sel: HTMLSelectElement, names: string[], selected: string): string => {
+    sel.innerHTML = '<option value="">--</option>';
+    for (const name of names) {
       const opt = document.createElement('option');
       opt.value = name;
       opt.textContent = name;
-      srcSel.appendChild(opt);
+      sel.appendChild(opt);
     }
-    if (prev && sourceList.includes(prev)) {
-      srcSel.value = prev;
-    } else if (prev && !sourceList.includes(prev)) {
-      selectedSourceCrate = '';
-    }
+    const kept = names.includes(selected) ? selected : '';
+    sel.value = kept;
+    return kept;
+  };
+
+  // Source dropdown: filtered to callers of the selected target crate (or all if none)
+  const srcSel = document.getElementById('source-crate-select') as HTMLSelectElement | null;
+  if (srcSel) {
+    const rdeps = selectedTargetCrate ? crateReverseDependencyMap.get(selectedTargetCrate) : null;
+    const sourceList = rdeps ? allSorted.filter(n => rdeps.has(n)) : allSorted;
+    selectedSourceCrate = fill(srcSel, sourceList, selectedSourceCrate);
   }
 
   // Target dropdown: filtered to dependencies of the selected source crate (or all if none)
   const tgtSel = document.getElementById('target-crate-select') as HTMLSelectElement | null;
   if (tgtSel) {
-    const prev = tgtSel.value;
     const deps = selectedSourceCrate ? crateDependencyMap.get(selectedSourceCrate) : null;
     const targetList = deps ? allSorted.filter(n => deps.has(n)) : allSorted;
-
-    tgtSel.innerHTML = '<option value="">--</option>';
-    for (const name of targetList) {
-      const opt = document.createElement('option');
-      opt.value = name;
-      opt.textContent = name;
-      tgtSel.appendChild(opt);
-    }
-    if (prev && targetList.includes(prev)) {
-      tgtSel.value = prev;
-    } else if (prev && !targetList.includes(prev)) {
-      selectedTargetCrate = '';
-    }
+    selectedTargetCrate = fill(tgtSel, targetList, selectedTargetCrate);
   }
+
+  crateDropdownKey = `${graphLoadGeneration}\0${selectedSourceCrate}\0${selectedTargetCrate}`;
 }
 
 /**
@@ -3369,45 +3365,8 @@ function resetFilters(): void {
   state.filters = freshFilters(graphDefaultFilters ?? initialFilters);
   seededRequestedDepth = null;  // A reset drops the seeded depth request too
 
-  // Reset UI controls
-  (document.getElementById('show-libsignal') as HTMLInputElement).checked = true;
-  (document.getElementById('show-non-libsignal') as HTMLInputElement).checked = true;
-  const innerCallsEl = document.getElementById('show-inner-calls') as HTMLInputElement | null;
-  const preCallsEl = document.getElementById('show-precondition-calls') as HTMLInputElement | null;
-  const postCallsEl = document.getElementById('show-postcondition-calls') as HTMLInputElement | null;
-  if (innerCallsEl) innerCallsEl.checked = true;
-  if (preCallsEl) preCallsEl.checked = false;
-  if (postCallsEl) postCallsEl.checked = false;
-  // Kind checkboxes are rendered per-language/per-graph, so any of them may be absent.
-  const resetKindCheckbox = (id: string, checked: boolean) => {
-    const el = document.getElementById(id) as HTMLInputElement | null;
-    if (el) el.checked = checked;
-  };
-  resetKindCheckbox('show-exec-functions', initialFilters.showExecFunctions);
-  resetKindCheckbox('show-proof-functions', initialFilters.showProofFunctions);
-  resetKindCheckbox('show-spec-functions', initialFilters.showSpecFunctions);
-  resetKindCheckbox('show-axioms', initialFilters.showAxioms);
-  resetKindCheckbox('show-types', initialFilters.showTypes);
-  resetKindCheckbox('show-projections', initialFilters.showProjections);
-  resetKindCheckbox('show-instances', initialFilters.showInstances);
-  const rustNodesEl = document.getElementById('show-rust-nodes') as HTMLInputElement | null;
-  const leanNodesEl = document.getElementById('show-lean-nodes') as HTMLInputElement | null;
-  if (rustNodesEl) rustNodesEl.checked = true;
-  if (leanNodesEl) leanNodesEl.checked = true;
-  const verifiedEl = document.getElementById('show-verified-nodes') as HTMLInputElement | null;
-  const failedEl = document.getElementById('show-failed-nodes') as HTMLInputElement | null;
-  const unverifiedEl = document.getElementById('show-unverified-nodes') as HTMLInputElement | null;
-  if (verifiedEl) verifiedEl.checked = true;
-  if (failedEl) failedEl.checked = true;
-  if (unverifiedEl) unverifiedEl.checked = true;
-  (document.getElementById('exclude-name-patterns') as HTMLInputElement).value = '';
-  (document.getElementById('exclude-path-patterns') as HTMLInputElement).value = '';
-  (document.getElementById('include-files') as HTMLInputElement).value = '';
-  (document.getElementById('depth-limit') as HTMLInputElement).value = '1';
-  document.getElementById('depth-value')!.textContent = '1';
-  
-  // Update file list selection to clear all
-  updateFileListSelection();
+  // Every control from the defaults (the intent is already none)
+  syncFilterUI();
 
   // Clears the intent (focus set included), inputs and crate dropdowns
   setIntent(NONE_INTENT, { history: 'replace' });
