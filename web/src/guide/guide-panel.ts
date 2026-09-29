@@ -5,7 +5,8 @@
  * queries that execute directly against the viewer state. No LLM involved.
  */
 
-import type { GraphSummary, SuggestedAction, GuideActions } from './types';
+import type { GraphSummary, SuggestedAction, GuideActions, GuideTransition } from './types';
+import { NONE_INTENT, exactIntent, boundaryIntent } from '../intent';
 import { escapeHtml } from '../html';
 import { formatSummaryText } from './static-analysis';
 
@@ -52,50 +53,40 @@ export class GuidePanel {
   }
 
   private executeAction(action: SuggestedAction, label: string): void {
-    // Directional actions need unlimited depth so BFS finds all reachable nodes
-    const needsUnlimitedDepth = action.type === 'setSource' || action.type === 'setSink'
-      || action.type === 'setSourceAndSink' || action.type === 'setCrateBoundary';
-    if (needsUnlimitedDepth) {
-      this.actions.setDepth(null);
-    }
-
-    switch (action.type) {
-      case 'setSource':
-        this.actions.setSource(action.query);
-        this.actions.applyFiltersAndUpdate();
-        break;
-      case 'setSink':
-        this.actions.setSink(action.query);
-        this.actions.applyFiltersAndUpdate();
-        break;
-      case 'setSourceAndSink':
-        this.actions.setSource(action.source);
-        this.actions.setSink(action.sink);
-        this.actions.applyFiltersAndUpdate();
-        break;
-      case 'filterVerification':
-        this.actions.setFilters({
-          showVerifiedNodes: action.statuses.includes('verified'),
-          showFailedNodes: action.statuses.includes('failed'),
-          showUnverifiedNodes: action.statuses.includes('unverified'),
-        });
-        this.actions.applyFiltersAndUpdate();
-        break;
-      case 'setCrateBoundary':
-        this.actions.setSource(`crate:${action.source}`);
-        this.actions.setSink(`crate:${action.target}`);
-        this.actions.applyFiltersAndUpdate();
-        break;
-      case 'switchView':
-        this.actions.switchView(action.view);
-        break;
-    }
+    this.actions.apply(guideTransition(action, label));
 
     // Show feedback and switch to the graph view so the user sees the result
     showToast(label);
     if (action.type !== 'switchView') {
       this.switchTab('node-details');
     }
+  }
+}
+
+/**
+ * Map a suggested action to one state transition. Directional actions use
+ * unlimited depth so the BFS finds every reachable node.
+ */
+export function guideTransition(action: SuggestedAction, label: string): GuideTransition {
+  switch (action.type) {
+    case 'setSource':
+      return { intent: exactIntent([action.id], 'callees', action.label, { type: 'guide' }), status: null, depth: null, label };
+    case 'setSink':
+      return { intent: exactIntent([action.id], 'callers', action.label, { type: 'guide' }), status: null, depth: null, label };
+    case 'setCrateBoundary':
+      return { intent: boundaryIntent(action.source, action.target), status: null, depth: null, label };
+    case 'filterVerification':
+      return {
+        intent: NONE_INTENT,
+        status: {
+          verified: action.statuses.includes('verified'),
+          failed: action.statuses.includes('failed'),
+          unverified: action.statuses.includes('unverified'),
+        },
+        label,
+      };
+    case 'switchView':
+      return { intent: NONE_INTENT, status: null, view: action.view, label };
   }
 }
 

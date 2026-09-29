@@ -8,6 +8,7 @@
 import { describe, it, expect } from 'vitest';
 import { globToRegex, asSubstringGlob, matchesQuery, applyFilters, pathPatternToRegex } from './filters';
 import { D3Graph, D3Node, D3Link, FilterOptions } from './types';
+import { NONE_INTENT, textIntent } from './intent';
 
 // ============================================================================
 // Test Helpers
@@ -71,12 +72,10 @@ function createFilters(overrides: Partial<FilterOptions> = {}): FilterOptions {
     excludePathPatterns: '',
     includeFiles: '',
     maxDepth: null,
-    sourceQuery: '',
-    sinkQuery: '',
+    intent: NONE_INTENT,
     selectedNodes: new Set(),
     expandedNodes: new Set(),
     hiddenNodes: new Set(),
-    focusNodeIds: new Set(),
     ...overrides,
   };
 }
@@ -404,7 +403,7 @@ describe('Graph Traversal', () => {
   describe('Source query (shows callees)', () => {
     it('returns source node and its immediate callees at depth 1', () => {
       const graph = createLinearGraph();
-      const filters = createFilters({ sourceQuery: 'func_a', maxDepth: 1 });
+      const filters = createFilters({ intent: textIntent('func_a', ''), maxDepth: 1 });
       
       const result = applyFilters(graph, filters);
       const nodeNames = result.nodes.map(n => n.display_name).sort();
@@ -417,7 +416,7 @@ describe('Graph Traversal', () => {
 
     it('returns deeper callees when depth allows', () => {
       const graph = createLinearGraph();
-      const filters = createFilters({ sourceQuery: 'func_a', maxDepth: 2 });
+      const filters = createFilters({ intent: textIntent('func_a', ''), maxDepth: 2 });
       
       const result = applyFilters(graph, filters);
       const nodeNames = result.nodes.map(n => n.display_name).sort();
@@ -431,7 +430,7 @@ describe('Graph Traversal', () => {
   describe('Sink query (shows callers)', () => {
     it('returns sink node and its immediate callers at depth 1', () => {
       const graph = createLinearGraph();
-      const filters = createFilters({ sinkQuery: 'func_c', maxDepth: 1 });
+      const filters = createFilters({ intent: textIntent('', 'func_c'), maxDepth: 1 });
       
       const result = applyFilters(graph, filters);
       const nodeNames = result.nodes.map(n => n.display_name).sort();
@@ -446,7 +445,7 @@ describe('Graph Traversal', () => {
   describe('Source → Sink path finding', () => {
     it('finds all nodes on path between source and sink', () => {
       const graph = createDiamondGraph();
-      const filters = createFilters({ sourceQuery: 'start', sinkQuery: 'end' });
+      const filters = createFilters({ intent: textIntent('start', 'end') });
       
       const result = applyFilters(graph, filters);
       const nodeNames = result.nodes.map(n => n.display_name).sort();
@@ -462,7 +461,7 @@ describe('Graph Traversal', () => {
     it('returns empty when no path exists', () => {
       const graph = createLinearGraph();
       // Try to find path from C to A (wrong direction)
-      const filters = createFilters({ sourceQuery: 'func_c', sinkQuery: 'func_a' });
+      const filters = createFilters({ intent: textIntent('func_c', 'func_a') });
       
       const result = applyFilters(graph, filters);
       
@@ -475,7 +474,7 @@ describe('Graph Traversal', () => {
     it('shows both callers and callees of the node', () => {
       const graph = createLinearGraph();
       // B is in the middle, should show A (caller) and C (callee)
-      const filters = createFilters({ sourceQuery: 'func_b', sinkQuery: 'func_b', maxDepth: 1 });
+      const filters = createFilters({ intent: textIntent('func_b', 'func_b'), maxDepth: 1 });
       
       const result = applyFilters(graph, filters);
       const nodeNames = result.nodes.map(n => n.display_name).sort();
@@ -498,7 +497,7 @@ describe('Edge Cases', () => {
       links: [],
       metadata: { total_nodes: 0, total_edges: 0, project_root: '/test', generated_at: '2024-01-01' },
     };
-    const filters = createFilters({ sourceQuery: 'anything' });
+    const filters = createFilters({ intent: textIntent('anything', '') });
     
     const result = applyFilters(emptyGraph, filters);
     
@@ -508,7 +507,7 @@ describe('Edge Cases', () => {
 
   it('query matching nothing returns empty result without crashing', () => {
     const graph = createLinearGraph();
-    const filters = createFilters({ sourceQuery: 'nonexistent_function' });
+    const filters = createFilters({ intent: textIntent('nonexistent_function', '') });
     
     const result = applyFilters(graph, filters);
     
@@ -530,7 +529,7 @@ describe('Edge Cases', () => {
       ],
       metadata: { total_nodes: 3, total_edges: 3, project_root: '/test', generated_at: '2024-01-01' },
     };
-    const filters = createFilters({ sourceQuery: 'func_a', maxDepth: 10 });
+    const filters = createFilters({ intent: textIntent('func_a', ''), maxDepth: 10 });
     
     // This should complete without hanging
     const result = applyFilters(cyclicGraph, filters);
@@ -551,7 +550,7 @@ describe('Edge Cases', () => {
       ],
       metadata: { total_nodes: 1, total_edges: 1, project_root: '/test', generated_at: '2024-01-01' },
     };
-    const filters = createFilters({ sourceQuery: 'recursive_fn', maxDepth: 5 });
+    const filters = createFilters({ intent: textIntent('recursive_fn', ''), maxDepth: 5 });
     
     const result = applyFilters(selfRefGraph, filters);
     
@@ -572,7 +571,7 @@ describe('Edge Cases', () => {
       ],
       metadata: { total_nodes: 2, total_edges: 2, project_root: '/test', generated_at: '2024-01-01' },
     };
-    const filters = createFilters({ sinkQuery: 'recursive_fn', maxDepth: 1 });
+    const filters = createFilters({ intent: textIntent('', 'recursive_fn'), maxDepth: 1 });
     
     const result = applyFilters(graph, filters);
     const nodeNames = result.nodes.map(n => n.display_name);
@@ -603,7 +602,7 @@ describe('Filter Behavior', () => {
       };
       
       const filters = createFilters({
-        sourceQuery: 'exec_fn',
+        intent: textIntent('exec_fn', ''),
         maxDepth: 1,
         showSpecFunctions: false,
       });
@@ -621,7 +620,7 @@ describe('Filter Behavior', () => {
     it('hidden nodes are excluded from results', () => {
       const graph = createLinearGraph();
       const filters = createFilters({
-        sourceQuery: 'func_a',
+        intent: textIntent('func_a', ''),
         maxDepth: 2,
         hiddenNodes: new Set(['b']), // Hide func_b
       });
@@ -649,7 +648,7 @@ describe('Filter Behavior', () => {
       };
       
       const filters = createFilters({
-        sourceQuery: 'main',
+        intent: textIntent('main', ''),
         maxDepth: 1,
         excludeNamePatterns: '*_comm',
       });
@@ -679,7 +678,7 @@ describe('Filter Behavior', () => {
       };
       
       const filters = createFilters({
-        sourceQuery: 'func_a',
+        intent: textIntent('func_a', ''),
         maxDepth: 1,
         includeFiles: 'edwards.rs',
       });
@@ -997,8 +996,7 @@ describe('Crate-level source/sink queries', () => {
     it('shows only cross-crate edges from source to sink crate', () => {
       const graph = createTwoCrateGraph();
       const filters = createFilters({
-        sourceQuery: 'crate:crateA',
-        sinkQuery: 'crate:crateB',
+        intent: textIntent('crate:crateA', 'crate:crateB'),
       });
 
       const result = applyFilters(graph, filters);
@@ -1017,8 +1015,7 @@ describe('Crate-level source/sink queries', () => {
       const graph = createTwoCrateGraph();
       // Reverse direction: source=crateB, sink=crateA
       const filters = createFilters({
-        sourceQuery: 'crate:crateB',
-        sinkQuery: 'crate:crateA',
+        intent: textIntent('crate:crateB', 'crate:crateA'),
       });
 
       const result = applyFilters(graph, filters);
@@ -1029,8 +1026,7 @@ describe('Crate-level source/sink queries', () => {
     it('returns only cross-crate links', () => {
       const graph = createTwoCrateGraph();
       const filters = createFilters({
-        sourceQuery: 'crate:crateA',
-        sinkQuery: 'crate:crateB',
+        intent: textIntent('crate:crateA', 'crate:crateB'),
       });
 
       const result = applyFilters(graph, filters);
@@ -1050,7 +1046,7 @@ describe('Crate-level source/sink queries', () => {
     it('crate as source shows callees from that crate', () => {
       const graph = createTwoCrateGraph();
       const filters = createFilters({
-        sourceQuery: 'crate:crateA',
+        intent: textIntent('crate:crateA', ''),
         maxDepth: 1,
       });
 
@@ -1065,7 +1061,7 @@ describe('Crate-level source/sink queries', () => {
     it('crate as sink shows callers of that crate', () => {
       const graph = createTwoCrateGraph();
       const filters = createFilters({
-        sinkQuery: 'crate:crateB',
+        intent: textIntent('', 'crate:crateB'),
         maxDepth: 1,
       });
 

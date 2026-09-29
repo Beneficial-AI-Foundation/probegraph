@@ -30,6 +30,8 @@ FilterOptions (UI state)
 | File | Role |
 |------|------|
 | `src/query.ts` | Query AST, 9 operators, resolver, compiler, executor |
+| `src/intent.ts` | `QueryIntent`: what the query is about (text, exact IDs, focus set, boundary) |
+| `src/url-state.ts` | URL codec: `writeURLState` / `readURLState`, filter defaults |
 | `src/filters.ts` | Public entry point (`applyFilters`), pattern utilities (`globToRegex`, `matchesQuery`) |
 | `src/graph-loader.ts` | JSON format normalization (atom dict, schema envelope, D3Graph, simplified) |
 
@@ -39,7 +41,6 @@ The public API is a single function:
 function applyFilters(
   fullGraph: D3Graph,
   filters: FilterOptions,
-  nodeOptions?: SelectedNodeOptions,
   projectLanguage?: ProjectLanguage,
 ): D3Graph
 ```
@@ -58,7 +59,7 @@ type GraphQuery =
   | { type: 'callers';          to: NodeMatcher;   maxDepth: number | null }
   | { type: 'neighborhood';     center: NodeMatcher; maxDepth: number | null }
   | { type: 'paths';            from: NodeMatcher; to: NodeMatcher }
-  | { type: 'crateBoundary';    sourceCrate: string; targetCrate: string }
+  | { type: 'crateBoundary';    sourceCrate: string; targetCrate: string; exact: boolean }
   | { type: 'depthFromSelected'; selectedNodes: Set<string>; maxDepth: number }
   | { type: 'noTraversal' };
 ```
@@ -71,26 +72,37 @@ A `NodeMatcher` identifies *which* nodes to start from:
 type NodeMatcher =
   | { kind: 'pattern'; query: string }   // substring or glob against display_name
   | { kind: 'crate';   pattern: string } // crate: prefix query
-  | { kind: 'nodeIds'; ids: Set<string> } // explicit set (VS Code integration)
+  | { kind: 'nodeIds'; ids: Set<string> } // exact IDs (Guide, VS Code)
 ```
 
 ### Dispatch rules
 
-| Source field | Sink field | Compiled query type |
+`compileQuery` switches on `filters.intent` (`src/intent.ts`, design in
+`docs/plans/query-intent.md`):
+
+| Intent | Compiled query type |
+|--------|---------------------|
+| `none` | `depthFromSelected` with clicked nodes, finite depth and no include files; else `noTraversal` |
+| `text` | dispatch on the source/sink strings, below |
+| `ids`, `dir: 'none'` (focus set or exact set) | `noTraversal` restricted to the IDs; an empty focus set shows nothing |
+| `ids`, `callers` / `callees` / `both` | `callers` / `callees` / `neighborhood` with a `nodeIds` matcher |
+| `boundary` | `crateBoundary` with `exact: true` (whole crate names) |
+
+Text intents:
+
+| Source | Sink | Compiled query type |
 |-------------|-----------|---------------------|
 | non-empty | empty | `callees` |
 | empty | non-empty | `callers` |
 | same string | same string | `neighborhood` |
-| `crate:A` | `crate:B` | `crateBoundary` |
+| `crate:A` | `crate:B` | `crateBoundary` (`exact: false`, substring) |
 | different | different | `paths` |
-| empty | empty (+ clicked nodes + depth) | `depthFromSelected` |
-| empty | empty | `noTraversal` |
 
 ---
 
 ## 3. Filter Types
 
-### 3.1 Source Query (`sourceQuery`)
+### 3.1 Source Query (text intent `source`)
 
 Shows what functions are **called by** the matched nodes (callee direction). Traverses forward up to `maxDepth`.
 
@@ -106,7 +118,7 @@ Shows what functions are **called by** the matched nodes (callee direction). Tra
 
 **Lean disambiguation:** When multiple Lean functions share the same `display_name` (e.g., several `add_spec` theorems), use a dotted module-path prefix from the node ID to narrow the match. For example, `Scalar52.add_spec` matches only `probe:...Scalar52.add_spec`, not the Edwards or Ristretto variants. The dotted-path match is a substring match against the full node ID and is only activated when the query contains a `.` character.
 
-### 3.2 Sink Query (`sinkQuery`)
+### 3.2 Sink Query (text intent `sink`)
 
 Shows what functions **call** the matched nodes (caller direction). Same matching syntax as source.
 
@@ -210,12 +222,10 @@ Keeps only nodes that pass **all** traversal predicates: kind filter, exclude-na
 ### Step 2 — Resolve matchers
 
 ```
-resolveNodeMatcher(matcher, fullGraph, traversableIds, exactOverride) → Set<string>
+resolveNodeMatcher(matcher, fullGraph, traversableIds) → Set<string>
 ```
 
 Patterns are matched against the **full** graph (so a user can find a node even if it shares a name with a filtered-out node), then the result is intersected with the traversable set.
-
-The `exactOverride` parameter handles VS Code integration: when the extension sends a precise SCIP symbol ID, it bypasses pattern matching entirely.
 
 ### Step 3 — Dispatch traversal
 
@@ -229,7 +239,7 @@ Based on the `GraphQuery.type`, one of 6 traversal paths is taken:
 | `paths` | `findPaths` (DFS with backtracking) |
 | `crateBoundary` | `crateBoundary` (edge scan) |
 | `depthFromSelected` | `traverseBidirectional` (undirected BFS) |
-| `noTraversal` | Focus set or full traversable set |
+| `noTraversal` | Focus set, exact ID set, or full traversable set |
 
 Each traversal returns a `TraversalResult` carrying `nodeIds` plus optional side-channel data (`calleeDepths`, `callerDepths`, `boundaryLinkPairs`).
 
@@ -257,7 +267,7 @@ For `crateBoundary` queries, only links whose `(source, target)` pair is in `bou
 
 ### Step 7 — Cleanup and build metadata
 
-1. **Remove isolated nodes** — nodes with no remaining edges (unless in the focus set).
+1. **Remove isolated nodes** — nodes with no remaining edges, except focus-set and exact intent IDs (anchors).
 2. **Build `nodeDepths`** — a `Map<string, number>` attached to the result `D3Graph` for depth-based layout coloring. Merged from forward/backward traversal depths, taking the minimum when a node appears in both.
 3. **Deep copy** — nodes and links are shallow-cloned to prevent D3's force simulation from mutating the original graph.
 
@@ -287,7 +297,7 @@ All operators are individually testable; none depend on global state.
 
 ### 6.1 Dual-role focus nodes
 
-`focusNodeIds` is only used in the `noTraversal` case (no source/sink query). When a traversal is active, focus nodes have no effect — the traversal result fully determines what is shown.
+A focus set is one kind of intent, so it cannot combine with a source/sink query: any other intent replaces it. Its IDs restrict `noTraversal` and survive isolated-node removal.
 
 ### 6.2 Traversal predicates vs. display predicates
 
@@ -299,9 +309,9 @@ All operators are individually testable; none depend on global state.
 
 `resolveNodeMatcher` matches patterns against the **full** graph, not the traversable subgraph. This prevents confusing situations where a function "exists" but can't be found because some predicate filtered it out. The matched IDs are then intersected with the traversable set to ensure only valid start nodes are used.
 
-### 6.4 VS Code exact override
+### 6.4 VS Code exact node
 
-When VS Code sends a `selectedNodeId` (a precise SCIP symbol), it bypasses pattern matching entirely. If the exact ID doesn't exist in the graph (e.g., stale index), it falls back to normal pattern matching.
+When VS Code sends a `selectedNodeId` that exists in the graph, the viewer sets an exact `ids` intent; the direction follows which of `initialQuery.source` / `sink` is present (source only: callees, sink only: callers, both: neighborhood). If the ID is not in the graph (e.g., stale index), it falls back to a text intent from the query strings.
 
 ### 6.5 TraversalResult side-channel
 
@@ -315,27 +325,42 @@ Rather than encoding depth information in the node objects, traversal operators 
 
 ## 7. URL Parameters
 
-Filter state is encoded in shareable URLs (parsed and generated in `main.ts`). Mapping to `FilterOptions` fields:
+Filter state is encoded in shareable URLs by `writeURLState` / `readURLState` (`src/url-state.ts`). Reload and browser back both rebuild the state from defaults plus the URL. Guide actions push a history entry; other edits replace the current one.
+
+Query intent (exactly one is written):
+
+| Parameter | Intent | Example |
+|-----------|--------|---------|
+| `source` / `sink` | `text` | `?source=decompress` |
+| `id` (repeated) + `dir` + `label` | exact `ids` (`dir`: `none`, `callers`, `callees`, `both`) | `?id=probe:A&dir=callers&label=A` |
+| `focus` | focus-set JSON URL, fetched after load → focus `ids` intent | `?focus=./focus.json` |
+| `boundary-source` / `boundary-target` | `boundary` (exact group names) | `?boundary-source=a&boundary-target=b` |
+
+When an old or hand-edited URL has several, the precedence is `id` > `focus` > `boundary-*` > `source`/`sink`.
+
+Other state:
 
 | Parameter | FilterOptions field / target | Example |
 |-----------|------------------------------|---------|
-| `source` | `sourceQuery` | `?source=decompress` |
-| `sink` | `sinkQuery` | `?sink=validate` |
+| `sel` (repeated) | `selectedNodes` (click selection) | `?sel=probe:A` |
 | `files` | `includeFiles` | `?files=edwards.rs,scalar.rs` |
-| `depth` | `maxDepth` (0 = unlimited) | `?depth=3` |
+| `depth` | `maxDepth` (0 = unlimited, omitted for the default 1) | `?depth=3` |
 | `exec` / `proof` / `spec` | `showExecFunctions` / `showProofFunctions` / `showSpecFunctions` (0/1) | `?spec=1` |
 | `axioms` / `types` / `proj` / `inst` | `showAxioms` / `showTypes` / `showProjections` / `showInstances` (0/1) | `?types=1` |
 | `inner` / `pre` / `post` | `showInnerCalls` / `showPreconditionCalls` / `showPostconditionCalls` (0/1) | `?pre=1` |
 | `mapping` / `speclinks` | `showMappingLinks` / `showSpecLinks` (0/1) | `?mapping=0` |
 | `libsignal` / `external` | `showLibsignal` / `showNonLibsignal` (0/1) | `?external=0` |
+| `rust` / `lean` | `showRustNodes` / `showLeanNodes` (0/1) | `?lean=0` |
 | `verified` / `failed` / `unverified` | `showVerifiedNodes` / `showFailedNodes` / `showUnverifiedNodes` (0/1) | `?unverified=0` |
 | `excludeName` | `excludeNamePatterns` | `?excludeName=*_comm*` |
 | `excludePath` | `excludePathPatterns` | `?excludePath=*/specs/*` |
-| `hidden` | `hiddenNodes` (display names, resolved to IDs after load) | `?hidden=foo,bar` |
-| `focus` | focus-set JSON URL, fetched after load → `focusNodeIds` | `?focus=./focus.json` |
+| `hide` (repeated) | `hiddenNodes` (IDs) | `?hide=probe:A` |
+| `hidden` | legacy, read only: comma-joined display names, each resolved to its first match | `?hidden=foo,bar` |
 | `entrypoints` | entry-point JSON URL for the seeded view, fetched after load | `?entrypoints=./ep.json` |
 | `view` | active view (module state) | `?view=crate-map` |
-| `source-crate` / `target-crate` | crate boundary selection (module state) | `?source-crate=libsignal-core` |
+| `source-crate` / `target-crate` | crate dropdown / Crate Map highlight only, not a query | `?source-crate=libsignal-core` |
+
+A link with only `source-crate` / `target-crate` no longer runs a boundary query; old links that also carry `crate:` source/sink load as a text intent.
 
 Graph-source parameters (`json` / `url`, `github`, `github_prefix` / `prefix`) are handled separately in `autoLoadGraph()` and are preserved when the share link is generated.
 

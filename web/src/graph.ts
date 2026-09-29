@@ -1,6 +1,7 @@
 import * as d3 from 'd3';
 import { D3Graph, D3Node, D3Link, GraphState } from './types';
 import { statusColor, edgeTypeColor, SELECTION_COLOR, TEXT_COLOR } from './theme';
+import { anchorIds } from './intent';
 
 /**
  * Compute topological depth for each node in the graph.
@@ -569,14 +570,15 @@ export class CallGraphVisualization {
   }
 
   /** The node to center on when the whole graph cannot fit: the selected
-   * node if it is displayed, else the first displayed focus-set node. */
+   * node if it is displayed, else the first displayed focus-set or exact
+   * intent node. */
   private findFocusNode(): D3Node | null {
     const selectedId = this.state.selectedNode?.id;
     if (selectedId) {
       const selected = this.currentNodes.find(n => n.id === selectedId);
       if (selected) return selected;
     }
-    const focusIds = this.state.filters.focusNodeIds;
+    const focusIds = new Set(anchorIds(this.state.filters.intent));
     if (focusIds.size > 0) {
       const focused = this.currentNodes.find(n => focusIds.has(n.id));
       if (focused) return focused;

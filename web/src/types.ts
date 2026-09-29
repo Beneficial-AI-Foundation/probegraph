@@ -1,5 +1,7 @@
 // Type definitions matching the Rust D3Graph structure
 
+import type { QueryIntent } from './intent';
+
 export interface SimilarLemma {
   name: string;
   score: number;
@@ -284,13 +286,11 @@ export interface FilterOptions {
   // File-based inclusion (comma-separated file names or glob patterns)
   includeFiles: string;            // e.g., "edwards.rs, decompress*.rs" - empty means all files
   maxDepth: number | null;
-  sourceQuery: string;  // Source node(s) - shows what they call (callees direction)
-  sinkQuery: string;    // Sink node(s) - shows who calls them (callers direction)
-  // When both source and sink are set, shows paths between them
+  intent: QueryIntent;  // What the query is about: text selectors, exact IDs, focus set or boundary
+  // Click selection: compiles to a depth query only while intent is 'none'
   selectedNodes: Set<string>;
   expandedNodes: Set<string>;
   hiddenNodes: Set<string>;  // Nodes hidden by user (Shift+click)
-  focusNodeIds: Set<string>;  // When non-empty, restricts initial view to these node IDs (loaded via ?focus= URL param)
 }
 
 // ============================================================================

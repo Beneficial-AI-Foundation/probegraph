@@ -62,14 +62,6 @@ export function pathPatternToRegex(pattern: string): RegExp {
 }
 
 /**
- * Options for exact node selection (used by VS Code integration)
- */
-export interface SelectedNodeOptions {
-  /** Exact SCIP ID of the selected node (overrides sourceQuery matching) */
-  selectedNodeId?: string | null;
-}
-
-/**
  * Check if a node matches a search query
  * 
  * Supports two modes:
@@ -138,11 +130,10 @@ export function matchesQuery(node: D3Node, query: string): boolean {
 export function applyFilters(
   fullGraph: D3Graph,
   filters: FilterOptions,
-  nodeOptions?: SelectedNodeOptions,
   projectLanguage: ProjectLanguage = 'unknown',
 ): D3Graph {
   const compiled = compileQuery(filters, projectLanguage);
-  return executeQuery(compiled, fullGraph, nodeOptions);
+  return executeQuery(compiled, fullGraph);
 }
 
 /**
