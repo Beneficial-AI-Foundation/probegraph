@@ -4,7 +4,7 @@ Dependency and call graph generation, complexity metrics, and interactive
 visualization for verified codebases. Graphs come from multiple probes:
 
 - **probe-lean** — Lean 4 declarations (atom JSON), with `sorry` detection
-- **verus-analyzer / rust-analyzer** — Rust and Verus projects via SCIP indices
+- **probe-verus / probe-rust** — Rust and Verus projects via SCIP indices
 - **probe-aeneas** — cross-language Rust↔Lean mapping links, merged graphs
 
 The web viewer's primary input is probe atom JSON (probe-lean, probe-verus);
@@ -142,4 +142,4 @@ Step-by-step guide and column reference:
 
 ## License
 
-MIT OR Apache-2.0 (declared in `Cargo.toml`; license texts not yet vendored).
+MIT
