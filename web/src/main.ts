@@ -315,13 +315,16 @@ const STATUS_CHECKBOXES: [string, StatusGroup][] = [
   ['show-unverified-nodes', 'unverified'],
 ];
 
-/** Status checkboxes; a group partly covered by an exact status set shows as indeterminate. */
+/**
+ * Status checkboxes; a group partly covered by an exact status set shows as
+ * indeterminate and unchecked, so a click selects the whole group.
+ */
 function syncStatusCheckboxes(): void {
   for (const [id, group] of STATUS_CHECKBOXES) {
     const el = document.getElementById(id) as HTMLInputElement | null;
     if (!el) continue;
     const s = groupCheckState(state.filters, group);
-    el.checked = s !== 'off';
+    el.checked = s === 'on';
     el.indeterminate = s === 'partial';
   }
 }
@@ -630,15 +633,15 @@ function updateLanguageLabels(lang: ProjectLanguage): void {
   if (title) title.textContent = `${Noun} Boundary`;
 
   const srcLabel = document.getElementById('source-crate-label');
-  if (srcLabel) srcLabel.textContent = `Source ${Noun} (called):`;
+  if (srcLabel) srcLabel.textContent = `Source ${Noun} (caller):`;
 
   const tgtLabel = document.getElementById('target-crate-label');
-  if (tgtLabel) tgtLabel.textContent = `Target ${Noun} (caller):`;
+  if (tgtLabel) tgtLabel.textContent = `Target ${Noun} (callee):`;
 
   const hint = document.getElementById('crate-boundary-hint');
   if (hint) {
     hint.innerHTML =
-      `Select two ${noun}s to see the <strong>boundary</strong>: functions in the source ${noun} called by the target ${noun}.<br>` +
+      `Select two ${noun}s to see the <strong>boundary</strong>: functions in the source ${noun} that call the target ${noun}.<br>` +
       `In ${mapLabel}: click a ${noun} to set source, click another to set target.`;
   }
 }
@@ -2376,7 +2379,10 @@ function applyFiltersAndUpdate(): void {
       state.filteredGraph = { nodes: [], links: [], metadata: state.fullGraph.metadata };
     }
     const shown = state.filteredGraph.nodes.length;
-    lastRenderResult = { shown, total: shown, missingAnchor: false, seeded: true };
+    lastRenderResult = {
+      shown, total: shown, missingAnchor: false,
+      seeded: seededViewInfo !== null, tooLarge: seededViewInfo === null,
+    };
     // The normal pipeline never runs here, so keep the query label in sync:
     // name the seeded view, or hide a stale label from a cleared query.
     const queryLabel = document.getElementById('query-label');
@@ -2441,7 +2447,7 @@ function applyFiltersAndUpdate(): void {
   
   state.filteredGraph = filtered;
   lastRenderResult = isAggregatedView(activeView) ? null
-    : { shown: filtered.nodes.length, total: resultSize, missingAnchor, seeded: false };
+    : { shown: filtered.nodes.length, total: resultSize, missingAnchor, seeded: false, tooLarge: false };
   visualization?.update(state.filteredGraph);
   updateStats(wasTruncated ? filtered.nodes.length : undefined);
   updateNodeInfo();

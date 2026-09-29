@@ -892,8 +892,13 @@ export function executeQuery(
   resultLinks = filterLinksByType(resultLinks, linkTypeFilter);
 
   // -- Step 7: cleanup --
-  const keepSet = new Set([...focusConfig.focusNodeIds, ...anchorIds]);
-  resultNodes = removeIsolated(resultNodes, resultLinks, keepSet);
+  // An exact status selection without a query keeps every node it matches,
+  // even when the status filter removed all its links
+  const keepAllMatches = query.type === 'noTraversal' && displayPredicates.exactStatuses !== null;
+  if (!keepAllMatches) {
+    const keepSet = new Set([...focusConfig.focusNodeIds, ...anchorIds]);
+    resultNodes = removeIsolated(resultNodes, resultLinks, keepSet);
+  }
 
   // Build nodeDepths
   let nodeDepths: Map<string, number> | undefined;

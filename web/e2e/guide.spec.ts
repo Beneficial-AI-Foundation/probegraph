@@ -137,4 +137,18 @@ test.describe('Guide on the Lean graph', () => {
     const statuses = (await shownNodes(page)).map(n => n.status);
     expect(statuses.every(s => s === 'transitively-verified' || s === 'unverified')).toBe(true);
   });
+
+  test('clicking the partly checked Verified box selects the whole group', async ({ page }) => {
+    await open(page);
+    await clickChip(page, /Show only transitively verified/);
+    const verified = page.locator('#show-verified-nodes');
+    expect(await verified.evaluate(el => (el as HTMLInputElement).indeterminate)).toBe(true);
+    await expect(verified).not.toBeChecked();
+
+    await verified.click();
+    await expect(verified).toBeChecked();
+    expect(await verified.evaluate(el => (el as HTMLInputElement).indeterminate)).toBe(false);
+    expect(param(page, 'status')).toBeNull();
+    await expect(page.locator('#show-failed-nodes')).not.toBeChecked();
+  });
 });

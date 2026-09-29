@@ -89,7 +89,8 @@ function computeBoundary(graph: D3Graph, { isCandidate, isLinkShown }: SummaryVi
     const s = nodeMap.get(sourceId);
     const t = nodeMap.get(targetId);
     if (!s || !t || !isCandidate(s) || !isCandidate(t)) continue;
-    if (s.crate_name === t.crate_name) continue;
+    // 'unknown' is the fallback name, not a group the dropdowns offer
+    if (s.crate_name === t.crate_name || s.crate_name === 'unknown' || t.crate_name === 'unknown') continue;
     const key = `${s.crate_name}\0${t.crate_name}`;
     const entry = counts.get(key) ?? { source: s.crate_name, target: t.crate_name, edgeCount: 0 };
     entry.edgeCount++;

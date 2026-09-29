@@ -78,6 +78,16 @@ describe('crate boundary chip', () => {
     const noInner = { isCandidate: () => true, isLinkShown: (l: D3Link) => l.type !== 'inner' };
     expect(buildGraphSummary(fixture(), noInner).boundary).toBeNull();
   });
+
+  it('skips the unknown fallback group', () => {
+    const g = fixture();
+    // u1..u3 in 'unknown' call b1: the busiest pair if counted
+    for (const id of ['u1', 'u2', 'u3']) {
+      g.nodes.push(node(id, 'unknown', 'def'));
+      g.links.push({ source: id, target: 'b1', type: 'inner' });
+    }
+    expect(buildGraphSummary(g, notStructure).boundary).toEqual({ source: 'A', target: 'B', edgeCount: 2 });
+  });
 });
 
 describe('most connected chip', () => {
@@ -117,23 +127,29 @@ describe('result toast', () => {
   const sink: SuggestedAction = { type: 'setSink', id: 'id:GF16', label: 'GF16' };
 
   it('reports the count and the query', () => {
-    expect(resultMessage(sink, 'chip', { shown: 180, total: 180, missingAnchor: false, seeded: false }))
+    expect(resultMessage(sink, 'chip', { shown: 180, total: 180, missingAnchor: false, seeded: false, tooLarge: false }))
       .toBe('180 nodes: callers of GF16');
   });
 
   it('notes truncation by the render cap', () => {
-    expect(resultMessage(sink, 'chip', { shown: 200, total: 950, missingAnchor: false, seeded: false }))
+    expect(resultMessage(sink, 'chip', { shown: 200, total: 950, missingAnchor: false, seeded: false, tooLarge: false }))
       .toBe('200 nodes: callers of GF16 (truncated from 950)');
   });
 
   it('names the entry points view on a large graph without a query', () => {
     const verified: SuggestedAction = { type: 'filterVerification', statuses: ['transitively-verified'] };
-    expect(resultMessage(verified, 'chip', { shown: 419, total: 419, missingAnchor: false, seeded: true }))
+    expect(resultMessage(verified, 'chip', { shown: 419, total: 419, missingAnchor: false, seeded: true, tooLarge: false }))
       .toBe('419 nodes: transitively-verified only (entry points view)');
   });
 
+  it('says when a large graph renders nothing without a query', () => {
+    const verified: SuggestedAction = { type: 'filterVerification', statuses: ['verified'] };
+    expect(resultMessage(verified, 'Show only verified', { shown: 0, total: 0, missingAnchor: false, seeded: false, tooLarge: true }))
+      .toBe('Show only verified: the graph is too large to show without a query');
+  });
+
   it('says when the filters hide the target', () => {
-    expect(resultMessage(sink, 'chip', { shown: 0, total: 0, missingAnchor: true, seeded: false }))
+    expect(resultMessage(sink, 'chip', { shown: 0, total: 0, missingAnchor: true, seeded: false, tooLarge: false }))
       .toBe('GF16 is hidden by the current filters');
   });
 

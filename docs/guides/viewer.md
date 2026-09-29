@@ -40,7 +40,7 @@ flat array format. See `web/ARCHITECTURE.md` for the schemas.
 - **Crate Map** — one node per crate, edges weighted by call count. For Lean
   graphs the button is relabeled **Namespace Map** and grouping uses the first
   two path segments (e.g. `ArkLib/Data`). Click one crate then another to set
-  a boundary query (functions in the source crate called by the target crate);
+  a boundary query (functions in the source crate that call the target crate);
   double-click a crate to open it in the Call Graph.
 
 The algorithms are specified in `web/docs/technical/`.

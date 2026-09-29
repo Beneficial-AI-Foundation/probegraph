@@ -268,7 +268,7 @@ For `crateBoundary` queries, only links whose `(source, target)` pair is in `bou
 
 ### Step 7 — Cleanup and build metadata
 
-1. **Remove isolated nodes** — nodes with no remaining edges, except focus-set and exact intent IDs (anchors).
+1. **Remove isolated nodes** — nodes with no remaining edges, except focus-set and exact intent IDs (anchors). Skipped for an exact status selection without a query, so every matching node shows.
 2. **Build `nodeDepths`** — a `Map<string, number>` attached to the result `D3Graph` for depth-based layout coloring. Merged from forward/backward traversal depths, taking the minimum when a node appears in both.
 3. **Deep copy** — nodes and links are shallow-cloned to prevent D3's force simulation from mutating the original graph.
 

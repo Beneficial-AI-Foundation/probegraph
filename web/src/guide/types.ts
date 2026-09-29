@@ -101,6 +101,7 @@ export interface GuideResult {
   total: number;           // nodes in the result before the render cap
   missingAnchor: boolean;  // the exact target itself is filtered out
   seeded: boolean;         // large graph without a query: the entry-point view
+  tooLarge: boolean;       // large graph without a query and no entry-point view: nothing rendered
 }
 
 export interface GuideActions {

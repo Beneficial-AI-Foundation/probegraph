@@ -11,6 +11,7 @@ import { defaultFilters } from './url-state';
 import { focusIntent } from './intent';
 import { applyFilters } from './filters';
 import { compileSeededDisplayPredicate } from './query';
+import { guideTransition } from './guide/guide-panel';
 import { D3Graph, D3Node, VerificationStatus } from './types';
 
 function node(id: string, status?: VerificationStatus): D3Node {
@@ -99,5 +100,19 @@ describe('exact status set in the pipeline', () => {
     expect(applyFilters(graph, filters(), 'lean').nodes.map(n => n.id)).toEqual(['tv']);
     const seeded = compileSeededDisplayPredicate(filters(), 'lean');
     expect(NODES.filter(seeded).map(n => n.id)).toEqual(['tv']);
+  });
+
+  it('the Guide chip keeps a matching node whose links the filter removed', () => {
+    // v calls tr; selecting only verified drops tr and the link, not v
+    const v = { ...node('v', 'verified'), dependencies: ['tr'] };
+    const tr = { ...node('tr', 'trusted'), dependents: ['v'] };
+    const g: D3Graph = {
+      nodes: [v, tr],
+      links: [{ source: 'v', target: 'tr', type: 'inner' }],
+      metadata: { total_nodes: 2, total_edges: 1, project_root: '/t', generated_at: '' },
+    };
+    const t = guideTransition({ type: 'filterVerification', statuses: ['verified'] }, 'x');
+    const f = { ...defaultFilters(), intent: t.intent, ...exactStatusFilter(t.status!) };
+    expect(applyFilters(g, f, 'lean').nodes.map(n => n.id)).toEqual(['v']);
   });
 });

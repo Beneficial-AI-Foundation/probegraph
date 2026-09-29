@@ -62,6 +62,7 @@ export class GuidePanel {
 /** What the graph shows after an action, e.g. "180 nodes: callers of GF16". */
 export function resultMessage(action: SuggestedAction, label: string, result: GuideResult | null): string {
   if (!result || action.type === 'switchView') return label;
+  if (result.tooLarge) return `${label}: the graph is too large to show without a query`;
   if (result.missingAnchor && (action.type === 'setSource' || action.type === 'setSink')) {
     return `${action.label} is hidden by the current filters`;
   }
