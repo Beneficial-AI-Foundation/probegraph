@@ -1,5 +1,5 @@
 import { D3Graph, D3Node, GraphState, FilterOptions, ProjectLanguage, detectProjectLanguage, getKindSetsForLanguage, extractCrateName, isSchema2Envelope } from './types';
-import { applyFilters, getCallers, getCallees, SelectedNodeOptions } from './filters';
+import { applyFilters, getCallers, getCallees } from './filters';
 import { compileQuery, GraphQuery, NodeMatcher, filterLinksByType, compileSeededDisplayPredicate } from './query';
 import { computeSeedTiers, expandFromSeeds, SeedTier, SeedExpansion } from './graph-utils';
 import { CallGraphVisualization } from './graph';
@@ -9,10 +9,15 @@ import { HierarchyMapVisualization } from './hierarchy-map';
 import { computeDerivedStatuses } from './status';
 import { parseAndNormalizeGraph, pickSourceConfig } from './graph-loader';
 import { escapeHtml } from './html';
+import {
+  QueryIntent, NONE_INTENT, textIntent, focusIntent, boundaryIntent,
+  isFocusIntent, inputsForIntent, intentAfterInputEdit, vscodeIntent, vscodeSetQueryIntent,
+} from './intent';
+import { ActiveView, defaultFilters, readURLState, writeURLState } from './url-state';
 
 import { GuidePanel } from './guide/guide-panel';
 import { buildGraphSummary } from './guide/static-analysis';
-import type { GuideActions } from './guide/types';
+import type { GuideActions, GuideTransition } from './guide/types';
 
 // ============================================================================
 // JSON Format Conversion (delegated to graph-loader.ts)
@@ -115,8 +120,18 @@ let deferredGraphUrl: string | null = null;
 // Prevent multiple simultaneous deferred graph loads
 let isDeferredLoadInProgress = false;
 
-// Focus set URL (from ?focus= URL parameter)
-let focusJsonUrl: string | null = null;
+// A ?focus= load in flight. The intent stays 'none' until it resolves; the
+// URL keeps focus= meanwhile. The load is dropped if intentGeneration moved.
+let pendingFocus: { url: string; generation: number } | null = null;
+// Resolved focus sets by URL, so back to a focus= URL does not refetch.
+// Cleared per loadGraph(): resolution depends on the graph.
+const focusCache = new Map<string, { ids: string[]; label: string }>();
+// Bumped by every intent change (setIntent, stateFromURL, a node click that
+// changes a 'none' query). Async loads that write the intent capture it.
+let intentGeneration = 0;
+// While > 0, updateURLWithFilters() does nothing: setIntent and popstate
+// make exactly one history write of their own.
+let urlWritesSuppressed = 0;
 
 // Entry-points URL (from ?entrypoints= URL parameter): a probe-leanblueprint
 // JSON whose blueprint-label-carrying atoms seed the initial view of a large
@@ -140,10 +155,6 @@ let graphLoadGeneration = 0;
 // Debounce timer for search inputs
 let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 const SEARCH_DEBOUNCE_MS = 300; // Wait 300ms after user stops typing
-
-// VS Code: Selected node ID for exact matching
-// When set, filters will match only this exact node instead of all nodes with the same display name
-let selectedNodeId: string | null = null;
 
 /**
  * Debounced version of applyFiltersAndUpdate for large graphs.
@@ -239,230 +250,44 @@ function buildGitHubLink(node: D3Node): string | null {
 }
 
 /**
- * Parse filter state from URL parameters
- */
-function parseFiltersFromURL(): Partial<FilterOptions> {
-  const params = new URLSearchParams(window.location.search);
-  const filters: Partial<FilterOptions> = {};
-  
-  // String params
-  if (params.has('source')) filters.sourceQuery = params.get('source')!;
-  if (params.has('sink')) filters.sinkQuery = params.get('sink')!;
-  if (params.has('files')) filters.includeFiles = params.get('files')!;
-  
-  // Number params
-  if (params.has('depth')) {
-    const depth = parseInt(params.get('depth')!);
-    filters.maxDepth = isNaN(depth) || depth === 0 ? null : depth;
-  }
-  
-  // Boolean params (1/0 or true/false)
-  const parseBool = (key: string): boolean | undefined => {
-    if (!params.has(key)) return undefined;
-    const val = params.get(key)!.toLowerCase();
-    return val === '1' || val === 'true';
-  };
-  
-  const exec = parseBool('exec');
-  const proof = parseBool('proof');
-  const spec = parseBool('spec');
-  const inner = parseBool('inner');
-  const pre = parseBool('pre');
-  const post = parseBool('post');
-  const libsignal = parseBool('libsignal');
-  const external = parseBool('external');
-  
-  if (exec !== undefined) filters.showExecFunctions = exec;
-  if (proof !== undefined) filters.showProofFunctions = proof;
-  if (spec !== undefined) filters.showSpecFunctions = spec;
-  const axioms = parseBool('axioms');
-  const types = parseBool('types');
-  const proj = parseBool('proj');
-  const inst = parseBool('inst');
-  if (axioms !== undefined) filters.showAxioms = axioms;
-  if (types !== undefined) filters.showTypes = types;
-  if (proj !== undefined) filters.showProjections = proj;
-  if (inst !== undefined) filters.showInstances = inst;
-  const mapping = parseBool('mapping');
-  const specLinks = parseBool('speclinks');
-
-  if (inner !== undefined) filters.showInnerCalls = inner;
-  if (pre !== undefined) filters.showPreconditionCalls = pre;
-  if (post !== undefined) filters.showPostconditionCalls = post;
-  if (mapping !== undefined) filters.showMappingLinks = mapping;
-  if (specLinks !== undefined) filters.showSpecLinks = specLinks;
-  if (libsignal !== undefined) filters.showLibsignal = libsignal;
-  if (external !== undefined) filters.showNonLibsignal = external;
-
-  const verified = parseBool('verified');
-  const failed = parseBool('failed');
-  const unverified = parseBool('unverified');
-  if (verified !== undefined) filters.showVerifiedNodes = verified;
-  if (failed !== undefined) filters.showFailedNodes = failed;
-  if (unverified !== undefined) filters.showUnverifiedNodes = unverified;
-  
-  // Exclude patterns from URL
-  if (params.has('excludeName')) {
-    filters.excludeNamePatterns = params.get('excludeName')!;
-  }
-  if (params.has('excludePath')) {
-    filters.excludePathPatterns = params.get('excludePath')!;
-  }
-  
-  // Hidden nodes (comma-separated display names, since full IDs are too long)
-  if (params.has('hidden')) {
-    const hiddenNames = params.get('hidden')!.split(',').map(s => s.trim()).filter(s => s);
-    // We'll need to resolve these to IDs after graph loads
-    (filters as any)._hiddenNames = hiddenNames;
-  }
-  
-  // Focus set URL (stored separately, fetched after graph loads)
-  if (params.has('focus')) {
-    focusJsonUrl = params.get('focus')!;
-  }
-
-  // Entry-points URL (stored separately, fetched after graph loads)
-  if (params.has('entrypoints')) {
-    entrypointsJsonUrl = params.get('entrypoints')!;
-  }
-
-  // Crate boundary selections (module-level, not FilterOptions)
-  if (params.has('source-crate')) {
-    selectedSourceCrate = params.get('source-crate')!;
-  }
-  if (params.has('target-crate')) {
-    selectedTargetCrate = params.get('target-crate')!;
-  }
-
-  // Hierarchy view expansion state (module-level, not FilterOptions)
-  if (params.has('expanded')) {
-    hierarchyExpanded = params.get('expanded')!.split(',').map(s => s.trim()).filter(s => s);
-  }
-  
-  return filters;
-}
-
-/**
  * Generate a shareable URL with current filter state
  */
 function generateShareableURL(): string {
   const url = new URL(window.location.href);
-  const params = url.searchParams;
-  
-  // Clear existing filter params (keep json, github, etc.)
-  ['source', 'sink', 'exclude', 'files', 'depth', 'exec', 'proof', 'spec',
-   'axioms', 'types', 'proj', 'inst',
-   'inner', 'pre', 'post', 'mapping', 'speclinks',
-   'libsignal', 'external', 'hidden', 'focus', 'entrypoints', 'view',
-   'source-crate', 'target-crate', 'expanded'].forEach(k => params.delete(k));
-
-  // View param (only set for non-default)
-  if (activeView === 'blueprint') params.set('view', 'blueprint');
-  if (activeView === 'crate-map') params.set('view', 'crate-map');
-  if (activeView === 'hierarchy') params.set('view', 'hierarchy');
-
-  // Crate boundary params
-  if (selectedSourceCrate) params.set('source-crate', selectedSourceCrate);
-  if (selectedTargetCrate) params.set('target-crate', selectedTargetCrate);
-
-  // Hierarchy expansion state
-  if (activeView === 'hierarchy' && hierarchyExpanded.length > 0) {
-    params.set('expanded', hierarchyExpanded.join(','));
-  }
-  
-  // Add current filter state
-  if (state.filters.sourceQuery) params.set('source', state.filters.sourceQuery);
-  if (state.filters.sinkQuery) params.set('sink', state.filters.sinkQuery);
-  if (state.filters.includeFiles) params.set('files', state.filters.includeFiles);
-  if (state.filters.maxDepth !== null) params.set('depth', state.filters.maxDepth.toString());
-  
-  // Only include non-default boolean values to keep URL short
-  if (!state.filters.showExecFunctions) params.set('exec', '0');
-  if (!state.filters.showProofFunctions) params.set('proof', '0');
-  if (state.filters.showSpecFunctions) params.set('spec', '1');
-  if (!state.filters.showAxioms) params.set('axioms', '0');
-  if (state.filters.showTypes) params.set('types', '1');
-  if (state.filters.showProjections) params.set('proj', '1');
-  if (state.filters.showInstances) params.set('inst', '1');
-  if (state.projectLanguage !== 'lean') {
-    if (!state.filters.showInnerCalls) params.set('inner', '0');
-    if (state.filters.showPreconditionCalls) params.set('pre', '1');
-    if (state.filters.showPostconditionCalls) params.set('post', '1');
-    if (!state.filters.showMappingLinks) params.set('mapping', '0');
-    if (!state.filters.showSpecLinks) params.set('speclinks', '0');
-  }
-  if (!state.filters.showLibsignal) params.set('libsignal', '0');
-  if (!state.filters.showNonLibsignal) params.set('external', '0');
-  if (!state.filters.showVerifiedNodes) params.set('verified', '0');
-  if (!state.filters.showFailedNodes) params.set('failed', '0');
-  if (!state.filters.showUnverifiedNodes) params.set('unverified', '0');
-  // Exclude patterns
-  if (state.filters.excludeNamePatterns) {
-    params.set('excludeName', state.filters.excludeNamePatterns);
-  }
-  if (state.filters.excludePathPatterns) {
-    params.set('excludePath', state.filters.excludePathPatterns);
-  }
-  
-  // Hidden nodes - use display names (shorter than full IDs)
-  if (state.filters.hiddenNodes.size > 0 && state.fullGraph) {
-    const hiddenNames: string[] = [];
-    state.fullGraph.nodes.forEach(node => {
-      if (state.filters.hiddenNodes.has(node.id)) {
-        hiddenNames.push(node.display_name);
-      }
-    });
-    if (hiddenNames.length > 0) {
-      params.set('hidden', hiddenNames.join(','));
-    }
-  }
-  
-  // Focus set URL
-  if (focusJsonUrl && state.filters.focusNodeIds.size > 0) {
-    params.set('focus', focusJsonUrl);
-  }
-
-  // Entry-points URL (kept even when its fetch failed: the link stays shareable)
-  if (entrypointsJsonUrl) {
-    params.set('entrypoints', entrypointsJsonUrl);
-  }
-  
+  writeURLState(url.searchParams, {
+    filters: state.filters,
+    view: activeView,
+    sourceCrate: selectedSourceCrate,
+    targetCrate: selectedTargetCrate,
+    hierarchyExpanded,
+    pendingFocusUrl: pendingFocus?.url ?? null,
+    entrypointsUrl: entrypointsJsonUrl,
+    projectLanguage: state.projectLanguage,
+  });
   return url.toString();
 }
 
 /**
- * Apply URL filter params to state and sync UI
+ * Sync every filter control (inputs, checkboxes, slider, crate dropdowns,
+ * focus indicator) to state.filters.
  */
-function applyURLFiltersToState(urlFilters: Partial<FilterOptions>): void {
-  // Merge URL filters with current state
-  Object.assign(state.filters, urlFilters);
-  
-  // Sync UI elements to match
+function syncFilterUI(): void {
   const setInput = (id: string, value: string) => {
-    const el = document.getElementById(id) as HTMLInputElement;
+    const el = document.getElementById(id) as HTMLInputElement | null;
     if (el) el.value = value;
   };
   const setCheckbox = (id: string, checked: boolean) => {
-    const el = document.getElementById(id) as HTMLInputElement;
+    const el = document.getElementById(id) as HTMLInputElement | null;
     if (el) el.checked = checked;
   };
-  
-  setInput('source-input', state.filters.sourceQuery);
-  setInput('sink-input', state.filters.sinkQuery);
+
+  syncIntentInputs();
   setInput('exclude-name-patterns', state.filters.excludeNamePatterns);
   setInput('exclude-path-patterns', state.filters.excludePathPatterns);
   setInput('include-files', state.filters.includeFiles);
-  
-  // Update file list selection to match
   updateFileListSelection();
-  
-  const depthEl = document.getElementById('depth-limit') as HTMLInputElement;
-  if (depthEl) {
-    depthEl.value = state.filters.maxDepth?.toString() || '0';
-    document.getElementById('depth-value')!.textContent = 
-      state.filters.maxDepth !== null ? state.filters.maxDepth.toString() : 'All';
-  }
-  
+  syncDepthSliderUI(state.filters.maxDepth);
+
   setCheckbox('show-exec-functions', state.filters.showExecFunctions);
   setCheckbox('show-proof-functions', state.filters.showProofFunctions);
   setCheckbox('show-spec-functions', state.filters.showSpecFunctions);
@@ -473,60 +298,203 @@ function applyURLFiltersToState(urlFilters: Partial<FilterOptions>): void {
   setCheckbox('show-inner-calls', state.filters.showInnerCalls);
   setCheckbox('show-precondition-calls', state.filters.showPreconditionCalls);
   setCheckbox('show-postcondition-calls', state.filters.showPostconditionCalls);
+  setCheckbox('show-mapping-links', state.filters.showMappingLinks);
+  setCheckbox('show-spec-links', state.filters.showSpecLinks);
   setCheckbox('show-libsignal', state.filters.showLibsignal);
   setCheckbox('show-non-libsignal', state.filters.showNonLibsignal);
+  setCheckbox('show-rust-nodes', state.filters.showRustNodes);
+  setCheckbox('show-lean-nodes', state.filters.showLeanNodes);
   setCheckbox('show-verified-nodes', state.filters.showVerifiedNodes);
   setCheckbox('show-failed-nodes', state.filters.showFailedNodes);
   setCheckbox('show-unverified-nodes', state.filters.showUnverifiedNodes);
+  updateFocusIndicator();
 }
 
 /**
- * Resolve hidden node names to IDs (called after graph loads)
+ * Write the source/sink inputs and crate dropdowns from the intent. Exact
+ * labels are marked and carry the full ID in the tooltip. On the Call Graph
+ * both dropdowns are set iff the intent is a boundary.
  */
-function resolveHiddenNodeNames(hiddenNames: string[]): void {
-  if (!state.fullGraph || hiddenNames.length === 0) return;
-  
-  for (const name of hiddenNames) {
-    const node = state.fullGraph.nodes.find(n => n.display_name === name);
-    if (node) {
-      state.filters.hiddenNodes.add(node.id);
+function syncIntentInputs(): void {
+  const intent = state.filters.intent;
+  const inputs = inputsForIntent(intent);
+  const exactTitle = intent.kind === 'ids' ? intent.ids.join('\n') : '';
+  const sync = (id: string, value: string, exact: boolean) => {
+    const el = document.getElementById(id) as HTMLInputElement | null;
+    if (!el) return;
+    if (el.value !== value) el.value = value;  // keep the caret while typing
+    el.classList.toggle('exact-query', exact);
+    el.title = exact ? exactTitle : '';
+  };
+  sync('source-input', inputs.source, inputs.sourceExact);
+  sync('sink-input', inputs.sink, inputs.sinkExact);
+
+  if (activeView !== 'crate-map') {
+    if (intent.kind === 'boundary') {
+      selectedSourceCrate = intent.sourceGroup;
+      selectedTargetCrate = intent.targetGroup;
+    } else if (selectedSourceCrate && selectedTargetCrate) {
+      // A complete pair only exists as a boundary intent; staged single
+      // selections survive
+      selectedSourceCrate = '';
+      selectedTargetCrate = '';
+    }
+    populateCrateDropdowns();
+  }
+}
+
+/**
+ * The single entry point for intent changes. Clears click selection and any
+ * pending focus load, bumps the generation, syncs the inputs, applies, and
+ * makes exactly one history write.
+ *
+ * `pushed` marks the new history entry as a discrete action (Guide): the
+ * next input edit pushes instead of replacing it. Defaults to
+ * `history === 'push'`; typing pushes without marking.
+ */
+function setIntent(
+  intent: QueryIntent,
+  opts: {
+    history: 'push' | 'replace';
+    pushed?: boolean;
+    debounce?: boolean;
+    before?: () => void;  // further state changes committed with the intent
+  },
+): void {
+  urlWritesSuppressed++;
+  try {
+    state.filters.intent = intent;
+    state.filters.selectedNodes.clear();
+    state.selectedNode = null;
+    pendingFocus = null;
+    intentGeneration++;
+    lastSelectionKey = '';
+    opts.before?.();
+    syncIntentInputs();
+    updateFocusIndicator();
+    if (!isFocusIntent(intent)) resumeDeferredEntrypoints();
+
+    if (opts.debounce && state.fullGraph && isLargeGraph(state.fullGraph)) {
+      debouncedApplyFilters();
+    } else {
+      if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+      applyFiltersAndUpdate();
+    }
+  } finally {
+    urlWritesSuppressed--;
+  }
+
+  // The URL is built from state, not from the render, so a debounced
+  // apply's own replaceState later writes this same URL.
+  const url = generateShareableURL();
+  const marker = { pushed: opts.pushed ?? opts.history === 'push' };
+  if (opts.history === 'push') window.history.pushState(marker, '', url);
+  else window.history.replaceState(marker, '', url);
+}
+
+/** History mode for an input edit: push once over a pushed (Guide) entry. */
+function inputEditHistory(): 'push' | 'replace' {
+  return window.history.state?.pushed ? 'push' : 'replace';
+}
+
+/** A copy of `f` whose Sets are not shared with it. */
+function freshFilters(f: FilterOptions): FilterOptions {
+  return {
+    ...f,
+    selectedNodes: new Set(f.selectedNodes),
+    expandedNodes: new Set(f.expandedNodes),
+    hiddenNodes: new Set(f.hiddenNodes),
+  };
+}
+
+/** Filter defaults for the loaded graph (initialFilters plus per-language call types). */
+let graphDefaultFilters: FilterOptions | null = null;
+
+/** Order-independent key of the click selection, to detect selection changes. */
+function selectionKey(ids: Set<string>): string {
+  return [...ids].sort().join('\0');
+}
+let lastSelectionKey = '';
+
+/**
+ * Build the whole state from the graph defaults plus the URL. Shared by
+ * loadGraph() and popstate, so reload and back restore the same thing. Not
+ * restored: expanded nodes and the node shown in the details panel.
+ * Returns a ?focus= URL still to be loaded (not in the focus cache).
+ */
+function stateFromURL(): { focusUrl: string | null; view: ActiveView } {
+  const parsed = readURLState(
+    new URLSearchParams(window.location.search),
+    graphDefaultFilters ?? freshFilters(initialFilters),
+    state.fullGraph,
+  );
+  state.filters = parsed.filters;
+  state.selectedNode = null;
+  selectedSourceCrate = parsed.sourceCrate;
+  selectedTargetCrate = parsed.targetCrate;
+  hierarchyExpanded = parsed.hierarchyExpanded;
+  pendingFocus = null;
+  intentGeneration++;
+  lastSelectionKey = selectionKey(state.filters.selectedNodes);
+  // The seeded render derives the request from the restored depth
+  seededRequestedDepth = null;
+
+  let focusUrl = parsed.focusUrl;
+  if (focusUrl) {
+    const cached = focusCache.get(focusUrl);
+    if (cached) {
+      state.filters.intent = focusIntent(focusUrl, cached.ids, cached.label);
+      focusUrl = null;
+    } else {
+      // Set before the first render so its URL write keeps focus=
+      pendingFocus = { url: focusUrl, generation: intentGeneration };
     }
   }
-  updateHiddenNodesUI();
+  return { focusUrl, view: parsed.view };
+}
+
+/** Browser back/forward: restore from the URL without writing history. */
+function handlePopState(): void {
+  if (!state.fullGraph) return;
+  const { focusUrl, view } = stateFromURL();
+  urlWritesSuppressed++;
+  try {
+    if (view !== activeView) switchView(view, { apply: false });
+    syncFilterUI();
+    if (activeView === 'crate-map' && visualization instanceof CrateMapVisualization) {
+      visualization.setBoundaryCrates(selectedSourceCrate || null, selectedTargetCrate || null);
+    }
+    if (!focusUrl && !isFocusIntent(state.filters.intent)) resumeDeferredEntrypoints();
+    applyFiltersAndUpdate();
+    // After the apply, so the expansion is pruned against the restored
+    // graph; an empty list is restored too (collapse everything)
+    if (visualization instanceof HierarchyMapVisualization) {
+      visualization.setExpanded(hierarchyExpanded);
+    }
+  } finally {
+    urlWritesSuppressed--;
+  }
+  if (focusUrl) loadFocusSet(focusUrl);
+}
+
+/** Source/sink typing: a text intent from the inputs, applied debounced on large graphs. */
+function handleIntentInput(edited: 'source' | 'sink'): void {
+  const sourceEl = document.getElementById('source-input') as HTMLInputElement | null;
+  const sinkEl = document.getElementById('sink-input') as HTMLInputElement | null;
+  const intent = intentAfterInputEdit(
+    state.filters.intent, edited, sourceEl?.value ?? '', sinkEl?.value ?? '',
+  );
+  if (!state.fullGraph) {
+    // Deferred large graph: the URL carries the intent into loadGraph()
+    state.filters.intent = intent;
+    updateURLWithFilters();
+    return;
+  }
+  setIntent(intent, { history: inputEditHistory(), pushed: false, debounce: true });
 }
 
 // Initialize state
-const initialFilters: FilterOptions = {
-  showLibsignal: true,
-  showNonLibsignal: true,
-  showInnerCalls: true,           // Show body calls by default
-  showPreconditionCalls: false,   // Hide requires calls by default
-  showPostconditionCalls: false,  // Hide ensures calls by default
-  showMappingLinks: true,         // Show cross-language mapping edges by default
-  showSpecLinks: true,            // Show spec theorem edges by default
-  showExecFunctions: true,        // Show exec functions by default
-  showProofFunctions: true,       // Show proof functions by default
-  showSpecFunctions: false,       // Hide Verus spec functions by default
-  showAxioms: true,               // Show axioms by default (trusted base)
-  showTypes: false,               // Hide structure/inductive/class nodes by default
-  showProjections: false,         // Hide auto-generated projections by default
-  showInstances: false,           // Hide typeclass instances by default
-  showRustNodes: true,            // Show Rust/Verus nodes by default
-  showLeanNodes: true,            // Show Lean nodes by default
-  showVerifiedNodes: true,        // Show verified nodes by default
-  showFailedNodes: true,          // Show failed nodes by default
-  showUnverifiedNodes: true,      // Show unverified/unknown nodes by default
-  excludeNamePatterns: '',        // Exclude by function name (e.g., *_comm*)
-  excludePathPatterns: '',        // Exclude by path (e.g., */specs/*)
-  includeFiles: '',               // Comma-separated file patterns to include (empty = all)
-  maxDepth: 1,
-  sourceQuery: '',  // Source nodes - shows what they call (callees)
-  sinkQuery: '',    // Sink nodes - shows who calls them (callers)
-  selectedNodes: new Set(),
-  expandedNodes: new Set(),
-  hiddenNodes: new Set(),
-  focusNodeIds: new Set(),        // Focus set: when non-empty, restricts view to these node IDs
-};
+const initialFilters: FilterOptions = defaultFilters();
 
 let state: GraphState = {
   fullGraph: null,
@@ -537,7 +505,6 @@ let state: GraphState = {
   projectLanguage: 'unknown',
 };
 
-type ActiveView = 'callgraph' | 'blueprint' | 'crate-map' | 'hierarchy';
 let activeView: ActiveView = 'callgraph';
 let visualization: CallGraphVisualization | BlueprintVisualization | CrateMapVisualization | HierarchyMapVisualization | null = null;
 
@@ -558,83 +525,42 @@ let deferredComputationsDone = false;
 // ============================================================================
 
 const guideActions: GuideActions = {
-  setFilters: (updates) => {
-    Object.assign(state.filters, updates);
-    // Sync UI checkboxes for verification status
-    if ('showVerifiedNodes' in updates) {
-      const el = document.getElementById('show-verified-nodes') as HTMLInputElement | null;
-      if (el) el.checked = !!updates.showVerifiedNodes;
-    }
-    if ('showFailedNodes' in updates) {
-      const el = document.getElementById('show-failed-nodes') as HTMLInputElement | null;
-      if (el) el.checked = !!updates.showFailedNodes;
-    }
-    if ('showUnverifiedNodes' in updates) {
-      const el = document.getElementById('show-unverified-nodes') as HTMLInputElement | null;
-      if (el) el.checked = !!updates.showUnverifiedNodes;
-    }
-    if ('showExecFunctions' in updates) {
-      const el = document.getElementById('show-exec-functions') as HTMLInputElement | null;
-      if (el) el.checked = !!updates.showExecFunctions;
-    }
-    if ('showProofFunctions' in updates) {
-      const el = document.getElementById('show-proof-functions') as HTMLInputElement | null;
-      if (el) el.checked = !!updates.showProofFunctions;
-    }
-    if ('showSpecFunctions' in updates) {
-      const el = document.getElementById('show-spec-functions') as HTMLInputElement | null;
-      if (el) el.checked = !!updates.showSpecFunctions;
-    }
-    if ('showAxioms' in updates) {
-      const el = document.getElementById('show-axioms') as HTMLInputElement | null;
-      if (el) el.checked = !!updates.showAxioms;
-    }
-    if ('showTypes' in updates) {
-      const el = document.getElementById('show-types') as HTMLInputElement | null;
-      if (el) el.checked = !!updates.showTypes;
-    }
-    if ('showProjections' in updates) {
-      const el = document.getElementById('show-projections') as HTMLInputElement | null;
-      if (el) el.checked = !!updates.showProjections;
-    }
-    if ('showInstances' in updates) {
-      const el = document.getElementById('show-instances') as HTMLInputElement | null;
-      if (el) el.checked = !!updates.showInstances;
-    }
-    if ('excludeNamePatterns' in updates) {
-      const el = document.getElementById('exclude-name-patterns') as HTMLInputElement | null;
-      if (el) el.value = updates.excludeNamePatterns ?? '';
-    }
-    if ('includeFiles' in updates) {
-      const el = document.getElementById('include-files') as HTMLInputElement | null;
-      if (el) el.value = updates.includeFiles ?? '';
-    }
-  },
-  setSource: (query) => {
-    state.filters.sourceQuery = query;
-    const el = document.getElementById('source-input') as HTMLInputElement | null;
-    if (el) el.value = query;
-  },
-  setSink: (query) => {
-    state.filters.sinkQuery = query;
-    const el = document.getElementById('sink-input') as HTMLInputElement | null;
-    if (el) el.value = query;
-  },
-  setDepth: (depth) => {
-    state.filters.maxDepth = depth;
-    seededRequestedDepth = depth !== null ? clampSeededDepth(depth) : null;
-    const el = document.getElementById('depth-limit') as HTMLInputElement | null;
-    if (el) el.value = depth !== null ? depth.toString() : '0';
-    const label = document.getElementById('depth-value');
-    if (label) label.textContent = depth !== null ? depth.toString() : 'All';
-  },
-  switchView: (view) => {
-    if (view === 'callgraph' || view === 'blueprint' || view === 'crate-map' || view === 'hierarchy') {
-      switchView(view as ActiveView);
-    }
-  },
-  applyFiltersAndUpdate: () => applyFiltersAndUpdate(),
+  apply: (t) => applyGuideTransition(t),
 };
+
+/**
+ * One Guide action: replaces the intent (and optionally status, depth,
+ * view) in a single state transition with one pushed history entry. Kind,
+ * language, include/exclude patterns and hidden nodes are never touched.
+ */
+function applyGuideTransition(t: GuideTransition): void {
+  setIntent(t.intent, {
+    history: 'push',
+    before: () => {
+      if (t.status) {
+        state.filters.showVerifiedNodes = t.status.verified;
+        state.filters.showFailedNodes = t.status.failed;
+        state.filters.showUnverifiedNodes = t.status.unverified;
+        const setCheckbox = (id: string, checked: boolean) => {
+          const el = document.getElementById(id) as HTMLInputElement | null;
+          if (el) el.checked = checked;
+        };
+        setCheckbox('show-verified-nodes', t.status.verified);
+        setCheckbox('show-failed-nodes', t.status.failed);
+        setCheckbox('show-unverified-nodes', t.status.unverified);
+      }
+      if (t.depth !== undefined) {
+        state.filters.maxDepth = t.depth;
+        seededRequestedDepth = t.depth !== null ? clampSeededDepth(t.depth) : null;
+        syncDepthSliderUI(t.depth);
+      }
+      if (t.view && t.view !== activeView) {
+        // setIntent applies right after, so skip switchView's own apply
+        switchView(t.view, { apply: false });
+      }
+    },
+  });
+}
 
 let guidePanel: GuidePanel | null = null;
 
@@ -697,11 +623,8 @@ function syncInputsToState(): void {
   const includeFilesInput = document.getElementById('include-files') as HTMLInputElement;
   const depthInput = document.getElementById('depth-limit') as HTMLInputElement;
   
-  if (sourceInput?.value) {
-    state.filters.sourceQuery = sourceInput.value;
-  }
-  if (sinkInput?.value) {
-    state.filters.sinkQuery = sinkInput.value;
+  if (sourceInput?.value || sinkInput?.value) {
+    state.filters.intent = textIntent(sourceInput?.value ?? '', sinkInput?.value ?? '');
   }
   if (excludeNameInput?.value) {
     state.filters.excludeNamePatterns = excludeNameInput.value;
@@ -833,8 +756,9 @@ function createVisualization(container: HTMLElement): void {
 
 /**
  * Switch between call graph and blueprint views.
+ * With `apply: false` the caller applies filters itself right after.
  */
-function switchView(view: ActiveView): void {
+function switchView(view: ActiveView, opts: { apply?: boolean } = {}): void {
   if (view === activeView) return;
   activeView = view;
 
@@ -842,6 +766,7 @@ function switchView(view: ActiveView): void {
   if (!graphContainer) return;
 
   createVisualization(graphContainer);
+  if (opts.apply === false) return;
 
   // Re-apply filters: Crate Map bypasses the large-graph guard, so the
   // previously cached filteredGraph may be empty.  Re-running ensures the
@@ -873,21 +798,19 @@ function setupUIHandlers(): void {
 
   // Listen for crate-map navigation events (double-click crate or "View in Call Graph")
   window.addEventListener('crate-map-switch-view', ((event: CustomEvent) => {
-    const { view, includeFiles, sourceQuery, sinkQuery } = event.detail;
+    const { view, includeFiles, sourceGroup, targetGroup } = event.detail;
     if (includeFiles) {
       state.filters.includeFiles = includeFiles;
       const includeFilesInput = document.getElementById('include-files') as HTMLInputElement;
       if (includeFilesInput) includeFilesInput.value = includeFiles;
     }
-    if (sourceQuery) {
-      state.filters.sourceQuery = sourceQuery;
-      const sourceInput = document.getElementById('source-input') as HTMLInputElement;
-      if (sourceInput) sourceInput.value = sourceQuery;
-    }
-    if (sinkQuery) {
-      state.filters.sinkQuery = sinkQuery;
-      const sinkInput = document.getElementById('sink-input') as HTMLInputElement;
-      if (sinkInput) sinkInput.value = sinkQuery;
+    if (sourceGroup || targetGroup) {
+      // Both groups: an exact boundary. One group: today's crate: text query.
+      const intent = sourceGroup && targetGroup
+        ? boundaryIntent(sourceGroup, targetGroup)
+        : textIntent(sourceGroup ? `crate:${sourceGroup}` : '', targetGroup ? `crate:${targetGroup}` : '');
+      setIntent(intent, { history: 'replace', before: () => switchView(view, { apply: false }) });
+      return;
     }
     switchView(view);
     applyFiltersAndUpdate();
@@ -917,13 +840,12 @@ function setupUIHandlers(): void {
         selectedTargetCrate || null,
       );
     } else if (selectedSourceCrate && selectedTargetCrate) {
-      state.filters.sourceQuery = `crate:${selectedSourceCrate}`;
-      state.filters.sinkQuery = `crate:${selectedTargetCrate}`;
-      const sourceInput = document.getElementById('source-input') as HTMLInputElement;
-      const sinkInput = document.getElementById('sink-input') as HTMLInputElement;
-      if (sourceInput) sourceInput.value = state.filters.sourceQuery;
-      if (sinkInput) sinkInput.value = state.filters.sinkQuery;
-      applyFiltersAndUpdate();
+      setIntent(boundaryIntent(selectedSourceCrate, selectedTargetCrate), { history: 'replace' });
+      return;
+    } else if (state.filters.intent.kind === 'boundary') {
+      // Clearing either dropdown ends the boundary; one set is staged UI state
+      setIntent(NONE_INTENT, { history: 'replace' });
+      return;
     }
     updateURLWithFilters();
   }
@@ -1024,19 +946,7 @@ function setupUIHandlers(): void {
     }
   });
 
-  document.getElementById('source-input')?.addEventListener('input', (e) => {
-    state.filters.sourceQuery = (e.target as HTMLInputElement).value;
-    // Clear exact node selection when user manually types (allows normal query matching)
-    selectedNodeId = null;
-    // Only auto-apply if graph is already loaded, use debounce for large graphs
-    if (state.fullGraph) {
-      if (isLargeGraph(state.fullGraph)) {
-        debouncedApplyFilters();
-      } else {
-        applyFiltersAndUpdate();
-      }
-    }
-  });
+  document.getElementById('source-input')?.addEventListener('input', () => handleIntentInput('source'));
   
   // Handle Enter key to trigger immediate filter or deferred graph loading
   document.getElementById('source-input')?.addEventListener('keydown', (e) => {
@@ -1052,19 +962,7 @@ function setupUIHandlers(): void {
     }
   });
 
-  document.getElementById('sink-input')?.addEventListener('input', (e) => {
-    state.filters.sinkQuery = (e.target as HTMLInputElement).value;
-    // Clear exact node selection when user manually types (allows normal query matching)
-    selectedNodeId = null;
-    // Only auto-apply if graph is already loaded, use debounce for large graphs
-    if (state.fullGraph) {
-      if (isLargeGraph(state.fullGraph)) {
-        debouncedApplyFilters();
-      } else {
-        applyFiltersAndUpdate();
-      }
-    }
-  });
+  document.getElementById('sink-input')?.addEventListener('input', () => handleIntentInput('sink'));
   
   // Handle Enter key to trigger immediate filter or deferred graph loading
   document.getElementById('sink-input')?.addEventListener('keydown', (e) => {
@@ -1195,6 +1093,9 @@ function setupUIHandlers(): void {
 
   // Window resize
   window.addEventListener('resize', handleResize);
+
+  // Browser back/forward
+  window.addEventListener('popstate', handlePopState);
 }
 
 /**
@@ -1485,16 +1386,14 @@ function runDeferredComputations(): void {
 }
 
 /**
- * Check if user has specified meaningful filters (source, sink, include files,
- * focus set, language toggle, or node selection). Node selection counts: it
+ * Check if user has specified meaningful filters (any query intent, include
+ * files, language toggle, or node selection). Node selection counts: it
  * compiles to a depthFromSelected query, and without it a click on a
  * seeded-view node would exit seeded mode into an empty large-graph view.
  */
 function hasSearchFilters(): boolean {
-  return state.filters.sourceQuery.trim() !== '' ||
-         state.filters.sinkQuery.trim() !== '' ||
+  return state.filters.intent.kind !== 'none' ||
          state.filters.includeFiles.trim() !== '' ||
-         state.filters.focusNodeIds.size > 0 ||
          state.filters.selectedNodes.size > 0 ||
          state.filters.showRustNodes === false ||
          state.filters.showLeanNodes === false;
@@ -1679,15 +1578,21 @@ function handleSeededDepthChange(rawValue: number): void {
  * @returns Promise that resolves when focus set is loaded
  */
 async function loadFocusSet(url: string): Promise<void> {
+  // A newer intent (chip, typing, node click, back) wins over this load
+  const generation = intentGeneration;
+  pendingFocus = { url, generation };
+  const isStale = () => generation !== intentGeneration;
   try {
     console.log('Loading focus set from:', url);
     const response = await fetch(url);
+    if (isStale()) return;
     if (!response.ok) {
       throw new Error(`Failed to fetch focus set: ${response.status} ${response.statusText}`);
     }
     
     const data = await response.json();
-    
+    if (isStale()) return;
+
     if (!data.focus_nodes || !Array.isArray(data.focus_nodes)) {
       throw new Error('Invalid focus set JSON: missing "focus_nodes" array');
     }
@@ -1762,24 +1667,24 @@ async function loadFocusSet(url: string): Promise<void> {
       }
     }
     
-    // Populate focusNodeIds in state
-    state.filters.focusNodeIds = resolvedIds;
-    
     const description = data.metadata?.description || 'unknown';
     console.log(`Focus set active: ${resolvedIds.size} nodes (${description})`);
-    
-    // Update the focus indicator UI
-    updateFocusIndicator();
 
-    // Re-apply filters with the focus set active
-    applyFiltersAndUpdate();
+    // No matches still gives a focus intent (showing nothing), not 'none'
+    const label = typeof data.metadata?.description === 'string' ? data.metadata.description : 'focus set';
+    const resolved = { ids: [...resolvedIds], label };
+    focusCache.set(url, resolved);
+    setIntent(focusIntent(url, resolved.ids, resolved.label), { history: 'replace' });
   } catch (error) {
+    if (isStale()) return;
     console.error('Failed to load focus set:', error);
+    pendingFocus = null;
     showError(`Failed to load focus set: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    // The URL describes what is shown: drop focus=
+    updateURLWithFilters();
   } finally {
-    // ?focus= only outranks ?entrypoints= while a focus set is actually
-    // active; a failed or empty focus load hands over to the deferred fetch
-    // (no-op when the focus set loaded with matches).
+    // Resumes only once no focus load is pending and no focus set is active,
+    // so a stale fetch cannot resume while a newer focus load runs
     resumeDeferredEntrypoints();
   }
 }
@@ -1867,7 +1772,7 @@ async function loadEntryPointsSet(url: string): Promise<void> {
  */
 function resumeDeferredEntrypoints(): void {
   if (!entrypointsDeferredByFocus || !entrypointsJsonUrl) return;
-  if (state.filters.focusNodeIds.size > 0) return; // focus set still active
+  if (pendingFocus || isFocusIntent(state.filters.intent)) return; // focus still pending or active
   entrypointsDeferredByFocus = false;
   entrypointsParamNote = null;
   loadEntryPointsSet(entrypointsJsonUrl);
@@ -2177,18 +2082,12 @@ function loadGraph(graph: D3Graph, message: string): void {
   entrypointsParam = null;
   entrypointsParamNote = null;
   entrypointsDeferredByFocus = false;
+  // Focus resolution depends on the graph (name/path fallback)
+  focusCache.clear();
 
   // Deep copy filters - spread only does shallow copy, so Sets would be shared!
-  // Preserve focusNodeIds across graph reloads (it's set from URL param, not graph data)
-  const preservedFocusNodes = state.filters.focusNodeIds;
-  state.filters = { 
-    ...initialFilters,
-    selectedNodes: new Set(),
-    expandedNodes: new Set(),
-    hiddenNodes: new Set(),
-    focusNodeIds: preservedFocusNodes.size > 0 ? new Set(preservedFocusNodes) : new Set(),
-  };
-  
+  state.filters = freshFilters(initialFilters);
+
   // Detect project language and update UI accordingly
   state.projectLanguage = detectProjectLanguage(state.fullGraph);
   updateSourceTypeFilterVisibility();
@@ -2228,23 +2127,20 @@ function loadGraph(graph: D3Graph, message: string): void {
   // crate graph, file list) are deferred until the user applies a filter or
   // switches to Crate Map. This keeps the initial page load fast.
   
-  // Apply URL filter parameters (if any)
-  const urlFilters = parseFiltersFromURL();
-  if (Object.keys(urlFilters).length > 0) {
-    applyURLFiltersToState(urlFilters);
-    
-    // Resolve hidden node names to IDs
-    if ((urlFilters as any)._hiddenNames) {
-      resolveHiddenNodeNames((urlFilters as any)._hiddenNames);
-    }
-  }
+  // The render functions above force per-language call-type values; those
+  // are this graph's defaults, which the URL then overrides
+  graphDefaultFilters = freshFilters(state.filters);
+  const { focusUrl } = stateFromURL();
+  entrypointsJsonUrl = new URLSearchParams(window.location.search).get('entrypoints');
+  syncFilterUI();
 
   // ?entrypoints= seeds the initial view of large graphs; ?focus= takes
-  // precedence while a focus set is active — the fetch is deferred, and
-  // clearing the focus set resumes it (resumeDeferredEntrypoints). Kicked off
-  // before the first render so the deferral note paints with it.
+  // precedence while a focus set is pending or active — the fetch is
+  // deferred, and clearing the focus set resumes it
+  // (resumeDeferredEntrypoints). Kicked off before the first render so the
+  // deferral note paints with it.
   if (entrypointsJsonUrl) {
-    if (focusJsonUrl) {
+    if (focusUrl) {
       entrypointsDeferredByFocus = true;
       entrypointsParamNote = 'deferred: ?focus= takes precedence';
     } else {
@@ -2260,33 +2156,12 @@ function loadGraph(graph: D3Graph, message: string): void {
     visualization.setExpanded(hierarchyExpanded);
   }
 
-  // Restore crate boundary selection from URL params
-  if (selectedSourceCrate || selectedTargetCrate) {
-    populateCrateDropdowns();
-    const srcSel = document.getElementById('source-crate-select') as HTMLSelectElement | null;
-    const tgtSel = document.getElementById('target-crate-select') as HTMLSelectElement | null;
-    if (srcSel) srcSel.value = selectedSourceCrate;
-    if (tgtSel) tgtSel.value = selectedTargetCrate;
-    if (activeView === 'crate-map' && visualization instanceof CrateMapVisualization) {
-      visualization.setBoundaryCrates(selectedSourceCrate || null, selectedTargetCrate || null);
-    } else if (selectedSourceCrate && selectedTargetCrate) {
-      state.filters.sourceQuery = `crate:${selectedSourceCrate}`;
-      state.filters.sinkQuery = `crate:${selectedTargetCrate}`;
-      const sourceInput = document.getElementById('source-input') as HTMLInputElement;
-      const sinkInput = document.getElementById('sink-input') as HTMLInputElement;
-      if (sourceInput) sourceInput.value = state.filters.sourceQuery;
-      if (sinkInput) sinkInput.value = state.filters.sinkQuery;
-      applyFiltersAndUpdate();
-    }
+  // Restore the Crate Map highlight from the URL params
+  if (activeView === 'crate-map' && visualization instanceof CrateMapVisualization) {
+    visualization.setBoundaryCrates(selectedSourceCrate || null, selectedTargetCrate || null);
   }
-  
-  // Load focus set if URL parameter is present and not already loaded
-  if (focusJsonUrl && state.filters.focusNodeIds.size === 0) {
-    loadFocusSet(focusJsonUrl);
-  } else if (state.filters.focusNodeIds.size > 0) {
-    // Focus set already loaded (preserved from previous graph load) - update indicator
-    updateFocusIndicator();
-  }
+
+  if (focusUrl) loadFocusSet(focusUrl);
 
   console.log(message, {
     nodes: graph.nodes.length,
@@ -2363,44 +2238,70 @@ async function handleFileLoad(event: Event): Promise<void> {
 // Maximum nodes to render to prevent D3 from freezing
 const MAX_RENDERED_NODES = 200;
 
-function formatMatcher(m: NodeMatcher): string {
+type LabelPart = [cls: 'query-type' | 'query-dim' | 'query-param' | null, text: string];
+
+/** Matcher text; an exact ID set shows the intent's label. */
+function matcherText(m: NodeMatcher): string {
   switch (m.kind) {
-    case 'pattern': return escapeHtml(m.query);
-    case 'crate': return `crate:${escapeHtml(m.pattern)}`;
-    case 'nodeIds': return `[${m.ids.size} node${m.ids.size !== 1 ? 's' : ''}]`;
+    case 'pattern': return m.query;
+    case 'crate': return `crate:${m.pattern}`;
+    case 'nodeIds': {
+      const intent = state.filters.intent;
+      if (intent.kind === 'ids' && intent.label) return intent.label;
+      return `[${m.ids.size} node${m.ids.size !== 1 ? 's' : ''}]`;
+    }
   }
 }
 
-function formatQueryLabel(q: GraphQuery): string {
+function queryLabelParts(q: GraphQuery): LabelPart[] {
+  const depth = (d: number | null): LabelPart[] => d !== null ? [[null, ` depth=${d}`]] : [];
+  const sp: LabelPart = [null, ' '];
   switch (q.type) {
-    case 'callees': {
-      const depth = q.maxDepth !== null ? ` depth=${q.maxDepth}` : '';
-      return `<span class="query-type">callees</span> <span class="query-dim">from</span> <span class="query-param">${formatMatcher(q.from)}</span>${depth}`;
-    }
-    case 'callers': {
-      const depth = q.maxDepth !== null ? ` depth=${q.maxDepth}` : '';
-      return `<span class="query-type">callers</span> <span class="query-dim">of</span> <span class="query-param">${formatMatcher(q.to)}</span>${depth}`;
-    }
-    case 'neighborhood': {
-      const depth = q.maxDepth !== null ? ` depth=${q.maxDepth}` : '';
-      return `<span class="query-type">neighborhood</span> <span class="query-dim">of</span> <span class="query-param">${formatMatcher(q.center)}</span>${depth}`;
-    }
+    case 'callees':
+      return [['query-type', 'callees'], sp, ['query-dim', 'from'], sp, ['query-param', matcherText(q.from)], ...depth(q.maxDepth)];
+    case 'callers':
+      return [['query-type', 'callers'], sp, ['query-dim', 'of'], sp, ['query-param', matcherText(q.to)], ...depth(q.maxDepth)];
+    case 'neighborhood':
+      return [['query-type', 'neighborhood'], sp, ['query-dim', 'of'], sp, ['query-param', matcherText(q.center)], ...depth(q.maxDepth)];
     case 'paths':
-      return `<span class="query-type">paths</span> <span class="query-param">${formatMatcher(q.from)}</span> <span class="query-dim">→</span> <span class="query-param">${formatMatcher(q.to)}</span>`;
+      return [['query-type', 'paths'], sp, ['query-param', matcherText(q.from)], sp, ['query-dim', '→'], sp, ['query-param', matcherText(q.to)]];
     case 'crateBoundary':
-      return `<span class="query-type">boundary</span> <span class="query-param">crate:${escapeHtml(q.sourceCrate)}</span> <span class="query-dim">→</span> <span class="query-param">crate:${escapeHtml(q.targetCrate)}</span>`;
+      return [['query-type', 'boundary'], sp, ['query-param', `crate:${q.sourceCrate}`], sp, ['query-dim', '→'], sp, ['query-param', `crate:${q.targetCrate}`]];
     case 'depthFromSelected':
-      return `<span class="query-type">depth</span> <span class="query-dim">from</span> <span class="query-param">${q.selectedNodes.size} selected</span> depth=${q.maxDepth}`;
-    case 'noTraversal':
-      return `<span class="query-type">all</span> <span class="query-dim">(no traversal)</span>`;
+      return [['query-type', 'depth'], sp, ['query-dim', 'from'], sp, ['query-param', `${q.selectedNodes.size} selected`], [null, ` depth=${q.maxDepth}`]];
+    case 'noTraversal': {
+      const intent = state.filters.intent;
+      if (intent.kind === 'ids') {
+        return [['query-type', isFocusIntent(intent) ? 'focus' : 'nodes'], sp, ['query-param', intent.label]];
+      }
+      return [['query-type', 'all'], sp, ['query-dim', '(no traversal)']];
+    }
   }
+}
+
+/**
+ * Render the query label. Labels, IDs and group names can come from the
+ * URL, so every part is set as text, never as HTML.
+ */
+function setQueryLabel(parts: LabelPart[]): void {
+  const el = document.getElementById('query-label');
+  if (!el) return;
+  el.replaceChildren();
+  for (const [cls, text] of [['query-dim', 'query:'] as LabelPart, [null, ' '] as LabelPart, ...parts]) {
+    if (cls) {
+      const span = document.createElement('span');
+      span.className = cls;
+      span.textContent = text;
+      el.appendChild(span);
+    } else {
+      el.appendChild(document.createTextNode(text));
+    }
+  }
+  el.style.display = '';
 }
 
 function updateQueryLabel(q: GraphQuery): void {
-  const el = document.getElementById('query-label');
-  if (!el) return;
-  el.innerHTML = `<span class="query-dim">query:</span> ${formatQueryLabel(q)}`;
-  el.style.display = '';
+  setQueryLabel(queryLabelParts(q));
 }
 
 /**
@@ -2451,8 +2352,7 @@ function applyFiltersAndUpdate(): void {
     const queryLabel = document.getElementById('query-label');
     if (queryLabel) {
       if (seededViewInfo) {
-        queryLabel.innerHTML = `<span class="query-dim">query:</span> <span class="query-type">entry points</span> depth=${seededViewInfo.depth}`;
-        queryLabel.style.display = '';
+        setQueryLabel([['query-type', 'entry points'], [null, ` depth=${seededViewInfo.depth}`]]);
       } else {
         queryLabel.style.display = 'none';
       }
@@ -2475,11 +2375,9 @@ function applyFiltersAndUpdate(): void {
     runDeferredComputations();
   }
 
-  // Pass selectedNodeId for exact matching (VS Code integration)
-  const nodeOptions: SelectedNodeOptions = { selectedNodeId };
   const compiled = compileQuery(state.filters, state.projectLanguage);
   updateQueryLabel(compiled.query);
-  let filtered = applyFilters(state.fullGraph, state.filters, nodeOptions, state.projectLanguage);
+  let filtered = applyFilters(state.fullGraph, state.filters, state.projectLanguage);
 
   // Limit rendered nodes for large results to prevent D3 freeze
   // Crate Map and Hierarchy aggregate into group boxes, so truncation would
@@ -2520,8 +2418,11 @@ function applyFiltersAndUpdate(): void {
  * Uses replaceState to avoid polluting browser history
  */
 function updateURLWithFilters(): void {
+  if (urlWritesSuppressed > 0) return;
   const url = generateShareableURL();
-  window.history.replaceState({}, '', url);
+  // Keep the entry's pushed marker: an edit after a Guide action (depth
+  // slider, kind toggle) does not change where the next typing goes
+  window.history.replaceState(window.history.state ?? { pushed: false }, '', url);
 }
 
 /**
@@ -2530,6 +2431,20 @@ function updateURLWithFilters(): void {
 function handleStateChange(newState: GraphState, selectionChanged: boolean = false): void {
   state = newState;
   updateNodeInfo();
+
+  // A click that changes the selection under a 'none' intent is a newer
+  // query (depthFromSelected): it wins over a pending focus load
+  const key = selectionKey(state.filters.selectedNodes);
+  if (key !== lastSelectionKey) {
+    lastSelectionKey = key;
+    if (state.filters.intent.kind === 'none') {
+      intentGeneration++;
+      if (pendingFocus) {
+        pendingFocus = null;
+        resumeDeferredEntrypoints();
+      }
+    }
+  }
   
   // Re-apply filters if selection/hidden nodes changed (not just hover)
   // This ensures hidden nodes are properly filtered out
@@ -2906,11 +2821,20 @@ function computeDisambiguatedPaths(paths: string[]): Map<string, string> {
   return result;
 }
 
+/** Graph and selection the crate dropdowns were last built for. */
+let crateDropdownKey = '';
+
 /**
- * Populate the Source Crate / Target Crate dropdowns with unique crate names.
+ * Populate the Source Crate / Target Crate dropdowns with unique crate names
+ * and select selectedSourceCrate / selectedTargetCrate. A selection missing
+ * from its filtered list is cleared. Skipped when nothing changed, since
+ * setIntent calls this on every keystroke.
  */
 function populateCrateDropdowns(): void {
   if (!state.fullGraph) return;
+
+  const key = `${graphLoadGeneration}\0${selectedSourceCrate}\0${selectedTargetCrate}`;
+  if (key === crateDropdownKey) return;
 
   ensureCrateGraphBuilt();
 
@@ -2923,47 +2847,36 @@ function populateCrateDropdowns(): void {
 
   const allSorted = [...allCrateNames].sort((a, b) => a.localeCompare(b));
 
-  // Source dropdown: filtered to callers of the selected target crate (or all if none)
-  const srcSel = document.getElementById('source-crate-select') as HTMLSelectElement | null;
-  if (srcSel) {
-    const prev = srcSel.value;
-    const rdeps = selectedTargetCrate ? crateReverseDependencyMap.get(selectedTargetCrate) : null;
-    const sourceList = rdeps ? allSorted.filter(n => rdeps.has(n)) : allSorted;
-
-    srcSel.innerHTML = '<option value="">--</option>';
-    for (const name of sourceList) {
+  const fill = (sel: HTMLSelectElement, names: string[], selected: string): string => {
+    sel.innerHTML = '<option value="">--</option>';
+    for (const name of names) {
       const opt = document.createElement('option');
       opt.value = name;
       opt.textContent = name;
-      srcSel.appendChild(opt);
+      sel.appendChild(opt);
     }
-    if (prev && sourceList.includes(prev)) {
-      srcSel.value = prev;
-    } else if (prev && !sourceList.includes(prev)) {
-      selectedSourceCrate = '';
-    }
+    const kept = names.includes(selected) ? selected : '';
+    sel.value = kept;
+    return kept;
+  };
+
+  // Source dropdown: filtered to callers of the selected target crate (or all if none)
+  const srcSel = document.getElementById('source-crate-select') as HTMLSelectElement | null;
+  if (srcSel) {
+    const rdeps = selectedTargetCrate ? crateReverseDependencyMap.get(selectedTargetCrate) : null;
+    const sourceList = rdeps ? allSorted.filter(n => rdeps.has(n)) : allSorted;
+    selectedSourceCrate = fill(srcSel, sourceList, selectedSourceCrate);
   }
 
   // Target dropdown: filtered to dependencies of the selected source crate (or all if none)
   const tgtSel = document.getElementById('target-crate-select') as HTMLSelectElement | null;
   if (tgtSel) {
-    const prev = tgtSel.value;
     const deps = selectedSourceCrate ? crateDependencyMap.get(selectedSourceCrate) : null;
     const targetList = deps ? allSorted.filter(n => deps.has(n)) : allSorted;
-
-    tgtSel.innerHTML = '<option value="">--</option>';
-    for (const name of targetList) {
-      const opt = document.createElement('option');
-      opt.value = name;
-      opt.textContent = name;
-      tgtSel.appendChild(opt);
-    }
-    if (prev && targetList.includes(prev)) {
-      tgtSel.value = prev;
-    } else if (prev && !targetList.includes(prev)) {
-      selectedTargetCrate = '';
-    }
+    selectedTargetCrate = fill(tgtSel, targetList, selectedTargetCrate);
   }
+
+  crateDropdownKey = `${graphLoadGeneration}\0${selectedSourceCrate}\0${selectedTargetCrate}`;
 }
 
 /**
@@ -3449,64 +3362,14 @@ function updateFileListSelection(): void {
  */
 function resetFilters(): void {
   // Deep copy filters - spread only does shallow copy, so Sets would be shared!
-  state.filters = { 
-    ...initialFilters,
-    selectedNodes: new Set(),
-    expandedNodes: new Set(),
-    hiddenNodes: new Set(),
-    focusNodeIds: new Set(),  // Clear focus set on reset
-  };
-  state.selectedNode = null;
-  focusJsonUrl = null;  // Clear focus URL on reset
+  state.filters = freshFilters(graphDefaultFilters ?? initialFilters);
   seededRequestedDepth = null;  // A reset drops the seeded depth request too
-  resumeDeferredEntrypoints();
 
-  // Reset UI controls
-  (document.getElementById('show-libsignal') as HTMLInputElement).checked = true;
-  (document.getElementById('show-non-libsignal') as HTMLInputElement).checked = true;
-  const innerCallsEl = document.getElementById('show-inner-calls') as HTMLInputElement | null;
-  const preCallsEl = document.getElementById('show-precondition-calls') as HTMLInputElement | null;
-  const postCallsEl = document.getElementById('show-postcondition-calls') as HTMLInputElement | null;
-  if (innerCallsEl) innerCallsEl.checked = true;
-  if (preCallsEl) preCallsEl.checked = false;
-  if (postCallsEl) postCallsEl.checked = false;
-  // Kind checkboxes are rendered per-language/per-graph, so any of them may be absent.
-  const resetKindCheckbox = (id: string, checked: boolean) => {
-    const el = document.getElementById(id) as HTMLInputElement | null;
-    if (el) el.checked = checked;
-  };
-  resetKindCheckbox('show-exec-functions', initialFilters.showExecFunctions);
-  resetKindCheckbox('show-proof-functions', initialFilters.showProofFunctions);
-  resetKindCheckbox('show-spec-functions', initialFilters.showSpecFunctions);
-  resetKindCheckbox('show-axioms', initialFilters.showAxioms);
-  resetKindCheckbox('show-types', initialFilters.showTypes);
-  resetKindCheckbox('show-projections', initialFilters.showProjections);
-  resetKindCheckbox('show-instances', initialFilters.showInstances);
-  const rustNodesEl = document.getElementById('show-rust-nodes') as HTMLInputElement | null;
-  const leanNodesEl = document.getElementById('show-lean-nodes') as HTMLInputElement | null;
-  if (rustNodesEl) rustNodesEl.checked = true;
-  if (leanNodesEl) leanNodesEl.checked = true;
-  const verifiedEl = document.getElementById('show-verified-nodes') as HTMLInputElement | null;
-  const failedEl = document.getElementById('show-failed-nodes') as HTMLInputElement | null;
-  const unverifiedEl = document.getElementById('show-unverified-nodes') as HTMLInputElement | null;
-  if (verifiedEl) verifiedEl.checked = true;
-  if (failedEl) failedEl.checked = true;
-  if (unverifiedEl) unverifiedEl.checked = true;
-  (document.getElementById('exclude-name-patterns') as HTMLInputElement).value = '';
-  (document.getElementById('exclude-path-patterns') as HTMLInputElement).value = '';
-  (document.getElementById('include-files') as HTMLInputElement).value = '';
-  (document.getElementById('source-input') as HTMLInputElement).value = '';
-  (document.getElementById('sink-input') as HTMLInputElement).value = '';
-  (document.getElementById('depth-limit') as HTMLInputElement).value = '1';
-  document.getElementById('depth-value')!.textContent = '1';
-  
-  // Update file list selection to clear all
-  updateFileListSelection();
-  
-  // Update focus indicator
-  updateFocusIndicator();
-  
-  applyFiltersAndUpdate();
+  // Every control from the defaults (the intent is already none)
+  syncFilterUI();
+
+  // Clears the intent (focus set included), inputs and crate dropdowns
+  setIntent(NONE_INTENT, { history: 'replace' });
 }
 
 /**
@@ -3516,14 +3379,14 @@ function updateFocusIndicator(): void {
   const container = document.getElementById('focus-indicator');
   if (!container) return;
   
-  const focusCount = state.filters.focusNodeIds.size;
-  
-  if (focusCount === 0) {
+  const intent = state.filters.intent;
+  if (!isFocusIntent(intent)) {
     container.style.display = 'none';
     container.innerHTML = '';
     return;
   }
-  
+  const focusCount = intent.ids.length;
+
   container.style.display = 'block';
   container.innerHTML = `
     <div style="background: var(--pg-accent-soft); padding: 10px; border-radius: 6px; border-left: 4px solid var(--pg-accent);">
@@ -3531,7 +3394,7 @@ function updateFocusIndicator(): void {
         <div>
           <strong style="color: var(--pg-accent);">Focus Set Active</strong>
           <div style="font-size: 0.85rem; color: var(--pg-text-muted); margin-top: 2px;">
-            Showing <strong>${focusCount}</strong> entry-point functions
+            Showing <strong>${focusCount}</strong> entry-point functions<span id="focus-label"></span>
           </div>
         </div>
         <button id="clear-focus-btn" style="background: var(--pg-accent); color: white; border: none; padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 0.8rem;">
@@ -3544,6 +3407,9 @@ function updateFocusIndicator(): void {
     </div>
   `;
   
+  const labelEl = document.getElementById('focus-label');
+  if (labelEl && intent.label) labelEl.textContent = ` (${intent.label})`;
+
   // Add click handler for Clear button
   document.getElementById('clear-focus-btn')?.addEventListener('click', () => {
     clearFocusSet();
@@ -3554,11 +3420,7 @@ function updateFocusIndicator(): void {
  * Clear the focus set and return to the full graph view
  */
 function clearFocusSet(): void {
-  state.filters.focusNodeIds = new Set();
-  focusJsonUrl = null;
-  updateFocusIndicator();
-  resumeDeferredEntrypoints();
-  applyFiltersAndUpdate();
+  setIntent(NONE_INTENT, { history: 'replace' });
 }
 
 /**
@@ -3639,62 +3501,48 @@ function handleVSCodeMessage(event: MessageEvent): void {
         const normalizedGraph = parseAndNormalizeGraph(message.graph);
         console.log('[VS Code] Received graph data:', normalizedGraph.nodes?.length, 'nodes');
         
-        // Store the selected node ID for exact matching
-        if (message.selectedNodeId) {
-          selectedNodeId = message.selectedNodeId;
-          console.log('[VS Code] Selected node ID:', message.selectedNodeId.slice(-60));
-        } else {
-          selectedNodeId = null;
-        }
-        
         loadGraph(normalizedGraph, 'Loaded from VS Code extension');
-        
-        // Apply initial query if provided
-        if (message.initialQuery) {
-          const sourceInput = document.getElementById('source-input') as HTMLInputElement;
-          const sinkInput = document.getElementById('sink-input') as HTMLInputElement;
-          
-          if (sourceInput && message.initialQuery.source) {
-            sourceInput.value = message.initialQuery.source;
-            state.filters.sourceQuery = message.initialQuery.source;
-          }
-          if (sinkInput && message.initialQuery.sink) {
-            sinkInput.value = message.initialQuery.sink;
-            state.filters.sinkQuery = message.initialQuery.sink;
-          }
-          if (message.initialQuery.depth !== undefined) {
-            const depthInput = document.getElementById('depth-limit') as HTMLInputElement;
-            if (depthInput) {
-              depthInput.value = message.initialQuery.depth.toString();
-              state.filters.maxDepth = message.initialQuery.depth || null;
-              document.getElementById('depth-value')!.textContent = 
-                message.initialQuery.depth > 0 ? message.initialQuery.depth.toString() : 'All';
-            }
-          }
-          
-          // Apply filters after setting initial query
-          applyFiltersAndUpdate();
+
+        const initialQuery = message.initialQuery ?? {};
+        const selectedId: string | undefined = message.selectedNodeId || undefined;
+        const selectedNode = selectedId
+          ? state.fullGraph?.nodes.find(n => n.id === selectedId)
+          : undefined;
+        let intent: QueryIntent;
+        if (selectedNode) {
+          console.log('[VS Code] Selected node ID:', selectedNode.id.slice(-60));
+          intent = vscodeIntent(
+            selectedNode.id, selectedNode.display_name,
+            !!initialQuery.source, !!initialQuery.sink,
+          );
+        } else {
+          intent = textIntent(initialQuery.source ?? '', initialQuery.sink ?? '');
+        }
+        if (intent.kind !== 'none' || initialQuery.depth !== undefined) {
+          setIntent(intent, {
+            history: 'replace',
+            before: () => {
+              // An explicit depth wins; a directional exact intent uses
+              // unlimited depth, as Guide transitions do
+              const depth: number | null | undefined = initialQuery.depth !== undefined
+                ? (initialQuery.depth || null)
+                : intent.kind === 'ids' && intent.dir !== 'none' ? null : undefined;
+              if (depth !== undefined) {
+                state.filters.maxDepth = depth;
+                syncDepthSliderUI(depth);
+              }
+            },
+          });
         }
       }
       break;
       
     case 'setQuery':
       // Update the query (e.g., user clicked on a different function)
-      if (message.source !== undefined) {
-        const sourceInput = document.getElementById('source-input') as HTMLInputElement;
-        if (sourceInput) {
-          sourceInput.value = message.source;
-          state.filters.sourceQuery = message.source;
-        }
-      }
-      if (message.sink !== undefined) {
-        const sinkInput = document.getElementById('sink-input') as HTMLInputElement;
-        if (sinkInput) {
-          sinkInput.value = message.sink;
-          state.filters.sinkQuery = message.sink;
-        }
-      }
-      applyFiltersAndUpdate();
+      setIntent(
+        vscodeSetQueryIntent(state.filters.intent, message.source, message.sink),
+        { history: 'replace' },
+      );
       break;
       
     case 'refresh':

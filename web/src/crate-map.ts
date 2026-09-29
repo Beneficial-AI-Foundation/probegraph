@@ -860,8 +860,8 @@ export class CrateMapVisualization {
     window.dispatchEvent(new CustomEvent('crate-map-switch-view', {
       detail: {
         view: 'callgraph',
-        sourceQuery: `crate:${src}`,
-        sinkQuery: `crate:${tgt}`,
+        sourceGroup: src,
+        targetGroup: tgt,
       },
     }));
   }

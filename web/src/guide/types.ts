@@ -1,4 +1,6 @@
-import type { FilterOptions, ProjectLanguage } from '../types';
+import type { ProjectLanguage } from '../types';
+import type { QueryIntent } from '../intent';
+import type { ActiveView } from '../url-state';
 
 // ============================================================================
 // Graph Summary (static analysis output)
@@ -37,13 +39,16 @@ export interface SuggestedQuery {
   action: SuggestedAction;
 }
 
+/**
+ * Node payloads are exact IDs; `label` (the display name) is only for the
+ * toast, query label and inputs.
+ */
 export type SuggestedAction =
-  | { type: 'setSource'; query: string }
-  | { type: 'setSink'; query: string }
-  | { type: 'setSourceAndSink'; source: string; sink: string }
+  | { type: 'setSource'; id: string; label: string }
+  | { type: 'setSink'; id: string; label: string }
   | { type: 'filterVerification'; statuses: ('verified' | 'failed' | 'unverified')[] }
   | { type: 'setCrateBoundary'; source: string; target: string }
-  | { type: 'switchView'; view: string };
+  | { type: 'switchView'; view: ActiveView };
 
 export interface GraphSummary {
   projectLanguage: ProjectLanguage;
@@ -63,11 +68,25 @@ export interface GraphSummary {
 // Viewer actions the guide panel can trigger
 // ============================================================================
 
+/** Status filter a transition sets (the three status toggles). */
+export interface StatusSelection {
+  verified: boolean;
+  failed: boolean;
+  unverified: boolean;
+}
+
+/**
+ * One Guide action as a single state transition. The intent replaces the
+ * current one, so a chip cannot leave part of a previous query behind.
+ */
+export interface GuideTransition {
+  intent: QueryIntent;
+  status: StatusSelection | null;  // null: keep the user's status filter
+  depth?: number | null;           // absent: keep the user's depth; null: unlimited
+  view?: ActiveView;
+  label: string;
+}
+
 export interface GuideActions {
-  setFilters(updates: Partial<FilterOptions>): void;
-  setSource(query: string): void;
-  setSink(query: string): void;
-  setDepth(depth: number | null): void;
-  switchView(view: string): void;
-  applyFiltersAndUpdate(): void;
+  apply(t: GuideTransition): void;
 }

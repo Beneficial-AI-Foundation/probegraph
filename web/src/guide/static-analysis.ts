@@ -169,8 +169,8 @@ function generateSuggestedQueries(
         ? `${top.dependentCount} callers -- central to the graph`
         : `${top.dependencyCount} callees -- central to the graph`,
       action: hasMoreCallers
-        ? { type: 'setSink', query: top.displayName }
-        : { type: 'setSource', query: top.displayName },
+        ? { type: 'setSink', id: top.id, label: top.displayName }
+        : { type: 'setSource', id: top.id, label: top.displayName },
     });
   }
 
@@ -179,7 +179,7 @@ function generateSuggestedQueries(
     queries.push({
       label: `Verify next: ${top.displayName}`,
       description: `Unverified but called by verified functions`,
-      action: { type: 'setSink', query: top.displayName },
+      action: { type: 'setSink', id: top.id, label: top.displayName },
     });
   }
 

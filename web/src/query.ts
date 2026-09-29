@@ -16,8 +16,8 @@ import {
 } from './types';
 import {
   globToRegex, asSubstringGlob, matchesQuery,
-  SelectedNodeOptions,
 } from './filters';
+import { QueryIntent, anchorIds, isDirectionalIntent, isFocusIntent } from './intent';
 
 // ============================================================================
 // 1. Types
@@ -33,7 +33,8 @@ export type GraphQuery =
   | { type: 'callers'; to: NodeMatcher; maxDepth: number | null }
   | { type: 'neighborhood'; center: NodeMatcher; maxDepth: number | null }
   | { type: 'paths'; from: NodeMatcher; to: NodeMatcher }
-  | { type: 'crateBoundary'; sourceCrate: string; targetCrate: string }
+  // exact: group names match whole crate names (Guide / dropdowns); otherwise substring
+  | { type: 'crateBoundary'; sourceCrate: string; targetCrate: string; exact: boolean }
   | { type: 'depthFromSelected'; selectedNodes: Set<string>; maxDepth: number }
   | { type: 'noTraversal' };
 
@@ -70,6 +71,8 @@ export interface DisplayPredicates {
 }
 
 export interface FocusConfig {
+  /** A focus set restricts the view, even when empty (shows nothing). */
+  active: boolean;
   focusNodeIds: Set<string>;
 }
 
@@ -87,6 +90,8 @@ export interface CompiledQuery {
   traversalPredicates: TraversalPredicates;
   displayPredicates: DisplayPredicates;
   focusConfig: FocusConfig;
+  /** Exact intent IDs, kept in the result even without visible links. */
+  anchorIds: Set<string>;
   linkTypeFilter: LinkTypeFilter;
   resultFilePatterns: IncludeFilePattern[];
 }
@@ -368,17 +373,25 @@ export function findPaths(
   return { nodeIds: nodesOnPaths };
 }
 
-/** Find cross-crate boundary edges from sourceCrate to targetCrate. */
+/**
+ * Find cross-crate boundary edges from sourceCrate to targetCrate.
+ * With exact, crate names must be equal; otherwise they are substring globs.
+ */
 export function crateBoundary(
   graph: D3Graph,
   sourceCrate: string,
   targetCrate: string,
+  exact: boolean = false,
 ): TraversalResult {
   const nodeMap = new Map<string, D3Node>();
   for (const n of graph.nodes) nodeMap.set(n.id, n);
 
-  const srcRegex = globToRegex(asSubstringGlob(sourceCrate));
-  const tgtRegex = globToRegex(asSubstringGlob(targetCrate));
+  const matcher = (crate: string) => {
+    if (exact) return { test: (name: string) => name === crate };
+    return globToRegex(asSubstringGlob(crate));
+  };
+  const srcRegex = matcher(sourceCrate);
+  const tgtRegex = matcher(targetCrate);
   const nodeIds = new Set<string>();
   const boundaryLinkPairs = new Set<string>();
 
@@ -445,9 +458,7 @@ export function removeIsolated(
     connected.add(sourceId);
     connected.add(targetId);
   }
-  return nodes.filter(n =>
-    connected.has(n.id) || (keepSet && keepSet.size > 0 && keepSet.has(n.id)),
-  );
+  return nodes.filter(n => connected.has(n.id) || (keepSet?.has(n.id) ?? false));
 }
 
 // ============================================================================
@@ -457,26 +468,14 @@ export function removeIsolated(
 /**
  * Resolve a NodeMatcher to concrete node IDs.
  * Patterns are matched against fullGraph; results are filtered to traversableIds.
- * The exactOverride (VS Code selectedNodeId) bypasses pattern matching.
  */
 export function resolveNodeMatcher(
   matcher: NodeMatcher,
   fullGraph: D3Graph,
   traversableIds: Set<string>,
-  exactOverride?: string | null,
 ): Set<string> {
   const matched = new Set<string>();
-
-  if (exactOverride) {
-    const node = fullGraph.nodes.find(n => n.id === exactOverride);
-    if (node) {
-      matched.add(node.id);
-    } else {
-      resolveWithoutOverride(matcher, fullGraph, matched);
-    }
-  } else {
-    resolveWithoutOverride(matcher, fullGraph, matched);
-  }
+  resolveMatcher(matcher, fullGraph, matched);
 
   // Filter to traversable set
   const result = new Set<string>();
@@ -486,7 +485,7 @@ export function resolveNodeMatcher(
   return result;
 }
 
-function resolveWithoutOverride(
+function resolveMatcher(
   matcher: NodeMatcher,
   fullGraph: D3Graph,
   out: Set<string>,
@@ -551,7 +550,7 @@ export function compileSeededDisplayPredicate(
 }
 
 /**
- * Compile FilterOptions (+ optional nodeOptions) into a CompiledQuery.
+ * Compile FilterOptions into a CompiledQuery.
  * Pure function -- no graph access.
  */
 export function compileQuery(
@@ -562,49 +561,16 @@ export function compileQuery(
 
   const parsedFilePatterns = parseIncludeFilePatterns(filters.includeFiles);
 
-  // -- Query compilation (dispatch table) --
-  const sourceQuery = filters.sourceQuery.trim().toLowerCase();
-  const sinkQuery = filters.sinkQuery.trim().toLowerCase();
-  const hasSource = sourceQuery !== '';
-  const hasSink = sinkQuery !== '';
-  const isSame = hasSource && hasSink && sourceQuery === sinkQuery;
-  const bothCrate = hasSource && hasSink && isCrateQuery(sourceQuery) && isCrateQuery(sinkQuery);
+  // -- Query compilation (dispatch on the intent) --
+  const intent = filters.intent;
   const hasIncludeFiles = filters.includeFiles.trim() !== '';
-  const hasDirectionalQuery = hasSource || hasSink;
+  const query = compileIntent(intent, filters, hasIncludeFiles);
 
-  let query: GraphQuery;
-
-  if (hasSource && hasSink) {
-    if (isSame) {
-      query = { type: 'neighborhood', center: buildMatcher(sourceQuery), maxDepth: filters.maxDepth };
-    } else if (bothCrate) {
-      query = {
-        type: 'crateBoundary',
-        sourceCrate: sourceQuery.slice(6),
-        targetCrate: sinkQuery.slice(6),
-      };
-    } else {
-      query = { type: 'paths', from: buildMatcher(sourceQuery), to: buildMatcher(sinkQuery) };
-    }
-  } else if (hasSource) {
-    query = { type: 'callees', from: buildMatcher(sourceQuery), maxDepth: filters.maxDepth };
-  } else if (hasSink) {
-    query = { type: 'callers', to: buildMatcher(sinkQuery), maxDepth: filters.maxDepth };
-  } else if (
-    filters.selectedNodes.size > 0
-    && filters.maxDepth !== null
-    && !hasIncludeFiles
-  ) {
-    query = { type: 'depthFromSelected', selectedNodes: filters.selectedNodes, maxDepth: filters.maxDepth };
-  } else {
-    query = { type: 'noTraversal' };
-  }
-
-  // When there's a directional query (source/sink), the file filter should be
-  // a post-traversal result filter so the BFS can traverse through the full
-  // graph and results are narrowed afterwards. For noTraversal / depthFromSelected
-  // the file filter stays as a traversal predicate (restricts which nodes appear).
-  const useFileAsResultFilter = hasDirectionalQuery && hasIncludeFiles;
+  // For directional queries the file filter is a post-traversal result
+  // filter, so the BFS can traverse through the full graph and results are
+  // narrowed afterwards. For noTraversal / depthFromSelected it stays a
+  // traversal predicate (restricts which nodes appear).
+  const useFileAsResultFilter = isDirectionalIntent(intent) && hasIncludeFiles;
 
   // -- Traversal predicates --
   const traversalPredicates: TraversalPredicates = {
@@ -626,9 +592,9 @@ export function compileQuery(
     showLeanNodes: filters.showLeanNodes ?? true,
   };
 
-  const focusConfig: FocusConfig = {
-    focusNodeIds: filters.focusNodeIds,
-  };
+  const focusConfig: FocusConfig = isFocusIntent(intent)
+    ? { active: true, focusNodeIds: new Set(intent.ids) }
+    : { active: false, focusNodeIds: new Set() };
 
   const linkTypeFilter: LinkTypeFilter = {
     showInnerCalls: filters.showInnerCalls,
@@ -639,9 +605,74 @@ export function compileQuery(
   };
 
   return {
-    query, traversalPredicates, displayPredicates, focusConfig, linkTypeFilter,
+    query, traversalPredicates, displayPredicates, focusConfig,
+    anchorIds: new Set(anchorIds(intent)),
+    linkTypeFilter,
     resultFilePatterns: useFileAsResultFilter ? parsedFilePatterns : [],
   };
+}
+
+function compileIntent(
+  intent: QueryIntent,
+  filters: FilterOptions,
+  hasIncludeFiles: boolean,
+): GraphQuery {
+  switch (intent.kind) {
+    case 'text':
+      return compileTextQuery(intent.source, intent.sink, filters.maxDepth);
+    case 'ids': {
+      const matcher: NodeMatcher = { kind: 'nodeIds', ids: new Set(intent.ids) };
+      switch (intent.dir) {
+        case 'callees': return { type: 'callees', from: matcher, maxDepth: filters.maxDepth };
+        case 'callers': return { type: 'callers', to: matcher, maxDepth: filters.maxDepth };
+        case 'both': return { type: 'neighborhood', center: matcher, maxDepth: filters.maxDepth };
+        case 'none':
+          // Focus sets restrict noTraversal through focusConfig. An exact set
+          // without direction is the same restriction.
+          return { type: 'noTraversal' };
+      }
+      break;
+    }
+    case 'boundary':
+      return {
+        type: 'crateBoundary',
+        sourceCrate: intent.sourceGroup,
+        targetCrate: intent.targetGroup,
+        exact: true,
+      };
+    case 'none':
+      break;
+  }
+  if (filters.selectedNodes.size > 0 && filters.maxDepth !== null && !hasIncludeFiles) {
+    return { type: 'depthFromSelected', selectedNodes: filters.selectedNodes, maxDepth: filters.maxDepth };
+  }
+  return { type: 'noTraversal' };
+}
+
+/** Dispatch table for text selectors (substring/glob, case-insensitive). */
+function compileTextQuery(source: string, sink: string, maxDepth: number | null): GraphQuery {
+  const sourceQuery = source.trim().toLowerCase();
+  const sinkQuery = sink.trim().toLowerCase();
+  const hasSource = sourceQuery !== '';
+  const hasSink = sinkQuery !== '';
+
+  if (hasSource && hasSink) {
+    if (sourceQuery === sinkQuery) {
+      return { type: 'neighborhood', center: buildMatcher(sourceQuery), maxDepth };
+    }
+    if (isCrateQuery(sourceQuery) && isCrateQuery(sinkQuery)) {
+      return {
+        type: 'crateBoundary',
+        sourceCrate: sourceQuery.slice(6),
+        targetCrate: sinkQuery.slice(6),
+        exact: false,
+      };
+    }
+    return { type: 'paths', from: buildMatcher(sourceQuery), to: buildMatcher(sinkQuery) };
+  }
+  if (hasSource) return { type: 'callees', from: buildMatcher(sourceQuery), maxDepth };
+  if (hasSink) return { type: 'callers', to: buildMatcher(sinkQuery), maxDepth };
+  return { type: 'noTraversal' };
 }
 
 // ============================================================================
@@ -663,10 +694,11 @@ export function compileQuery(
 export function executeQuery(
   compiled: CompiledQuery,
   fullGraph: D3Graph,
-  nodeOptions?: SelectedNodeOptions,
 ): D3Graph {
-  const { query, traversalPredicates, displayPredicates, focusConfig, linkTypeFilter, resultFilePatterns } = compiled;
-  const exactOverride = nodeOptions?.selectedNodeId;
+  const {
+    query, traversalPredicates, displayPredicates, focusConfig, anchorIds,
+    linkTypeFilter, resultFilePatterns,
+  } = compiled;
 
   // -- Step 1: build traversable subgraph --
   const traversableGraph = selectNodes(fullGraph, traversalPredicates);
@@ -677,15 +709,15 @@ export function executeQuery(
   let sinkMatchIds: Set<string> | undefined;
 
   if (query.type === 'callees') {
-    sourceMatchIds = resolveNodeMatcher(query.from, fullGraph, traversableIds, exactOverride);
+    sourceMatchIds = resolveNodeMatcher(query.from, fullGraph, traversableIds);
   } else if (query.type === 'callers') {
-    sinkMatchIds = resolveNodeMatcher(query.to, fullGraph, traversableIds, exactOverride);
+    sinkMatchIds = resolveNodeMatcher(query.to, fullGraph, traversableIds);
   } else if (query.type === 'neighborhood') {
-    sourceMatchIds = resolveNodeMatcher(query.center, fullGraph, traversableIds, exactOverride);
+    sourceMatchIds = resolveNodeMatcher(query.center, fullGraph, traversableIds);
     sinkMatchIds = sourceMatchIds; // same set
   } else if (query.type === 'paths') {
-    sourceMatchIds = resolveNodeMatcher(query.from, fullGraph, traversableIds, exactOverride);
-    sinkMatchIds = resolveNodeMatcher(query.to, fullGraph, traversableIds, exactOverride);
+    sourceMatchIds = resolveNodeMatcher(query.from, fullGraph, traversableIds);
+    sinkMatchIds = resolveNodeMatcher(query.to, fullGraph, traversableIds);
   }
 
   // If a query was entered but matched nothing, return empty
@@ -750,7 +782,7 @@ export function executeQuery(
       break;
     }
     case 'crateBoundary': {
-      traversalResult = crateBoundary(traversableGraph, query.sourceCrate, query.targetCrate);
+      traversalResult = crateBoundary(traversableGraph, query.sourceCrate, query.targetCrate, query.exact);
       break;
     }
     case 'depthFromSelected': {
@@ -760,11 +792,15 @@ export function executeQuery(
       break;
     }
     case 'noTraversal': {
+      // An exact set without direction restricts like a focus set
+      const restrictTo = focusConfig.active ? focusConfig.focusNodeIds
+        : anchorIds.size > 0 ? anchorIds
+        : null;
       let nodeIds: Set<string>;
-      if (focusConfig.focusNodeIds.size > 0) {
+      if (restrictTo) {
         nodeIds = new Set(
           traversableGraph.nodes
-            .filter(n => focusConfig.focusNodeIds.has(n.id))
+            .filter(n => restrictTo.has(n.id))
             .map(n => n.id),
         );
       } else {
@@ -863,7 +899,7 @@ export function executeQuery(
   resultLinks = filterLinksByType(resultLinks, linkTypeFilter);
 
   // -- Step 7: cleanup --
-  const keepSet = focusConfig.focusNodeIds.size > 0 ? focusConfig.focusNodeIds : undefined;
+  const keepSet = new Set([...focusConfig.focusNodeIds, ...anchorIds]);
   resultNodes = removeIsolated(resultNodes, resultLinks, keepSet);
 
   // Build nodeDepths

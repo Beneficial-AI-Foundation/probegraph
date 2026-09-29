@@ -22,6 +22,7 @@ import {
   TraversalPredicates,
 } from './query';
 import { D3Graph, D3Node, D3Link, FilterOptions } from './types';
+import { NONE_INTENT, textIntent } from './intent';
 
 // ============================================================================
 // Test Helpers
@@ -93,12 +94,10 @@ function createFilters(overrides: Partial<FilterOptions> = {}): FilterOptions {
     excludePathPatterns: '',
     includeFiles: '',
     maxDepth: null,
-    sourceQuery: '',
-    sinkQuery: '',
+    intent: NONE_INTENT,
     selectedNodes: new Set(),
     expandedNodes: new Set(),
     hiddenNodes: new Set(),
-    focusNodeIds: new Set(),
     ...overrides,
   };
 }
@@ -516,22 +515,6 @@ describe('resolveNodeMatcher', () => {
     expect(result.size).toBe(0);
   });
 
-  it('VS Code exact override bypasses pattern matching', () => {
-    const result = resolveNodeMatcher(
-      { kind: 'pattern', query: 'func_a' },
-      graph, allIds, 'b', // override to node b
-    );
-    expect([...result]).toEqual(['b']);
-  });
-
-  it('VS Code override falls back to pattern if ID not found', () => {
-    const result = resolveNodeMatcher(
-      { kind: 'pattern', query: 'func_a' },
-      graph, allIds, 'nonexistent',
-    );
-    expect([...result]).toEqual(['a']);
-  });
-
   it('crate matcher matches crate_name', () => {
     const g = createGraph(
       [
@@ -562,7 +545,7 @@ describe('resolveNodeMatcher', () => {
 
 describe('compileQuery', () => {
   it('source only -> callees', () => {
-    const compiled = compileQuery(createFilters({ sourceQuery: 'foo', maxDepth: 2 }));
+    const compiled = compileQuery(createFilters({ intent: textIntent('foo', ''), maxDepth: 2 }));
     expect(compiled.query.type).toBe('callees');
     if (compiled.query.type === 'callees') {
       expect(compiled.query.maxDepth).toBe(2);
@@ -570,24 +553,23 @@ describe('compileQuery', () => {
   });
 
   it('sink only -> callers', () => {
-    const compiled = compileQuery(createFilters({ sinkQuery: 'bar', maxDepth: 1 }));
+    const compiled = compileQuery(createFilters({ intent: textIntent('', 'bar'), maxDepth: 1 }));
     expect(compiled.query.type).toBe('callers');
   });
 
   it('same source and sink -> neighborhood', () => {
-    const compiled = compileQuery(createFilters({ sourceQuery: 'foo', sinkQuery: 'foo' }));
+    const compiled = compileQuery(createFilters({ intent: textIntent('foo', 'foo') }));
     expect(compiled.query.type).toBe('neighborhood');
   });
 
   it('different source and sink -> paths', () => {
-    const compiled = compileQuery(createFilters({ sourceQuery: 'foo', sinkQuery: 'bar' }));
+    const compiled = compileQuery(createFilters({ intent: textIntent('foo', 'bar') }));
     expect(compiled.query.type).toBe('paths');
   });
 
   it('both crate queries -> crateBoundary', () => {
     const compiled = compileQuery(createFilters({
-      sourceQuery: 'crate:A',
-      sinkQuery: 'crate:B',
+      intent: textIntent('crate:A', 'crate:B'),
     }));
     expect(compiled.query.type).toBe('crateBoundary');
     if (compiled.query.type === 'crateBoundary') {

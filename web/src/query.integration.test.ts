@@ -16,6 +16,7 @@ import { fileURLToPath } from 'node:url';
 import { applyFilters } from './filters';
 import { parseAndNormalizeGraph } from './graph-loader';
 import { D3Graph, FilterOptions, detectProjectLanguage, extractCrateName } from './types';
+import { NONE_INTENT, textIntent } from './intent';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -49,12 +50,10 @@ function createFilters(overrides: Partial<FilterOptions> = {}): FilterOptions {
     excludePathPatterns: '',
     includeFiles: '',
     maxDepth: null,
-    sourceQuery: '',
-    sinkQuery: '',
+    intent: NONE_INTENT,
     selectedNodes: new Set(),
     expandedNodes: new Set(),
     hiddenNodes: new Set(),
-    focusNodeIds: new Set(),
     ...overrides,
   };
 }
@@ -102,7 +101,7 @@ describe.skipIf(!existsSync(GRAPH_TMP_PATH))('Golden: graph_tmp.json (Verus)', (
   });
 
   it('forward traversal: source=decompress depth=2', () => {
-    const filters = createFilters({ sourceQuery: 'decompress', maxDepth: 2 });
+    const filters = createFilters({ intent: textIntent('decompress', ''), maxDepth: 2 });
     const result = applyFilters(graph, filters);
 
     // Pinned golden values
@@ -118,7 +117,7 @@ describe.skipIf(!existsSync(GRAPH_TMP_PATH))('Golden: graph_tmp.json (Verus)', (
 
   it('backward traversal: sink=lemma_bridge_pow_as_nat_to_spec depth=1', () => {
     const filters = createFilters({
-      sinkQuery: 'lemma_bridge_pow_as_nat_to_spec',
+      intent: textIntent('', 'lemma_bridge_pow_as_nat_to_spec'),
       maxDepth: 1,
     });
     const result = applyFilters(graph, filters);
@@ -136,8 +135,7 @@ describe.skipIf(!existsSync(GRAPH_TMP_PATH))('Golden: graph_tmp.json (Verus)', (
 
   it('path finding: source=mul, sink=spec_sqrt_ad_minus_one', () => {
     const filters = createFilters({
-      sourceQuery: 'mul',
-      sinkQuery: 'spec_sqrt_ad_minus_one',
+      intent: textIntent('mul', 'spec_sqrt_ad_minus_one'),
     });
     const result = applyFilters(graph, filters);
 
@@ -147,8 +145,7 @@ describe.skipIf(!existsSync(GRAPH_TMP_PATH))('Golden: graph_tmp.json (Verus)', (
 
   it('neighborhood: source=sink=decompress depth=1', () => {
     const filters = createFilters({
-      sourceQuery: 'decompress',
-      sinkQuery: 'decompress',
+      intent: textIntent('decompress', 'decompress'),
       maxDepth: 1,
     });
     const result = applyFilters(graph, filters);
@@ -203,8 +200,7 @@ describe.skipIf(!existsSync(GRAPH_TMP_PATH))('Golden: graph_tmp.json (Verus)', (
 
   it('crate boundary: source=crate:curve25519-dalek, sink=crate:curve25519-dalek (self)', () => {
     const filters = createFilters({
-      sourceQuery: 'crate:curve25519-dalek',
-      sinkQuery: 'crate:curve25519-dalek',
+      intent: textIntent('crate:curve25519-dalek', 'crate:curve25519-dalek'),
     });
     const result = applyFilters(graph, filters);
 
@@ -232,7 +228,7 @@ describe.skipIf(!existsSync(PMEMLOG_PATH))('Golden: pmemlog atoms.json (Verus at
   });
 
   it('source query for known function', () => {
-    const filters = createFilters({ sourceQuery: 'valid', maxDepth: 2 });
+    const filters = createFilters({ intent: textIntent('valid', ''), maxDepth: 2 });
     const result = applyFilters(graph, filters);
 
     expect(result.nodes.length).toBeGreaterThan(0);
@@ -289,7 +285,7 @@ describe.skipIf(!existsSync(KATYDID_PATH))('Golden: katydid-proofs atoms.json (L
 
   it('Lean kind filtering: showProofFunctions=false removes theorems', () => {
     const filters = createFilters({ showProofFunctions: false });
-    const result = applyFilters(graph, filters, undefined, 'lean');
+    const result = applyFilters(graph, filters, 'lean');
 
     const theoremNodes = result.nodes.filter(n => n.kind === 'theorem');
     expect(theoremNodes.length).toBe(0);
@@ -299,14 +295,14 @@ describe.skipIf(!existsSync(KATYDID_PATH))('Golden: katydid-proofs atoms.json (L
   });
 
   it('full graph (no filters)', () => {
-    const result = applyFilters(graph, createFilters(), undefined, 'lean');
+    const result = applyFilters(graph, createFilters(), 'lean');
     expect(result.nodes.length).toMatchSnapshot();
     expect(result.links.length).toMatchSnapshot();
   });
 
   it('source query for known function', () => {
-    const filters = createFilters({ sourceQuery: 'validate_commutes', maxDepth: 2 });
-    const result = applyFilters(graph, filters, undefined, 'lean');
+    const filters = createFilters({ intent: textIntent('validate_commutes', ''), maxDepth: 2 });
+    const result = applyFilters(graph, filters, 'lean');
 
     expect(result.nodes.length).toBeGreaterThan(0);
     expect(result.nodes.length).toMatchSnapshot();
@@ -336,7 +332,7 @@ describe.skipIf(!existsSync(GRAPH_JSON_PATH))('Language filter: graph.json', () 
 
   it('showRustNodes=false keeps Lean nodes', () => {
     const filters = createFilters({ showRustNodes: false, showLeanNodes: true });
-    const result = applyFilters(graph, filters, undefined, 'lean');
+    const result = applyFilters(graph, filters, 'lean');
     expect(result.nodes.length).toBeGreaterThan(0);
     const rustInResult = result.nodes.filter(n => n.language === 'rust');
     expect(rustInResult.length).toBe(0);
@@ -414,7 +410,7 @@ describe.skipIf(!existsSync(MERGED_ATOMS_PATH))('Golden: merged_rust_lean_atoms.
 
   it('filtering: showMappingLinks=false removes mapping links', () => {
     const filters = createFilters({ showMappingLinks: false });
-    const result = applyFilters(graph, filters, undefined, 'mixed');
+    const result = applyFilters(graph, filters, 'mixed');
 
     const mappingLinks = result.links.filter(l => l.type === 'mapping');
     expect(mappingLinks.length).toBe(0);
@@ -422,14 +418,14 @@ describe.skipIf(!existsSync(MERGED_ATOMS_PATH))('Golden: merged_rust_lean_atoms.
 
   it('filtering: showSpecLinks=false removes spec links', () => {
     const filters = createFilters({ showSpecLinks: false });
-    const result = applyFilters(graph, filters, undefined, 'mixed');
+    const result = applyFilters(graph, filters, 'mixed');
 
     const specLinks = result.links.filter(l => l.type === 'spec');
     expect(specLinks.length).toBe(0);
   });
 
   it('full graph (no filters)', () => {
-    const result = applyFilters(graph, createFilters(), undefined, 'mixed');
+    const result = applyFilters(graph, createFilters(), 'mixed');
     expect(result.nodes.length).toMatchSnapshot();
     expect(result.links.length).toMatchSnapshot();
   });

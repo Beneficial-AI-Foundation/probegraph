@@ -347,6 +347,12 @@ body {
   box-shadow: 0 0 0 2px var(--pg-accent-ring);
 }
 
+/* Input showing an exact node label (Guide, VS Code) rather than a search string */
+.search-input.exact-query {
+  border-color: var(--pg-accent);
+  font-style: italic;
+}
+
 select.search-input {
   appearance: auto;
   cursor: pointer;

@@ -137,6 +137,8 @@ export class HierarchyMapVisualization {
 
   public clear(): void {
     this.g.selectAll('*').remove();
+    // No tree for an empty result, so setExpanded does not redraw the old one
+    this.tree = null;
   }
 
   public highlightNodes(ids: Set<string>): void {
