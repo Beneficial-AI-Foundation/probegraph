@@ -11,6 +11,7 @@ import {
   QueryIntent, IdDirection, NONE_INTENT, textIntent, exactIntent, boundaryIntent,
   isFocusIntent,
 } from './intent';
+import { exactStatusFilter, isVerificationStatus } from './status-filter';
 
 export type ActiveView = 'callgraph' | 'blueprint' | 'crate-map' | 'hierarchy';
 
@@ -45,7 +46,7 @@ const OWNED_PARAMS = [
   'exec', 'proof', 'spec', 'axioms', 'types', 'proj', 'inst',
   'inner', 'pre', 'post', 'mapping', 'speclinks',
   'libsignal', 'external', 'rust', 'lean',
-  'verified', 'failed', 'unverified',
+  'verified', 'failed', 'unverified', 'status',
   'excludeName', 'excludePath', 'hidden', 'hide',
   'entrypoints', 'view', 'source-crate', 'target-crate', 'expanded',
 ];
@@ -77,6 +78,7 @@ export function defaultFilters(): FilterOptions {
     showVerifiedNodes: true,        // Show verified nodes by default
     showFailedNodes: true,          // Show failed nodes by default
     showUnverifiedNodes: true,      // Show unverified/unknown nodes by default
+    exactStatuses: null,            // No exact status set by default
     excludeNamePatterns: '',        // Exclude by function name (e.g., *_comm*)
     excludePathPatterns: '',        // Exclude by path (e.g., */specs/*)
     includeFiles: '',               // Comma-separated file patterns to include (empty = all)
@@ -158,6 +160,7 @@ export function writeURLState(params: URLSearchParams, s: URLViewState): void {
   if (!f.showVerifiedNodes) params.set('verified', '0');
   if (!f.showFailedNodes) params.set('failed', '0');
   if (!f.showUnverifiedNodes) params.set('unverified', '0');
+  if (f.exactStatuses) params.set('status', f.exactStatuses.join(','));
   if (f.excludeNamePatterns) params.set('excludeName', f.excludeNamePatterns);
   if (f.excludePathPatterns) params.set('excludePath', f.excludePathPatterns);
   for (const id of f.hiddenNodes) params.append('hide', id);
@@ -237,6 +240,11 @@ export function readURLState(
   readBool('verified', v => { filters.showVerifiedNodes = v; });
   readBool('failed', v => { filters.showFailedNodes = v; });
   readBool('unverified', v => { filters.showUnverifiedNodes = v; });
+  // An exact set overrides the three toggles; they are derived from it
+  if (params.has('status')) {
+    const statuses = params.get('status')!.split(',').map(s => s.trim()).filter(isVerificationStatus);
+    if (statuses.length > 0) Object.assign(filters, exactStatusFilter(statuses));
+  }
 
   if (params.has('excludeName')) filters.excludeNamePatterns = params.get('excludeName')!;
   if (params.has('excludePath')) filters.excludePathPatterns = params.get('excludePath')!;

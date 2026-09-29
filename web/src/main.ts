@@ -1,6 +1,6 @@
 import { D3Graph, D3Node, GraphState, FilterOptions, ProjectLanguage, detectProjectLanguage, getKindSetsForLanguage, extractCrateName, isSchema2Envelope } from './types';
 import { applyFilters, getCallers, getCallees } from './filters';
-import { compileQuery, GraphQuery, NodeMatcher, filterLinksByType, compileSeededDisplayPredicate } from './query';
+import { compileQuery, GraphQuery, NodeMatcher, filterLinksByType, linkTypeShown, compileSeededDisplayPredicate } from './query';
 import { computeSeedTiers, expandFromSeeds, SeedTier, SeedExpansion } from './graph-utils';
 import { CallGraphVisualization } from './graph';
 import { BlueprintVisualization } from './blueprint';
@@ -9,6 +9,7 @@ import { HierarchyMapVisualization } from './hierarchy-map';
 import { computeDerivedStatuses } from './status';
 import { parseAndNormalizeGraph, pickSourceConfig } from './graph-loader';
 import { escapeHtml } from './html';
+import { StatusGroup, exactStatusFilter, groupCheckState, withGroupChecked } from './status-filter';
 import {
   QueryIntent, NONE_INTENT, textIntent, focusIntent, boundaryIntent,
   isFocusIntent, inputsForIntent, intentAfterInputEdit, vscodeIntent, vscodeSetQueryIntent,
@@ -17,7 +18,7 @@ import { ActiveView, defaultFilters, readURLState, writeURLState } from './url-s
 
 import { GuidePanel } from './guide/guide-panel';
 import { buildGraphSummary } from './guide/static-analysis';
-import type { GuideActions, GuideTransition } from './guide/types';
+import type { GuideActions, GuideResult, GuideTransition } from './guide/types';
 
 // ============================================================================
 // JSON Format Conversion (delegated to graph-loader.ts)
@@ -304,10 +305,28 @@ function syncFilterUI(): void {
   setCheckbox('show-non-libsignal', state.filters.showNonLibsignal);
   setCheckbox('show-rust-nodes', state.filters.showRustNodes);
   setCheckbox('show-lean-nodes', state.filters.showLeanNodes);
-  setCheckbox('show-verified-nodes', state.filters.showVerifiedNodes);
-  setCheckbox('show-failed-nodes', state.filters.showFailedNodes);
-  setCheckbox('show-unverified-nodes', state.filters.showUnverifiedNodes);
+  syncStatusCheckboxes();
   updateFocusIndicator();
+}
+
+const STATUS_CHECKBOXES: [string, StatusGroup][] = [
+  ['show-verified-nodes', 'verified'],
+  ['show-failed-nodes', 'failed'],
+  ['show-unverified-nodes', 'unverified'],
+];
+
+/**
+ * Status checkboxes; a group partly covered by an exact status set shows as
+ * indeterminate and unchecked, so a click selects the whole group.
+ */
+function syncStatusCheckboxes(): void {
+  for (const [id, group] of STATUS_CHECKBOXES) {
+    const el = document.getElementById(id) as HTMLInputElement | null;
+    if (!el) continue;
+    const s = groupCheckState(state.filters, group);
+    el.checked = s === 'on';
+    el.indeterminate = s === 'partial';
+  }
 }
 
 /**
@@ -525,8 +544,15 @@ let deferredComputationsDone = false;
 // ============================================================================
 
 const guideActions: GuideActions = {
-  apply: (t) => applyGuideTransition(t),
+  apply: (t) => {
+    lastRenderResult = null;
+    applyGuideTransition(t);
+    return lastRenderResult;
+  },
 };
+
+// Size of the last Call Graph / File Map render, for the Guide's toast
+let lastRenderResult: GuideResult | null = null;
 
 /**
  * One Guide action: replaces the intent (and optionally status, depth,
@@ -538,16 +564,8 @@ function applyGuideTransition(t: GuideTransition): void {
     history: 'push',
     before: () => {
       if (t.status) {
-        state.filters.showVerifiedNodes = t.status.verified;
-        state.filters.showFailedNodes = t.status.failed;
-        state.filters.showUnverifiedNodes = t.status.unverified;
-        const setCheckbox = (id: string, checked: boolean) => {
-          const el = document.getElementById(id) as HTMLInputElement | null;
-          if (el) el.checked = checked;
-        };
-        setCheckbox('show-verified-nodes', t.status.verified);
-        setCheckbox('show-failed-nodes', t.status.failed);
-        setCheckbox('show-unverified-nodes', t.status.unverified);
+        Object.assign(state.filters, exactStatusFilter(t.status));
+        syncStatusCheckboxes();
       }
       if (t.depth !== undefined) {
         state.filters.maxDepth = t.depth;
@@ -569,10 +587,27 @@ function initGuidePanel(): void {
   guidePanel = new GuidePanel(guideActions);
 }
 
-function refreshGuidePanel(): void {
-  if (state.fullGraph && guidePanel) {
-    guidePanel.renderSummary(buildGraphSummary(state.fullGraph));
-  }
+// Kind and link type filters the Guide was last rendered with
+let guideFilterKey = '';
+
+/**
+ * Re-render the Guide. Its rankings and chips only name nodes and links the
+ * current kind and link type filters show; counts use the full graph.
+ */
+function refreshGuidePanel(opts: { onlyIfFiltersChanged?: boolean } = {}): void {
+  if (!state.fullGraph || !guidePanel) return;
+  const f = state.filters;
+  const compiled = compileQuery(f, state.projectLanguage);
+  const key = JSON.stringify([
+    compiled.linkTypeFilter, f.showExecFunctions, f.showProofFunctions, f.showSpecFunctions,
+    f.showAxioms, f.showTypes, f.showProjections, f.showInstances,
+  ]);
+  if (opts.onlyIfFiltersChanged && key === guideFilterKey) return;
+  guideFilterKey = key;
+  guidePanel.renderSummary(buildGraphSummary(state.fullGraph, {
+    isCandidate: compiled.traversalPredicates.kindFilter,
+    isLinkShown: link => linkTypeShown(link, compiled.linkTypeFilter),
+  }));
 }
 
 /** Language-aware label for the crate/namespace map view. */
@@ -598,15 +633,15 @@ function updateLanguageLabels(lang: ProjectLanguage): void {
   if (title) title.textContent = `${Noun} Boundary`;
 
   const srcLabel = document.getElementById('source-crate-label');
-  if (srcLabel) srcLabel.textContent = `Source ${Noun} (called):`;
+  if (srcLabel) srcLabel.textContent = `Source ${Noun} (caller):`;
 
   const tgtLabel = document.getElementById('target-crate-label');
-  if (tgtLabel) tgtLabel.textContent = `Target ${Noun} (caller):`;
+  if (tgtLabel) tgtLabel.textContent = `Target ${Noun} (callee):`;
 
   const hint = document.getElementById('crate-boundary-hint');
   if (hint) {
     hint.innerHTML =
-      `Select two ${noun}s to see the <strong>boundary</strong>: functions in the source ${noun} called by the target ${noun}.<br>` +
+      `Select two ${noun}s to see the <strong>boundary</strong>: functions in the source ${noun} that call the target ${noun}.<br>` +
       `In ${mapLabel}: click a ${noun} to set source, click another to set target.`;
   }
 }
@@ -877,18 +912,13 @@ function setupUIHandlers(): void {
   });
 
   // Verification status filters
-  document.getElementById('show-verified-nodes')?.addEventListener('change', (e) => {
-    state.filters.showVerifiedNodes = (e.target as HTMLInputElement).checked;
-    applyFiltersAndUpdate();
-  });
-  document.getElementById('show-failed-nodes')?.addEventListener('change', (e) => {
-    state.filters.showFailedNodes = (e.target as HTMLInputElement).checked;
-    applyFiltersAndUpdate();
-  });
-  document.getElementById('show-unverified-nodes')?.addEventListener('change', (e) => {
-    state.filters.showUnverifiedNodes = (e.target as HTMLInputElement).checked;
-    applyFiltersAndUpdate();
-  });
+  for (const [id, group] of STATUS_CHECKBOXES) {
+    document.getElementById(id)?.addEventListener('change', (e) => {
+      Object.assign(state.filters, withGroupChecked(state.filters, group, (e.target as HTMLInputElement).checked));
+      syncStatusCheckboxes();
+      applyFiltersAndUpdate();
+    });
+  }
 
   // Call type filters are set up dynamically in renderCallTypeFilters()
   // Declaration kind filters are set up dynamically in renderKindFilters()
@@ -2309,6 +2339,7 @@ function updateQueryLabel(q: GraphQuery): void {
  */
 function applyFiltersAndUpdate(): void {
   if (!state.fullGraph) return;
+  refreshGuidePanel({ onlyIfFiltersChanged: true });
 
   // For large graphs with no query intent, render a bounded seeded initial
   // view (entry-point seeds + their depth-limited neighborhood) instead of a
@@ -2347,6 +2378,11 @@ function applyFiltersAndUpdate(): void {
       seededViewInfo = null;
       state.filteredGraph = { nodes: [], links: [], metadata: state.fullGraph.metadata };
     }
+    const shown = state.filteredGraph.nodes.length;
+    lastRenderResult = {
+      shown, total: shown, missingAnchor: false,
+      seeded: seededViewInfo !== null, tooLarge: seededViewInfo === null,
+    };
     // The normal pipeline never runs here, so keep the query label in sync:
     // name the seeded view, or hide a stale label from a cleared query.
     const queryLabel = document.getElementById('query-label');
@@ -2379,6 +2415,11 @@ function applyFiltersAndUpdate(): void {
   updateQueryLabel(compiled.query);
   let filtered = applyFilters(state.fullGraph, state.filters, state.projectLanguage);
 
+  const resultSize = filtered.nodes.length;
+  const anchors = compiled.anchorIds;
+  const missingAnchor = anchors.size > 0 && !isFocusIntent(state.filters.intent)
+    && !filtered.nodes.some(n => anchors.has(n.id));
+
   // Limit rendered nodes for large results to prevent D3 freeze
   // Crate Map and Hierarchy aggregate into group boxes, so truncation would
   // distort their results
@@ -2386,8 +2427,9 @@ function applyFiltersAndUpdate(): void {
   if (!isAggregatedView(activeView) && filtered.nodes.length > MAX_RENDERED_NODES) {
     wasTruncated = true;
     
-    // Keep nodes with highest connectivity (most relevant)
-    const sortedNodes = [...filtered.nodes].sort((a, b) => 
+    // Keep the query's anchors, then the nodes with highest connectivity
+    const sortedNodes = [...filtered.nodes].sort((a, b) =>
+      Number(anchors.has(b.id)) - Number(anchors.has(a.id)) ||
       (b.dependents.length + (b.dependencies?.length || 0)) - (a.dependents.length + (a.dependencies?.length || 0))
     );
     const keptNodes = sortedNodes.slice(0, MAX_RENDERED_NODES);
@@ -2404,6 +2446,8 @@ function applyFiltersAndUpdate(): void {
   }
   
   state.filteredGraph = filtered;
+  lastRenderResult = isAggregatedView(activeView) ? null
+    : { shown: filtered.nodes.length, total: resultSize, missingAnchor, seeded: false, tooLarge: false };
   visualization?.update(state.filteredGraph);
   updateStats(wasTruncated ? filtered.nodes.length : undefined);
   updateNodeInfo();

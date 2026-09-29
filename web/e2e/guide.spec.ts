@@ -1,103 +1,154 @@
 /**
- * Guide chip actions verification test.
- * Verifies: graph shows nodes, query label (no depth=1), tab switch, toast, crate boundary, namespace map.
- * Run: npx playwright test guide.spec.ts --config=playwright.manual.config.ts
+ * E2E tests for the Guide chips on the default Lean graph (public/graph.json,
+ * probe-lean). Expectations are read from the rendered nodes and the URL,
+ * not from counts pinned to the dataset.
  */
-import { test, expect } from '@playwright/test';
-import * as path from 'path';
-import { fileURLToPath } from 'url';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+import { test, expect, type Page } from '@playwright/test';
 
-const BASE_URL = process.env.BASE_URL || 'http://localhost:3001';
-// Pinned to a tracked multi-crate fixture so the Crate boundary / map chips
-// exist and chip labels (derived from the graph's most connected node etc.)
-// don't depend on whatever public/graph.json currently is.
-const APP_PATH = '/probegraph/?json=./graph_backup_dalek.json';
+const TYPE_KINDS = ['structure', 'inductive', 'class'];
 
-test.describe('Guide Chip Actions', () => {
-  test('verify chip actions: Explore double, Crate boundary, Namespace map', async ({
-    page,
-  }) => {
-    const report: string[] = [];
+interface Shown {
+  id: string;
+  kind: string;
+  crate: string;
+  status: string | undefined;
+}
 
-    // Step 1: Navigate and ensure graph loads
-    await page.goto(`${BASE_URL}${APP_PATH}`, { waitUntil: 'networkidle' });
-    const statsBefore = await page.locator('#stats').textContent();
-    if (statsBefore?.includes('No graph loaded')) {
-      const graphPath = path.resolve(__dirname, '../public/graph.json');
-      await page.locator('#file-input').setInputFiles(graphPath);
-      await page.waitForTimeout(2000);
-    }
+async function open(page: Page): Promise<void> {
+  await page.goto('/probegraph/?json=graph.json');
+  await expect(page.locator('#stats')).toContainText('Total Nodes', { timeout: 30000 });
+  await page.locator('#tab-guide').click();
+}
 
-    await page.waitForTimeout(1500);
-    const initialNodes = await page.locator('circle.node').count();
-    report.push(`Step 1: Initial state - ${initialNodes} nodes visible`);
+async function shownNodes(page: Page): Promise<Shown[]> {
+  return page.locator('circle.node').evaluateAll(els => els.map(el => {
+    const d = (el as any).__data__;
+    return { id: d.id, kind: d.kind, crate: d.crate_name, status: d.verification_status };
+  }));
+}
 
-    // Step 2: Click Guide tab
-    await page.locator('#tab-guide').click();
-    await page.waitForTimeout(500);
+/** Rendered links as [source crate, target crate]. */
+async function shownLinkGroups(page: Page): Promise<[string, string][]> {
+  return page.locator('path.link').evaluateAll(els => els.map(el => {
+    const d = (el as any).__data__;
+    return [d.source.crate_name, d.target.crate_name] as [string, string];
+  }));
+}
 
-    // Step 3: Click "Explore double (most connected)" chip
-    const exploreChip = page.locator('.guide-chip').filter({ hasText: /^Explore / }).first();
-    await exploreChip.click();
-    await page.waitForTimeout(2000);
+function chip(page: Page, text: RegExp) {
+  return page.locator('.guide-chip').filter({ hasText: text });
+}
 
-    // Screenshot 3: After Explore double
-    await page.screenshot({
-      path: 'test-screenshots/guide-chips-03-explore-double.png',
-      fullPage: true,
-    });
+/** Click a chip and wait for its toast; the Guide tab must stay active. */
+async function clickChip(page: Page, text: RegExp): Promise<string> {
+  await page.locator('.toast').evaluateAll(els => els.forEach(el => el.remove()));
+  await chip(page, text).click();
+  const toast = page.locator('.toast').last();
+  await expect(toast).toBeVisible();
+  await expect(page.locator('#tab-guide')).toHaveClass(/active/);
+  await expect(page.locator('#panel-guide')).toBeVisible();
+  return (await toast.textContent()) ?? '';
+}
 
-    const nodesAfterExplore = await page.locator('circle.node').count();
-    const nodeDetailsActive = (await page.locator('#tab-node-details').getAttribute('class'))?.includes('active') ?? false;
-    const queryLabelExplore = await page.locator('#query-label').textContent();
-    const hasDepth1 = queryLabelExplore?.includes('depth=1') ?? false;
-    const toastVisible = (await page.locator('.toast').count()) > 0;
+function param(page: Page, key: string): string | null {
+  return new URL(page.url()).searchParams.get(key);
+}
 
-    report.push(`Step 3: After "Explore double" click:`);
-    report.push(`  - Graph nodes visible: ${nodesAfterExplore} (expected 4: double + 3 callers)`);
-    report.push(`  - Query label: "${queryLabelExplore}" (has depth=1: ${hasDepth1}, should be false)`);
-    report.push(`  - Switched to Node Details tab: ${nodeDetailsActive}`);
-    report.push(`  - Toast appeared: ${toastVisible}`);
+test.describe('Guide on the Lean graph', () => {
+  test('summary counts each verification status separately', async ({ page }) => {
+    await open(page);
+    const summary = page.locator('#guide-summary');
+    await expect(summary).toContainText(/Verification: \d+ transitively verified, \d+ verified \(locally only\), \d+ trusted/);
+    await expect(summary).not.toContainText(/verified out of/);
+  });
 
-    // Step 4: Go back to Guide, click Crate boundary chip
-    await page.locator('#tab-guide').click();
-    await page.waitForTimeout(300);
-    const crateChip = page.locator('.guide-chip').filter({ hasText: 'Crate boundary' });
-    await crateChip.click();
-    await page.waitForTimeout(2000);
+  test('namespace boundary: the busiest directed pair, and it is not empty', async ({ page }) => {
+    await open(page);
+    const label = (await chip(page, /boundary/).locator('.chip-label').textContent())!;
+    const [, source, target] = label.match(/boundary: (.+) → (.+)$/)!;
 
-    await page.screenshot({
-      path: 'test-screenshots/guide-chips-04-crate-boundary.png',
-      fullPage: true,
-    });
-    const nodesAfterCrate = await page.locator('circle.node').count();
-    const queryAfterCrate = await page.locator('#query-label').textContent();
-    report.push(`Step 4: After "Crate boundary" - nodes: ${nodesAfterCrate}, query: "${queryAfterCrate}"`);
+    const toast = await clickChip(page, /boundary/);
+    expect(toast).toMatch(new RegExp(`^\\d+ nodes: `));
+    expect(param(page, 'boundary-source')).toBe(source);
+    expect(param(page, 'boundary-target')).toBe(target);
 
-    // Step 5: Go back to Guide, click "View crate/namespace map"
-    await page.locator('#tab-guide').click();
-    await page.waitForTimeout(300);
-    const mapChip = page.locator('.guide-chip').filter({ hasText: 'View crate' });
-    await mapChip.click();
-    await page.waitForTimeout(2000);
+    await expect.poll(async () => (await shownNodes(page)).length).toBeGreaterThan(0);
+    const nodes = await shownNodes(page);
+    expect(nodes.every(n => n.crate === source || n.crate === target)).toBe(true);
+    const links = await shownLinkGroups(page);
+    expect(links.some(([s, t]) => s === source && t === target)).toBe(true);
+  });
 
-    await page.screenshot({
-      path: 'test-screenshots/guide-chips-05-namespace-map.png',
-      fullPage: true,
-    });
-    const crateMapActive = (await page.locator('#view-crate-map').getAttribute('class'))?.includes('active') ?? false;
-    const crateMapNodes = await page.locator('.bp-node, .crate-node, [class*="crate"]').count();
-    report.push(`Step 5: After "View crate/namespace map" - crate map active: ${crateMapActive}, crate elements: ${crateMapNodes}`);
+  test('most connected names a node the kind filters show, and follows them', async ({ page }) => {
+    await open(page);
+    const toast = await clickChip(page, /most connected/);
+    const target = param(page, 'id')!;
+    expect(param(page, 'dir')).toBe('callers');
+    await expect.poll(async () => (await shownNodes(page)).map(n => n.id)).toContain(target);
+    const node = (await shownNodes(page)).find(n => n.id === target)!;
+    expect(TYPE_KINDS).not.toContain(node.kind);
+    expect(toast).toMatch(/^\d+ nodes: callers of .+/);
 
-    // Print report
-    console.log('\n=== GUIDE CHIP ACTIONS REPORT ===');
-    report.forEach((r) => console.log(r));
+    // Showing types re-ranks: the top node overall is a structure on this graph
+    const before = await chip(page, /most connected/).textContent();
+    await page.locator('#show-types').check();
+    await expect(chip(page, /most connected/)).not.toHaveText(before!);
+    await clickChip(page, /most connected/);
+    const typeTarget = param(page, 'id')!;
+    expect(typeTarget).not.toBe(target);
+    await expect.poll(async () => (await shownNodes(page)).find(n => n.id === typeTarget)?.kind)
+      .toMatch(new RegExp(`^(${TYPE_KINDS.join('|')})$`));
+  });
 
-    // Assertions
-    expect(nodeDetailsActive, 'Should switch to Node Details after Explore double').toBe(true);
-    expect(hasDepth1, 'Query label should NOT contain depth=1 (depth should be unlimited)').toBe(false);
-    expect(nodesAfterExplore, 'Graph should show nodes after Explore double').toBeGreaterThanOrEqual(3);
+  test('verified chip selects exactly transitively verified, after a boundary', async ({ page }) => {
+    await open(page);
+    await clickChip(page, /boundary/);
+    await expect.poll(async () => (await shownNodes(page)).length).toBeGreaterThan(0);
+    const boundaryIds = (await shownNodes(page)).map(n => n.id).sort();
+
+    const toast = await clickChip(page, /Show only transitively verified/);
+    expect(toast).toMatch(/^\d+ nodes: transitively-verified only \(entry points view\)$/);
+    const url = new URL(page.url());
+    expect(url.searchParams.get('status')).toBe('transitively-verified');
+    expect(url.searchParams.has('boundary-source')).toBe(false);
+
+    await expect.poll(async () => (await shownNodes(page)).length).toBeGreaterThan(0);
+    const statuses = new Set((await shownNodes(page)).map(n => n.status));
+    expect([...statuses]).toEqual(['transitively-verified']);
+    const verified = page.locator('#show-verified-nodes');
+    expect(await verified.evaluate(el => (el as HTMLInputElement).indeterminate)).toBe(true);
+    await expect(page.locator('#show-failed-nodes')).not.toBeChecked();
+
+    // Back restores the boundary with every status
+    await page.goBack();
+    await expect.poll(async () => (await shownNodes(page)).map(n => n.id).sort()).toEqual(boundaryIds);
+    expect(param(page, 'status')).toBeNull();
+    expect(await verified.evaluate(el => (el as HTMLInputElement).indeterminate)).toBe(false);
+    await expect(verified).toBeChecked();
+  });
+
+  test('checking a status box after the chip keeps the exact selection', async ({ page }) => {
+    await open(page);
+    await clickChip(page, /Show only transitively verified/);
+    await page.locator('#show-unverified-nodes').check();
+    expect(param(page, 'status')).toBe('transitively-verified,unverified');
+    await expect(page.locator('#show-unverified-nodes')).toBeChecked();
+    const statuses = (await shownNodes(page)).map(n => n.status);
+    expect(statuses.every(s => s === 'transitively-verified' || s === 'unverified')).toBe(true);
+  });
+
+  test('clicking the partly checked Verified box selects the whole group', async ({ page }) => {
+    await open(page);
+    await clickChip(page, /Show only transitively verified/);
+    const verified = page.locator('#show-verified-nodes');
+    expect(await verified.evaluate(el => (el as HTMLInputElement).indeterminate)).toBe(true);
+    await expect(verified).not.toBeChecked();
+
+    await verified.click();
+    await expect(verified).toBeChecked();
+    expect(await verified.evaluate(el => (el as HTMLInputElement).indeterminate)).toBe(false);
+    expect(param(page, 'status')).toBeNull();
+    await expect(page.locator('#show-failed-nodes')).not.toBeChecked();
   });
 });

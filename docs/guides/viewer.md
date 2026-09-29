@@ -40,7 +40,7 @@ flat array format. See `web/ARCHITECTURE.md` for the schemas.
 - **Crate Map** — one node per crate, edges weighted by call count. For Lean
   graphs the button is relabeled **Namespace Map** and grouping uses the first
   two path segments (e.g. `ArkLib/Data`). Click one crate then another to set
-  a boundary query (functions in the source crate called by the target crate);
+  a boundary query (functions in the source crate that call the target crate);
   double-click a crate to open it in the Call Graph.
 
 The algorithms are specified in `web/docs/technical/`.
@@ -93,7 +93,9 @@ Mapping (cross-language Rust↔Lean) and Specifications (Lean def → spec
 theorem) edges, both on. Lean-only graphs hide this section.
 
 **Verification Status** has three toggles: verified-like (verified,
-transitively verified, trusted), failed, and unverified/unknown.
+transitively verified, trusted), failed, and unverified/unknown. A Guide
+suggestion can select an exact status (e.g. transitively verified only); the
+Verified box then shows as partly checked.
 
 **Language** appears only for mixed graphs: show/hide Rust (or Verus) and
 Lean nodes. The filter applies after traversal, so paths crossing the hidden
@@ -165,6 +167,7 @@ non-default values are included. All parameters:
 | `exec`, `proof`, `spec`, `axioms`, `types`, `proj`, `inst` | kind toggles (`1`/`0`) |
 | `inner`, `pre`, `post`, `mapping`, `speclinks` | edge-type toggles (`1`/`0`) |
 | `verified`, `failed`, `unverified` | verification-status toggles (`1`/`0`) |
+| `status` | exact status set, comma-separated (e.g. `transitively-verified`) |
 | `libsignal`, `external` | source-type toggles (`1`/`0`) |
 
 Copy Link omits the edge-type parameters for Lean graphs, where that filter
@@ -173,8 +176,18 @@ section doesn't exist.
 ## Guide tab
 
 The right sidebar has a **Guide (testing)** tab with a statically computed
-graph overview and suggested queries; clicking a suggestion fills the filters.
-No LLM is involved.
+graph overview and suggested queries. No LLM is involved.
+
+- Counts use the whole graph, with transitively verified, verified (locally
+  only) and trusted reported separately.
+- Suggestions only name nodes and edges the current kind and edge-type
+  filters show, and update when those filters change.
+- The boundary suggestion is the pair of crates or namespaces with the most
+  edges in that direction.
+- "Show only transitively verified" selects that status alone (graphs without
+  it get "Show only verified").
+- Clicking a suggestion keeps the Guide open; a toast reports the result, e.g.
+  "180 nodes: callers of GF16", and notes truncation. Browser back undoes it.
 
 ## VS Code
 

@@ -280,6 +280,7 @@ export interface FilterOptions {
   showVerifiedNodes: boolean;      // Show verified nodes (default: true)
   showFailedNodes: boolean;        // Show failed nodes (default: true)
   showUnverifiedNodes: boolean;    // Show unverified/unknown nodes (default: true)
+  exactStatuses: VerificationStatus[] | null;  // Set by a Guide action; overrides the three above (default: null)
   // Pattern-based exclusion (comma-separated glob patterns)
   excludeNamePatterns: string;     // Matches display_name, e.g., "*_comm*, lemma_mul_*"
   excludePathPatterns: string;     // Matches node ID path, e.g., "*/specs/*, */common_lemmas/*"
