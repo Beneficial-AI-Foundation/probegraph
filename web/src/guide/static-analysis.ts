@@ -5,31 +5,44 @@
  * displayed as onboarding content in the guide panel.
  */
 
-import type { D3Graph, D3Node, ProjectLanguage } from '../types';
+import type { D3Graph, D3Link, D3Node, ProjectLanguage } from '../types';
 import { detectProjectLanguage, isVerifiedStatus } from '../types';
+import { getLinkId } from '../query';
 import type {
-  GraphSummary, CrateSummary, VerificationBreakdown,
+  GraphSummary, CrateSummary, GroupBoundary, VerificationBreakdown,
   KindBreakdown, NodeRank, SuggestedQuery,
 } from './types';
 
-export function buildGraphSummary(graph: D3Graph): GraphSummary {
+/** What the current filters show; the rankings and chips only name these. */
+export interface SummaryVisibility {
+  isCandidate: (node: D3Node) => boolean;  // kind filters
+  isLinkShown: (link: D3Link) => boolean;  // link type filters
+}
+
+const SHOW_ALL: SummaryVisibility = { isCandidate: () => true, isLinkShown: () => true };
+
+/** Counts always use the full graph; `visibility` only restricts rankings and chips. */
+export function buildGraphSummary(graph: D3Graph, visibility: SummaryVisibility = SHOW_ALL): GraphSummary {
+  const { isCandidate } = visibility;
   const lang = detectProjectLanguage(graph);
   const nodes = graph.nodes;
   const links = graph.links;
+  const candidates = nodes.filter(isCandidate);
 
   const crates = computeCrates(nodes);
+  const boundary = computeBoundary(graph, visibility);
   const files = computeFiles(nodes);
   const verification = computeVerification(nodes);
   const kinds = computeKinds(nodes);
-  const topConnected = computeTopConnected(nodes, 5);
-  const unverifiedHotspots = computeUnverifiedHotspots(nodes, graph, 5);
+  const topConnected = computeTopConnected(candidates, 5);
+  const unverifiedHotspots = computeUnverifiedHotspots(candidates, nodes, 5);
   const failedNodes = nodes
     .filter(n => n.verification_status === 'failed')
     .map(nodeToRank)
     .sort((a, b) => b.dependentCount - a.dependentCount);
 
   const suggestedQueries = generateSuggestedQueries(
-    lang, crates, verification, topConnected, unverifiedHotspots, failedNodes,
+    lang, crates, boundary, verification, topConnected, unverifiedHotspots, failedNodes,
   );
 
   return {
@@ -37,6 +50,7 @@ export function buildGraphSummary(graph: D3Graph): GraphSummary {
     totalNodes: nodes.length,
     totalEdges: links.length,
     crates,
+    boundary,
     files,
     verification,
     kinds,
@@ -61,6 +75,38 @@ function computeCrates(nodes: D3Node[]): CrateSummary[] {
     .sort((a, b) => b.nodeCount - a.nodeCount);
 }
 
+/**
+ * Directed group pair with the most shown links between candidate nodes,
+ * ties broken by name. Links point caller -> callee, so `source` is the
+ * callers' group. Null when no link crosses groups.
+ */
+function computeBoundary(graph: D3Graph, { isCandidate, isLinkShown }: SummaryVisibility): GroupBoundary | null {
+  const nodeMap = new Map(graph.nodes.map(n => [n.id, n]));
+  const counts = new Map<string, GroupBoundary>();
+  for (const link of graph.links) {
+    if (!isLinkShown(link)) continue;
+    const { sourceId, targetId } = getLinkId(link);
+    const s = nodeMap.get(sourceId);
+    const t = nodeMap.get(targetId);
+    if (!s || !t || !isCandidate(s) || !isCandidate(t)) continue;
+    // 'unknown' is the fallback name, not a group the dropdowns offer
+    if (s.crate_name === t.crate_name || s.crate_name === 'unknown' || t.crate_name === 'unknown') continue;
+    const key = `${s.crate_name}\0${t.crate_name}`;
+    const entry = counts.get(key) ?? { source: s.crate_name, target: t.crate_name, edgeCount: 0 };
+    entry.edgeCount++;
+    counts.set(key, entry);
+  }
+  let best: GroupBoundary | null = null;
+  for (const b of counts.values()) {
+    if (!best || b.edgeCount > best.edgeCount
+      || (b.edgeCount === best.edgeCount && (b.source < best.source
+        || (b.source === best.source && b.target < best.target)))) {
+      best = b;
+    }
+  }
+  return best;
+}
+
 function computeFiles(nodes: D3Node[]): string[] {
   const files = new Set<string>();
   for (const n of nodes) {
@@ -71,15 +117,17 @@ function computeFiles(nodes: D3Node[]): string[] {
 }
 
 function computeVerification(nodes: D3Node[]): VerificationBreakdown {
-  const result: VerificationBreakdown = { verified: 0, failed: 0, unverified: 0 };
+  const result: VerificationBreakdown = {
+    verified: 0, transitivelyVerified: 0, trusted: 0, failed: 0, unverified: 0, unknown: 0,
+  };
   for (const n of nodes) {
     switch (n.verification_status) {
-      case 'verified':
-      case 'transitively-verified':
-      case 'trusted':
-        result.verified++; break;
+      case 'verified': result.verified++; break;
+      case 'transitively-verified': result.transitivelyVerified++; break;
+      case 'trusted': result.trusted++; break;
       case 'failed': result.failed++; break;
-      default: result.unverified++; break;
+      case 'unverified': result.unverified++; break;
+      default: result.unknown++; break;
     }
   }
   return result;
@@ -108,24 +156,24 @@ function nodeToRank(n: D3Node): NodeRank {
 
 function computeTopConnected(nodes: D3Node[], limit: number): NodeRank[] {
   return [...nodes]
-    .sort((a, b) => (b.dependents?.length || 0) - (a.dependents?.length || 0))
+    .sort((a, b) => (b.dependents?.length || 0) - (a.dependents?.length || 0) || a.id.localeCompare(b.id))
     .slice(0, limit)
     .map(nodeToRank);
 }
 
 /**
- * Find unverified nodes that have the most verified callers.
- * These are high-priority verification targets.
+ * Find unverified candidates that have the most verified callers (callers
+ * counted over all nodes). These are high-priority verification targets.
  */
 function computeUnverifiedHotspots(
+  candidates: D3Node[],
   nodes: D3Node[],
-  _graph: D3Graph,
   limit: number,
 ): NodeRank[] {
   const nodeMap = new Map(nodes.map(n => [n.id, n]));
 
   const hotspots: Array<NodeRank & { verifiedCallerCount: number }> = [];
-  for (const n of nodes) {
+  for (const n of candidates) {
     if (isVerifiedStatus(n.verification_status) || n.verification_status === 'failed') continue;
     let verifiedCallers = 0;
     for (const depId of n.dependents || []) {
@@ -138,13 +186,14 @@ function computeUnverifiedHotspots(
   }
 
   return hotspots
-    .sort((a, b) => b.verifiedCallerCount - a.verifiedCallerCount)
+    .sort((a, b) => b.verifiedCallerCount - a.verifiedCallerCount || a.id.localeCompare(b.id))
     .slice(0, limit);
 }
 
 function generateSuggestedQueries(
   lang: ProjectLanguage,
   crates: CrateSummary[],
+  boundary: GroupBoundary | null,
   verification: VerificationBreakdown,
   topConnected: NodeRank[],
   unverifiedHotspots: NodeRank[],
@@ -183,20 +232,27 @@ function generateSuggestedQueries(
     });
   }
 
-  if (crates.length >= 2) {
-    const [c1, c2] = crates;
+  if (boundary) {
+    const noun = lang === 'lean' ? 'Namespace' : 'Crate';
     queries.push({
-      label: `Crate boundary: ${c1.name} / ${c2.name}`,
-      description: `See how the two largest modules interact`,
-      action: { type: 'setCrateBoundary', source: c1.name, target: c2.name },
+      label: `${noun} boundary: ${boundary.source} → ${boundary.target}`,
+      description: `${boundary.edgeCount} edges, the most between any two ${noun.toLowerCase()}s`,
+      action: { type: 'setCrateBoundary', source: boundary.source, target: boundary.target },
     });
   }
 
-  if (verification.verified > 0 && verification.unverified > 0) {
+  // Transitively verified is the strongest status; extracts without the
+  // enrichment step (or older ones) only have locally verified
+  const total = verificationTotal(verification);
+  const transitive = verification.transitivelyVerified > 0;
+  const selected = transitive ? verification.transitivelyVerified : verification.verified;
+  if (selected > 0 && selected < total) {
     queries.push({
-      label: 'Show only verified functions',
-      description: `${verification.verified} verified out of ${verification.verified + verification.failed + verification.unverified}`,
-      action: { type: 'filterVerification', statuses: ['verified'] },
+      label: transitive ? 'Show only transitively verified' : 'Show only verified',
+      description: transitive
+        ? `${selected} of ${total}, with every dependency verified or trusted`
+        : `${selected} of ${total}`,
+      action: { type: 'filterVerification', statuses: [transitive ? 'transitively-verified' : 'verified'] },
     });
   }
 
@@ -209,6 +265,10 @@ function generateSuggestedQueries(
   }
 
   return queries;
+}
+
+function verificationTotal(v: VerificationBreakdown): number {
+  return v.verified + v.transitivelyVerified + v.trusted + v.failed + v.unverified + v.unknown;
 }
 
 /**
@@ -224,10 +284,16 @@ export function formatSummaryText(summary: GraphSummary): string {
 
   // Verification
   const v = summary.verification;
-  const total = v.verified + v.failed + v.unverified;
-  if (v.verified > 0 || v.failed > 0) {
-    const pct = total > 0 ? Math.round((v.verified / total) * 100) : 0;
-    lines.push(`Verification: ${v.verified} verified (${pct}%), ${v.failed} failed, ${v.unverified} unverified/unknown.`);
+  if (v.unknown < verificationTotal(v)) {
+    const parts: [number, string][] = [
+      [v.transitivelyVerified, 'transitively verified'],
+      [v.verified, v.transitivelyVerified > 0 ? 'verified (locally only)' : 'verified'],
+      [v.trusted, 'trusted'],
+      [v.failed, 'failed'],
+      [v.unverified, 'unverified'],
+      [v.unknown, 'without status'],
+    ];
+    lines.push(`Verification: ${parts.filter(([n]) => n > 0).map(([n, what]) => `${n} ${what}`).join(', ')}.`);
   }
 
   // Crates

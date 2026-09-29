@@ -10,6 +10,7 @@ import {
   isDirectionalIntent,
 } from './intent';
 import { URLViewState, defaultFilters, readURLState, writeURLState } from './url-state';
+import { exactStatusFilter } from './status-filter';
 import { compileQuery, executeQuery } from './query';
 import { D3Graph, D3Node, FilterOptions } from './types';
 
@@ -229,6 +230,19 @@ describe('URL round trip for state outside the intent', () => {
     expect(f.showLeanNodes).toBe(false);
   });
 
+  it('exact status set: written as status=, read back with the toggles derived from it', () => {
+    const exact = filtersWith(exactStatusFilter(['transitively-verified', 'failed']));
+    expect(write(exact).get('status')).toBe('transitively-verified,failed');
+    const f = roundTrip(exact);
+    expect(f.exactStatuses).toEqual(['transitively-verified', 'failed']);
+    expect([f.showVerifiedNodes, f.showFailedNodes, f.showUnverifiedNodes]).toEqual([true, true, false]);
+    expect(write(defaultFilters()).has('status')).toBe(false);
+    // Unknown values are dropped; nothing valid left means no exact set
+    const read = (q: string) => readURLState(new URLSearchParams(q), defaultFilters(), graph()).filters;
+    expect(read('status=trusted,bogus').exactStatuses).toEqual(['trusted']);
+    expect(read('status=bogus').exactStatuses).toBeNull();
+  });
+
   it('every param goes back to default when its filter does (delete before set)', () => {
     const nonDefault = filtersWith({
       intent: textIntent('foo', 'bar'),
@@ -243,6 +257,7 @@ describe('URL round trip for state outside the intent', () => {
       showLibsignal: false, showNonLibsignal: false,
       showRustNodes: false, showLeanNodes: false,
       showVerifiedNodes: false, showFailedNodes: false, showUnverifiedNodes: false,
+      exactStatuses: ['trusted'],
       excludeNamePatterns: '*_x', excludePathPatterns: '*/specs/*',
     });
     const dirty = write(nonDefault, { view: 'hierarchy', hierarchyExpanded: ['x'], sourceCrate: 'x', targetCrate: 'y' });

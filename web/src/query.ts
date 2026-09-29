@@ -11,12 +11,13 @@
  */
 
 import {
-  D3Graph, D3Node, D3Link, FilterOptions, ProjectLanguage,
+  D3Graph, D3Node, D3Link, FilterOptions, ProjectLanguage, VerificationStatus,
   compileKindPredicate,
 } from './types';
 import {
   globToRegex, asSubstringGlob, matchesQuery,
 } from './filters';
+import { compileStatusPredicate } from './status-filter';
 import { QueryIntent, anchorIds, isDirectionalIntent, isFocusIntent } from './intent';
 
 // ============================================================================
@@ -66,6 +67,7 @@ export interface DisplayPredicates {
   showVerifiedNodes: boolean;
   showFailedNodes: boolean;
   showUnverifiedNodes: boolean;
+  exactStatuses: VerificationStatus[] | null;
   showRustNodes: boolean;
   showLeanNodes: boolean;
 }
@@ -169,7 +171,7 @@ function isCrateQuery(query: string): boolean {
   return query.startsWith('crate:');
 }
 
-function getLinkId(link: D3Link): { sourceId: string; targetId: string } {
+export function getLinkId(link: D3Link): { sourceId: string; targetId: string } {
   const sourceId = typeof link.source === 'string' ? link.source : link.source.id;
   const targetId = typeof link.target === 'string' ? link.target : link.target.id;
   return { sourceId, targetId };
@@ -411,20 +413,23 @@ export function crateBoundary(
   return { nodeIds, boundaryLinkPairs };
 }
 
+/** Whether a link's type passes the filter. */
+export function linkTypeShown(link: D3Link, filter: LinkTypeFilter): boolean {
+  const t = link.type || 'inner';
+  if (t === 'calls' || t === 'inner') return filter.showInnerCalls;
+  if (t === 'precondition') return filter.showPreconditionCalls;
+  if (t === 'postcondition') return filter.showPostconditionCalls;
+  if (t === 'mapping') return filter.showMappingLinks;
+  if (t === 'spec') return filter.showSpecLinks;
+  return true;
+}
+
 /** Keep only links whose type passes the filter. */
 export function filterLinksByType(
   links: D3Link[],
   filter: LinkTypeFilter,
 ): D3Link[] {
-  return links.filter(link => {
-    const t = link.type || 'inner';
-    if (t === 'calls' || t === 'inner') return filter.showInnerCalls;
-    if (t === 'precondition') return filter.showPreconditionCalls;
-    if (t === 'postcondition') return filter.showPostconditionCalls;
-    if (t === 'mapping') return filter.showMappingLinks;
-    if (t === 'spec') return filter.showSpecLinks;
-    return true;
-  });
+  return links.filter(link => linkTypeShown(link, filter));
 }
 
 /** Keep only links that follow the BFS depth tree (no shortcut edges). */
@@ -532,6 +537,7 @@ export function compileSeededDisplayPredicate(
   const passesKind = compileKindPredicate(filters, projectLanguage);
   const excludeName = parseExcludePatterns(filters.excludeNamePatterns);
   const excludePath = parseExcludePatterns(filters.excludePathPatterns);
+  const passesStatus = compileStatusPredicate(filters);
   return (node: D3Node) => {
     if (filters.hiddenNodes.has(node.id)) return false;
     if (!passesKind(node.kind || 'exec')) return false;
@@ -540,11 +546,7 @@ export function compileSeededDisplayPredicate(
     if (nodeIsFromBuildArtifact(node)) return false;
     if (node.is_libsignal && !filters.showLibsignal) return false;
     if (!node.is_libsignal && !filters.showNonLibsignal) return false;
-    const vs = node.verification_status;
-    const isVerifiedLike = vs === 'verified' || vs === 'transitively-verified' || vs === 'trusted';
-    if (isVerifiedLike && !filters.showVerifiedNodes) return false;
-    if (vs === 'failed' && !filters.showFailedNodes) return false;
-    if ((vs === 'unverified' || !vs) && !filters.showUnverifiedNodes) return false;
+    if (passesStatus && !passesStatus(node)) return false;
     return true;
   };
 }
@@ -588,6 +590,7 @@ export function compileQuery(
     showVerifiedNodes: filters.showVerifiedNodes,
     showFailedNodes: filters.showFailedNodes,
     showUnverifiedNodes: filters.showUnverifiedNodes,
+    exactStatuses: filters.exactStatuses,
     showRustNodes: filters.showRustNodes ?? true,
     showLeanNodes: filters.showLeanNodes ?? true,
   };
@@ -823,18 +826,8 @@ export function executeQuery(
     });
   }
 
-  const allStatusShown = displayPredicates.showVerifiedNodes
-    && displayPredicates.showFailedNodes && displayPredicates.showUnverifiedNodes;
-  if (!allStatusShown) {
-    resultNodes = resultNodes.filter(n => {
-      const vs = n.verification_status;
-      const isVerifiedLike = vs === 'verified' || vs === 'transitively-verified' || vs === 'trusted';
-      if (isVerifiedLike && !displayPredicates.showVerifiedNodes) return false;
-      if (vs === 'failed' && !displayPredicates.showFailedNodes) return false;
-      if ((vs === 'unverified' || !vs) && !displayPredicates.showUnverifiedNodes) return false;
-      return true;
-    });
-  }
+  const passesStatus = compileStatusPredicate(displayPredicates);
+  if (passesStatus) resultNodes = resultNodes.filter(passesStatus);
 
   // Language filter (post-traversal so BFS can still reach cross-language nodes)
   if (!displayPredicates.showRustNodes || !displayPredicates.showLeanNodes) {
@@ -899,8 +892,13 @@ export function executeQuery(
   resultLinks = filterLinksByType(resultLinks, linkTypeFilter);
 
   // -- Step 7: cleanup --
-  const keepSet = new Set([...focusConfig.focusNodeIds, ...anchorIds]);
-  resultNodes = removeIsolated(resultNodes, resultLinks, keepSet);
+  // An exact status selection without a query keeps every node it matches,
+  // even when the status filter removed all its links
+  const keepAllMatches = query.type === 'noTraversal' && displayPredicates.exactStatuses !== null;
+  if (!keepAllMatches) {
+    const keepSet = new Set([...focusConfig.focusNodeIds, ...anchorIds]);
+    resultNodes = removeIsolated(resultNodes, resultLinks, keepSet);
+  }
 
   // Build nodeDepths
   let nodeDepths: Map<string, number> | undefined;

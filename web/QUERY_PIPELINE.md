@@ -191,6 +191,7 @@ Applied **after** traversal, so they don't affect reachability:
 | `showVerifiedNodes` | true | `verified`, `transitively-verified`, `trusted` |
 | `showFailedNodes` | true | `failed` |
 | `showUnverifiedNodes` | true | `unverified` or no status |
+| `exactStatuses` | null | when set (by a Guide action), only these statuses pass; overrides the three toggles above. Toggling a box keeps the exact selection of the other groups (`src/status-filter.ts`) |
 | `showRustNodes` / `showLeanNodes` | true | node `language` (post-traversal so BFS can pass through cross-language nodes) |
 
 ### 3.10 Max Depth (`maxDepth`)
@@ -267,7 +268,7 @@ For `crateBoundary` queries, only links whose `(source, target)` pair is in `bou
 
 ### Step 7 — Cleanup and build metadata
 
-1. **Remove isolated nodes** — nodes with no remaining edges, except focus-set and exact intent IDs (anchors).
+1. **Remove isolated nodes** — nodes with no remaining edges, except focus-set and exact intent IDs (anchors). Skipped for an exact status selection without a query, so every matching node shows.
 2. **Build `nodeDepths`** — a `Map<string, number>` attached to the result `D3Graph` for depth-based layout coloring. Merged from forward/backward traversal depths, taking the minimum when a node appears in both.
 3. **Deep copy** — nodes and links are shallow-cloned to prevent D3's force simulation from mutating the original graph.
 
@@ -352,6 +353,7 @@ Other state:
 | `libsignal` / `external` | `showLibsignal` / `showNonLibsignal` (0/1) | `?external=0` |
 | `rust` / `lean` | `showRustNodes` / `showLeanNodes` (0/1) | `?lean=0` |
 | `verified` / `failed` / `unverified` | `showVerifiedNodes` / `showFailedNodes` / `showUnverifiedNodes` (0/1) | `?unverified=0` |
+| `status` | `exactStatuses` (comma-joined); the three toggles are derived from it | `?status=transitively-verified` |
 | `excludeName` | `excludeNamePatterns` | `?excludeName=*_comm*` |
 | `excludePath` | `excludePathPatterns` | `?excludePath=*/specs/*` |
 | `hide` (repeated) | `hiddenNodes` (IDs) | `?hide=probe:A` |
