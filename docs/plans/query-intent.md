@@ -33,25 +33,34 @@ environment.
 export type QueryIntent =
   | { kind: 'none' }
   | { kind: 'text'; source: string; sink: string }
-  | { kind: 'ids'; ids: string[]; dir: IdDirection; label: string; origin: IdOrigin }
+  | { kind: 'ids'; ids: string[]; dir: 'none'; label: string; origin: FocusOrigin }
+  | { kind: 'ids'; ids: [string, ...string[]]; dir: IdDirection; label: string; origin: ExactOrigin }
   | { kind: 'boundary'; sourceGroup: string; targetGroup: string };
 
 export type IdDirection = 'none' | 'callers' | 'callees' | 'both';
-export type IdOrigin =
-  | { type: 'focus'; url: string }   // ?focus= set
+export type FocusOrigin = { type: 'focus'; url: string };  // ?focus= set
+export type ExactOrigin =
   | { type: 'guide' }
   | { type: 'vscode' }
-  | { type: 'drilldown' };           // Phase 5
+  | { type: 'drilldown' };                                 // Phase 5
 ```
+
+The two `ids` variants rule out shapes the URL cannot encode: a focus
+set never traverses (only `focus=` is written, so a direction would be
+lost), and a non-focus ID set is never empty (it writes no `id` param
+and would reload as `none`).
 
 - `text` is what the user typed, including `crate:` patterns, with today's
   semantics (substring/glob, case-insensitive).
 - `ids` is exact. `dir: 'none'` shows the set itself (today's focus set);
   the other directions traverse from it. `label` is for the toast, the
   query label and the input boxes; `origin` decides URL serialization.
-  `ids: []` shows nothing (today an empty focus set means "no
-  restriction", `query.ts:764`); a focus set that resolves to no IDs
-  yields this empty intent, not `none`.
+  Labels, IDs and group names can come from the URL, so they are always
+  rendered as text (`textContent`), never through `innerHTML`; the query
+  label does the latter today (#44).
+  `ids: []` (focus origin only) shows nothing (today an empty focus
+  set means "no restriction", `query.ts:764`); a focus set that resolves
+  to no IDs yields this empty intent, not `none`.
 - `boundary` names two groups exactly (Phase 1.2). Typing `crate:a` into
   both inputs stays a `text` intent with substring matching.
 - IDs are an array, not a `Set`, so intents compare and serialize simply;
@@ -82,10 +91,16 @@ One entry point in `main.ts`:
 function setIntent(intent: QueryIntent, opts: { history: 'push' | 'replace' }): void
 ```
 
-It clears `selectedNodes`/`selectedNode`, bumps `intentGeneration`, syncs
-the inputs and crate dropdowns from the intent, calls
-`resumeDeferredEntrypoints()` when the new intent is not a focus intent,
-applies, and writes history (see History).
+It clears `selectedNodes`/`selectedNode` and `pendingFocus`, bumps
+`intentGeneration`, syncs the inputs and crate dropdowns from the
+intent, calls `resumeDeferredEntrypoints()` when the new intent is not a
+focus intent, applies, and writes history (see History).
+
+Typing calls `setIntent` on every input event, so the intent, the
+generation and the history entry are committed at once. On large graphs
+only the apply is debounced, as `debouncedApplyFilters` does today
+(`main.ts:1033`). The URL is built from state, not from the render, so
+the debounced apply's own `replaceState` writes the same URL.
 
 | Writer | New intent | History |
 |---|---|---|
@@ -100,9 +115,13 @@ applies, and writes history (see History).
 | Guide action | from the action (below) | push |
 | `popstate` | from URL (below) | none |
 
-While `?focus=` is loading the intent is `none`. `focusJsonUrl` holds the
-pending URL, so the address bar keeps `focus=` until the load settles. A
-failed load leaves `none` and shows the error.
+While `?focus=` is loading the intent is `none` and
+`pendingFocus: { url, generation } | null` records the load. It replaces
+`focusJsonUrl`. `generateShareableURL` writes `focus=<url>` from it, so an
+unrelated edit during the load (depth slider) keeps `focus=` in the
+address bar. A failed load clears `pendingFocus`, leaves `none`, shows
+the error and drops `focus=` from the URL with `replaceState`: the URL
+describes what is shown.
 
 VS Code details. `initialQuery.depth`, when present, is applied as the
 depth; otherwise a directional `ids` intent uses unlimited depth, as Guide
@@ -190,7 +209,7 @@ per predicate and is left to Phase 4.
 
 | Intent | Params written | Notes |
 |---|---|---|
-| `none` | none | |
+| `none` | none | `focus=<url>` while `pendingFocus` is set |
 | `text` | `source`, `sink` | unchanged |
 | `ids`, origin focus | `focus=<url>` | IDs are not serialized; the set can be thousands of nodes |
 | `ids`, other origins | `id` (repeated, one per ID), `dir`, `label` | repeated params because Rust IDs can contain commas |
@@ -198,7 +217,12 @@ per predicate and is left to Phase 4.
 
 `source-crate` / `target-crate` keep meaning the Crate Map highlight only.
 An old Call Graph link with both set and `crate:` source/sink still loads
-as a `text` intent, with today's substring matching.
+as a `text` intent, with today's substring matching. A hand-written link
+with only the two crate params and no source/sink no longer runs a
+boundary query (today `main.ts:2271` builds `crate:` source/sink from
+them); it only highlights on the Crate Map. This break is accepted:
+links the viewer writes always carry source/sink. `QUERY_PIPELINE.md`
+(line 338) is updated in the implementation PR.
 
 Reading precedence when an old or hand-edited URL has several:
 `id` > `focus` > `boundary-source`+`boundary-target` > `source`/`sink`.
@@ -242,12 +266,21 @@ expanded nodes and the node shown in the details panel.
   unrelated edit, and `switchView` writes the URL twice.
 - `updateURLWithFilters` (`main.ts:2521`) keeps `replaceState` for
   ordinary edits outside `setIntent` (depth slider, kind toggles).
-- Typing over a pushed intent pushes once. After a Guide transition, the
-  first input edit uses `push`, later edits `replace`, until the next
-  `setIntent` with `push`. So state A, chip B, typing C gives three
-  entries, and back from C returns to B.
+- Typing over a pushed intent pushes once. The marker lives in the
+  history entry, not in memory: `setIntent` with `push` calls
+  `pushState({ pushed: true }, ...)`, and every other write stores
+  `{ pushed: false }`. An input edit pushes when `history.state?.pushed`
+  is true and replaces otherwise. So state A, chip B, typing C gives three
+  entries, and back from C returns to B. The rule holds after back or a
+  reload of B, since `history.state` survives both: typing there pushes
+  again (dropping the forward entries, as browsers do) instead of
+  overwriting B.
 - A `popstate` handler calls `stateFromURL`, syncs the UI, restores the
-  view, and applies without writing history. If the URL has a `focus`
+  view, and applies without writing history. `stateFromURL` also resets
+  `seededRequestedDepth` (`main.ts:1519`) to `null`, as `loadGraph` does
+  (`main.ts:2175`), so the seeded render derives it from the restored
+  depth. Without this, "seeded view A at depth 1, chip B, slider to 5,
+  back" renders A at depth 5 while the URL says 1. If the URL has a `focus`
   whose IDs are already cached (map from URL to resolved IDs, filled by
   `loadFocusSet`), it does not refetch. The cache is cleared on every
   `loadGraph`, since resolution depends on the graph (the name/path
@@ -255,13 +288,22 @@ expanded nodes and the node shown in the details panel.
 
 ## Async loads
 
-`intentGeneration` is bumped by every `setIntent` and by `stateFromURL`.
-`loadFocusSet` (`main.ts:1680`) records it before `fetch`. If it changed
-when the fetch settles, the result is dropped: no intent change, no focus
-indicator update and no error toast. The `finally` block still calls
-`resumeDeferredEntrypoints()`, which resumes when the current intent is
-not a focus intent, so a chip clicked during the load does not leave the
-entry points deferred. Entry points need no intent token: they only feed
+`intentGeneration` is bumped by every `setIntent`, by `stateFromURL`,
+and by a node click that changes `selectedNodes` while the intent is
+`none` (it compiles to `depthFromSelected`, so it is a newer query; the
+click wins over a pending focus set and clears `pendingFocus`).
+`loadFocusSet` (`main.ts:1680`) sets `pendingFocus` with the current
+generation before `fetch`. If the generation changed when the fetch
+settles, the result is dropped: no intent change, no `pendingFocus`
+change, no focus indicator update and no error toast. The `finally`
+block still calls `resumeDeferredEntrypoints()`, which resumes only when
+`pendingFocus` is null and the current intent is not a focus intent. So a
+chip clicked during the load does not leave the entry points deferred,
+and a stale fetch does not resume them while a newer focus load is
+pending (back to another uncached `focus=` URL). A focus set with no
+matches is an `ids: []` focus intent, so entry points stay deferred
+until the focus set is cleared; today such a load hands over to them
+(`main.ts:1779`). Entry points need no intent token: they only feed
 the seeded view, which is used only while `hasSearchFilters()` is false,
 so a late response cannot override an intent.
 
@@ -271,11 +313,13 @@ so a late response cannot override an intent.
 for each param in the state table (depth finite, default and unlimited;
 `sel`; language; status; `hide`), precedence with mixed params, old
 `hidden` names, the delete-before-set fix, `compileQuery` mapping for each
-row of the table above including `ids: []`, and directional file-filter
-placement. `e2e/guide.spec.ts` gets the Phase 1.7 cases (chip after
+row of the table above including `ids: []`, directional file-filter
+placement, and markup in `label`, IDs and group names rendered as text. `e2e/guide.spec.ts` gets the Phase 1.7 cases (chip after
 focus, after a VS Code-style ID intent, after a finite-depth selection;
-back after a chip; back after typing over a chip; a delayed `?focus=`
-arriving after a chip, with entry points resumed). About 50 test call sites
+back after a chip; back after typing over a chip; typing after back to
+a chip; back from a chip to a seeded view after a depth change; a
+delayed `?focus=` arriving after a chip or a node click, with entry
+points resumed; a slider edit during a focus load keeping `focus=`). About 50 test call sites
 in `filters.test.ts`, `query.test.ts` and `query.integration.test.ts`
 construct `sourceQuery`/`sinkQuery`; they move to a `textIntent(source,
 sink)` helper.
@@ -294,7 +338,11 @@ An exact input is marked and has the full ID in the tooltip. Editing
 either input switches to a `text` intent from the input contents. Focus
 and boundary labels never sit in an input, and for `callers` / `callees`
 the other input is empty, so no display-only label becomes a search
-string. For `both` the other side's label is kept as text, matching how
-typing clears `selectedNodeId` today. No read-only mode: typing is already a signal
+string. For `both`, editing one input clears the other, so the edit
+gives `callees` (source) or `callers` (sink) of the typed text. Keeping
+the label would turn it into a substring match on the display name, and
+two different strings dispatch `paths` (`query.ts:587`). This departs
+from today, where typing clears `selectedNodeId` but keeps the other
+string. No read-only mode: typing is already a signal
 for a new query, and the first edit after a Guide action pushes (see
 History), so back returns to the chip's result.
