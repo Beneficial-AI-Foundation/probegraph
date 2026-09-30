@@ -31,6 +31,21 @@ test('Include Files on a deferred graph loads the code layer with the filter', a
   expect(param(page, 'layer')).toBe('code');
 });
 
+test('a shared link to a deferred graph shows its query and loads it', async ({ page }) => {
+  await serveLarge(page, FIXTURE);
+  await page.goto('/probegraph/?json=/large.json&layer=code&files=Collatz.lean&source=collatz_conjecture');
+  await expect(page.locator('#load-graph-btn')).toBeVisible({ timeout: 15000 });
+  await expect(page.locator('#source-input')).toHaveValue('collatz_conjecture');
+  await expect(page.locator('#include-files')).toHaveValue('Collatz.lean');
+
+  await page.locator('#load-graph-btn').click();
+  await expect(page.locator('#layer-code')).toHaveClass(/active/, { timeout: 15000 });
+  await expect(page.locator('#source-input')).toHaveValue('collatz_conjecture');
+  await expect(nodes(page)).toHaveCount(2);
+  expect(param(page, 'source')).toBe('collatz_conjecture');
+  expect(param(page, 'files')).toBe('Collatz.lean');
+});
+
 test('an ambiguous Include Files pattern finishes loading the graph after the choice', async ({ page }) => {
   const extract = structuredClone(FIXTURE);
   extract.data['probe:collatzStep']['code-path'] = 'ProjectTemplate/Other/Collatz.lean';

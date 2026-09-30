@@ -713,65 +713,19 @@ function updateLanguageLabels(lang: ProjectLanguage): void {
 }
 
 /**
- * Sync input field values to state (handles browser auto-fill after refresh)
+ * Show the URL's state before a graph loads, so a deferred large graph's
+ * Load & Search sees a shared query and URL writes while deferred keep it.
+ * loadGraph() reads the URL again against the graph.
  */
-function syncInputsToState(): void {
-  // Sync text inputs that might have been auto-filled by the browser
-  const sourceInput = document.getElementById('source-input') as HTMLInputElement;
-  const sinkInput = document.getElementById('sink-input') as HTMLInputElement;
-  const excludeNameInput = document.getElementById('exclude-name-patterns') as HTMLInputElement;
-  const excludePathInput = document.getElementById('exclude-path-patterns') as HTMLInputElement;
-  const includeFilesInput = document.getElementById('include-files') as HTMLInputElement;
-  const depthInput = document.getElementById('depth-limit') as HTMLInputElement;
-  
-  if (sourceInput?.value || sinkInput?.value) {
-    state.filters.intent = textIntent(sourceInput?.value ?? '', sinkInput?.value ?? '');
-  }
-  if (excludeNameInput?.value) {
-    state.filters.excludeNamePatterns = excludeNameInput.value;
-  }
-  if (excludePathInput?.value) {
-    state.filters.excludePathPatterns = excludePathInput.value;
-  }
-  if (includeFilesInput?.value) {
-    state.filters.includeFiles = includeFilesInput.value;
-  }
-  if (depthInput?.value) {
-    const value = parseInt(depthInput.value);
-    state.filters.maxDepth = value > 0 ? value : null;
-    document.getElementById('depth-value')!.textContent = 
-      state.filters.maxDepth !== null ? state.filters.maxDepth.toString() : 'All';
-  }
-  
-  // Sync checkboxes
-  state.filters.showLibsignal = (document.getElementById('show-libsignal') as HTMLInputElement)?.checked ?? true;
-  state.filters.showNonLibsignal = (document.getElementById('show-non-libsignal') as HTMLInputElement)?.checked ?? true;
-  const innerEl = document.getElementById('show-inner-calls') as HTMLInputElement | null;
-  const preEl = document.getElementById('show-precondition-calls') as HTMLInputElement | null;
-  const postEl = document.getElementById('show-postcondition-calls') as HTMLInputElement | null;
-  const statementEl = document.getElementById('show-statement-deps') as HTMLInputElement | null;
-  const bodyEl = document.getElementById('show-body-deps') as HTMLInputElement | null;
-  if (innerEl) state.filters.showInnerCalls = innerEl.checked;
-  if (preEl) state.filters.showPreconditionCalls = preEl.checked;
-  if (postEl) state.filters.showPostconditionCalls = postEl.checked;
-  if (statementEl) state.filters.showStatementDeps = statementEl.checked;
-  if (bodyEl) state.filters.showBodyDeps = bodyEl.checked;
-  state.filters.showExecFunctions = (document.getElementById('show-exec-functions') as HTMLInputElement)?.checked ?? true;
-  state.filters.showProofFunctions = (document.getElementById('show-proof-functions') as HTMLInputElement)?.checked ?? true;
-  state.filters.showSpecFunctions = (document.getElementById('show-spec-functions') as HTMLInputElement)?.checked ?? false;
-  // Kind checkboxes that only exist when the graph contains the kind:
-  // leave the filter untouched when absent so URL-parsed values survive.
-  const axiomsEl = document.getElementById('show-axioms') as HTMLInputElement | null;
-  const typesEl = document.getElementById('show-types') as HTMLInputElement | null;
-  const projectionsEl = document.getElementById('show-projections') as HTMLInputElement | null;
-  const instancesEl = document.getElementById('show-instances') as HTMLInputElement | null;
-  if (axiomsEl) state.filters.showAxioms = axiomsEl.checked;
-  if (typesEl) state.filters.showTypes = typesEl.checked;
-  if (projectionsEl) state.filters.showProjections = projectionsEl.checked;
-  if (instancesEl) state.filters.showInstances = instancesEl.checked;
-  state.filters.showVerifiedNodes = (document.getElementById('show-verified-nodes') as HTMLInputElement)?.checked ?? true;
-  state.filters.showFailedNodes = (document.getElementById('show-failed-nodes') as HTMLInputElement)?.checked ?? true;
-  state.filters.showUnverifiedNodes = (document.getElementById('show-unverified-nodes') as HTMLInputElement)?.checked ?? true;
+function applyURLBeforeLoad(): void {
+  const parsed = readURLState(new URLSearchParams(window.location.search), freshFilters(initialFilters), null);
+  state.filters = parsed.filters;
+  selectedSourceCrate = parsed.sourceCrate;
+  selectedTargetCrate = parsed.targetCrate;
+  hierarchyExpanded = parsed.hierarchyExpanded;
+  entrypointsJsonUrl = parsed.entrypointsUrl;
+  pendingFocus = parsed.focusUrl ? { url: parsed.focusUrl, generation: intentGeneration } : null;
+  syncFilterUI();
 }
 
 /**
@@ -801,8 +755,7 @@ function init(): void {
   // Set up UI event handlers
   setupUIHandlers();
   
-  // Sync any auto-filled input values to state
-  syncInputsToState();
+  applyURLBeforeLoad();
 
   // Update stats display
   updateStats();
