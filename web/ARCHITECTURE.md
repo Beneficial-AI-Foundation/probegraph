@@ -158,7 +158,7 @@ An array of nodes with `identifier` / `deps` fields
 | `src/graph-loader.ts` | Format detection and normalization (above) |
 | `src/query.ts`, `src/filters.ts` | Compile → execute query pipeline. See `QUERY_PIPELINE.md`. |
 | `src/graph.ts` | Call Graph view (layered force layout, auto-fit camera) |
-| `src/blueprint.ts` | File Map view (dagre compound layout, dual-channel coloring) |
+| `src/file-map.ts` | File Map view (dagre compound layout, dual-channel coloring) |
 | `src/crate-map.ts` | Crate Map / Namespace Map view (quotient graph, 3 drill-down modes) |
 | `src/hierarchy.ts`, `src/hierarchy-map.ts` | Hierarchy view: cut through the crate → directory → file → function tree, expand/collapse in place, aggregated edges |
 | `src/graph-utils.ts` | Seed tiers and budgeted expansion for the seeded initial view, transitive reduction |

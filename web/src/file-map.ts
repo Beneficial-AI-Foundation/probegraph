@@ -84,7 +84,7 @@ function appendShape(
     });
 }
 
-export class BlueprintVisualization {
+export class FileMapVisualization {
   private svg: d3.Selection<SVGSVGElement, unknown, null, undefined>;
   private g: d3.Selection<SVGGElement, unknown, null, undefined>;
   private width: number;
@@ -115,7 +115,7 @@ export class BlueprintVisualization {
       .attr('width', '100%')
       .attr('height', '100%')
       .attr('viewBox', `0 0 ${this.width} ${this.height}`)
-      .attr('class', 'blueprint-svg');
+      .attr('class', 'file-map-svg');
 
     const zoom = d3.zoom<SVGSVGElement, unknown>()
       .scaleExtent([0.05, 8])

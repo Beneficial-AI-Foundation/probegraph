@@ -6,7 +6,7 @@ import {
 } from './query';
 import { computeSeedTiers, expandFromSeeds, SeedTier, SeedExpansion } from './graph-utils';
 import { CallGraphVisualization } from './graph';
-import { BlueprintVisualization } from './blueprint';
+import { FileMapVisualization } from './file-map';
 import { CrateMapVisualization, buildCrateGraph } from './crate-map';
 import { HierarchyMapVisualization } from './hierarchy-map';
 import { computeDerivedStatuses } from './status';
@@ -530,7 +530,7 @@ let state: GraphState = {
 };
 
 let activeView: ActiveView = 'callgraph';
-let visualization: CallGraphVisualization | BlueprintVisualization | CrateMapVisualization | HierarchyMapVisualization | null = null;
+let visualization: CallGraphVisualization | FileMapVisualization | CrateMapVisualization | HierarchyMapVisualization | null = null;
 
 /** Views that aggregate the whole graph and so bypass the large-graph guards. */
 function isAggregatedView(view: ActiveView): boolean {
@@ -727,8 +727,8 @@ function init(): void {
   // Check URL for initial view
   const urlParams = new URLSearchParams(window.location.search);
   const viewParam = urlParams.get('view');
-  if (viewParam === 'blueprint') {
-    activeView = 'blueprint';
+  if (viewParam === 'file-map' || viewParam === 'blueprint') {
+    activeView = 'file-map';
   } else if (viewParam === 'crate-map') {
     activeView = 'crate-map';
   } else if (viewParam === 'hierarchy') {
@@ -767,7 +767,7 @@ function createVisualization(container: HTMLElement): void {
   // Destroy existing visualization
   if (visualization) {
     if ('destroy' in visualization) {
-      (visualization as BlueprintVisualization | CrateMapVisualization | HierarchyMapVisualization).destroy();
+      (visualization as FileMapVisualization | CrateMapVisualization | HierarchyMapVisualization).destroy();
     } else {
       visualization.clear();
       container.querySelector('svg')?.remove();
@@ -782,7 +782,7 @@ function createVisualization(container: HTMLElement): void {
 
   // Update button states
   document.getElementById('view-callgraph')?.classList.toggle('active', activeView === 'callgraph');
-  document.getElementById('view-blueprint')?.classList.toggle('active', activeView === 'blueprint');
+  document.getElementById('view-file-map')?.classList.toggle('active', activeView === 'file-map');
   document.getElementById('view-crate-map')?.classList.toggle('active', activeView === 'crate-map');
   document.getElementById('view-hierarchy')?.classList.toggle('active', activeView === 'hierarchy');
 
@@ -792,8 +792,8 @@ function createVisualization(container: HTMLElement): void {
     const viz = new HierarchyMapVisualization(container, state, handleStateChange);
     if (hierarchyExpanded.length > 0) viz.setExpanded(hierarchyExpanded);
     visualization = viz;
-  } else if (activeView === 'blueprint') {
-    visualization = new BlueprintVisualization(container, state, handleStateChange);
+  } else if (activeView === 'file-map') {
+    visualization = new FileMapVisualization(container, state, handleStateChange);
   } else {
     visualization = new CallGraphVisualization(container, state, handleStateChange);
   }
@@ -831,7 +831,7 @@ function switchView(view: ActiveView, opts: { apply?: boolean } = {}): void {
 function setupUIHandlers(): void {
   // View switcher
   document.getElementById('view-callgraph')?.addEventListener('click', () => switchView('callgraph'));
-  document.getElementById('view-blueprint')?.addEventListener('click', () => switchView('blueprint'));
+  document.getElementById('view-file-map')?.addEventListener('click', () => switchView('file-map'));
   document.getElementById('view-crate-map')?.addEventListener('click', () => switchView('crate-map'));
   document.getElementById('view-hierarchy')?.addEventListener('click', () => switchView('hierarchy'));
 
