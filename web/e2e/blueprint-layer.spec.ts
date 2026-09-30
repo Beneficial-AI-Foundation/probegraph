@@ -33,6 +33,16 @@ test('opens on the blueprint layer and switches to code and back', async ({ page
   await expect(page.locator('#view-crate-map')).toHaveText(/Chapter Map/);
 });
 
+test('the Chapter Map legend names chapters', async ({ page }) => {
+  await loadFixture(page);
+  await expect(nodes(page)).toHaveCount(9, { timeout: 15000 });
+  await page.locator('#view-crate-map').click();
+  const legend = page.locator('.cm-legend');
+  await expect(legend.locator('.cm-legend-header')).toContainText('Chapter Map');
+  await expect(legend).toContainText('Cross-chapter calls');
+  await expect(legend).not.toContainText(/crate/i);
+});
+
 test('crate dropdowns and file list follow the layer', async ({ page }) => {
   await loadFixture(page);
   await expect(nodes(page)).toHaveCount(9, { timeout: 15000 });

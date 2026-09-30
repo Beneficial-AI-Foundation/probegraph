@@ -115,6 +115,11 @@ export function crateNoun(lang: ProjectLanguage): string {
   return lang === 'lean' ? 'namespace' : lang === 'blueprint' ? 'chapter' : 'crate';
 }
 
+/** Language-aware label for the crate/namespace map view. */
+export function crateMapLabel(lang: ProjectLanguage): string {
+  return lang === 'lean' ? 'Namespace Map' : lang === 'blueprint' ? 'Chapter Map' : 'Crate Map';
+}
+
 /**
  * Get the kind sets for a given language. Everything not in any set is
  * treated as exec/definitions. Axioms are their own bucket (not spec):

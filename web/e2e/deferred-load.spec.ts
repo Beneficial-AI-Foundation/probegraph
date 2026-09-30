@@ -31,6 +31,17 @@ test('Include Files on a deferred graph loads the code layer with the filter', a
   expect(param(page, 'layer')).toBe('code');
 });
 
+test('Load & Search with Include Files loads the code layer with the filter', async ({ page }) => {
+  await serveLarge(page, FIXTURE);
+  await page.goto('/probegraph/?json=/large.json');
+  await expect(page.locator('#load-graph-btn')).toBeVisible({ timeout: 15000 });
+  await page.locator('#include-files').fill('Collatz.lean');
+  await page.locator('#load-graph-btn').click();
+  await expect(page.locator('#layer-code')).toHaveClass(/active/, { timeout: 15000 });
+  await expect(nodes(page)).toHaveCount(3);
+  expect(param(page, 'layer')).toBe('code');
+});
+
 test('a shared link to a deferred graph shows its query and loads it', async ({ page }) => {
   await serveLarge(page, FIXTURE);
   await page.goto('/probegraph/?json=/large.json&layer=code&files=Collatz.lean&source=collatz_conjecture');

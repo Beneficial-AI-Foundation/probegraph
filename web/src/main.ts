@@ -1,4 +1,4 @@
-import { D3Graph, D3Node, GraphState, FilterOptions, ProjectLanguage, BLUEPRINT_LANGUAGE, crateNoun, detectProjectLanguage, getKindSetsForLanguage, extractCrateName, isSchema2Envelope } from './types';
+import { D3Graph, D3Node, GraphState, FilterOptions, ProjectLanguage, BLUEPRINT_LANGUAGE, crateMapLabel, crateNoun, detectProjectLanguage, getKindSetsForLanguage, extractCrateName, isSchema2Envelope } from './types';
 import { blueprintBackrefHtml, blueprintNodeDetailsHtml } from './blueprint-details';
 import { applyFilters, getCallers, getCallees } from './filters';
 import {
@@ -681,11 +681,6 @@ function refreshGuidePanel(opts: { onlyIfFiltersChanged?: boolean } = {}): void 
   }));
 }
 
-/** Language-aware label for the crate/namespace map view. */
-function crateMapLabel(lang: ProjectLanguage): string {
-  return lang === 'lean' ? 'Namespace Map' : lang === 'blueprint' ? 'Chapter Map' : 'Crate Map';
-}
-
 /** Update all language-sensitive UI labels (button, legend, hints). */
 function updateLanguageLabels(lang: ProjectLanguage): void {
   const noun = crateNoun(lang);
@@ -1061,7 +1056,7 @@ function setupUIHandlers(): void {
       if (deferredGraphUrl) {
         // Graph not loaded yet - load it first, then check for disambiguation
         console.log('Loading deferred graph...');
-        loadDeferredGraphWithDisambiguation();
+        loadDeferredGraph();
       } else if (state.fullGraph) {
         // Check for ambiguous patterns before applying
         const hasAmbiguity = checkAndShowDisambiguation();
@@ -1262,7 +1257,8 @@ async function autoLoadGraph(): Promise<void> {
 }
 
 /**
- * Load a deferred graph (for large files that weren't auto-loaded)
+ * Load a deferred graph (for large files that weren't auto-loaded), then
+ * check the Include Files pattern for ambiguity.
  * Only called when user explicitly requests it after entering a search query
  */
 async function loadDeferredGraph(): Promise<void> {
@@ -1287,57 +1283,6 @@ async function loadDeferredGraph(): Promise<void> {
     statsDiv.innerHTML = `
       <div style="padding: 1rem; text-align: center;">
         <div style="margin-bottom: 0.5rem;">⏳ Loading and filtering graph...</div>
-        <div style="font-size: 0.8rem; color: var(--pg-text-muted);">This may take a few seconds...</div>
-      </div>
-    `;
-  }
-  
-  try {
-    const response = await fetch(deferredGraphUrl);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch: ${response.status}`);
-    }
-    
-    const text = await response.text();
-    const rawData = JSON.parse(text);
-    const graph = parseAndNormalizeGraph(rawData);
-    
-    deferredGraphUrl = null; // Clear the deferred URL
-    loadGraph(graph, 'Loaded from deferred graph');
-  } catch (error) {
-    console.error('Failed to load deferred graph:', error);
-    showError(`Failed to load graph: ${error instanceof Error ? error.message : 'Unknown error'}`);
-  } finally {
-    isDeferredLoadInProgress = false;
-  }
-}
-
-/**
- * Load a deferred graph and then check for disambiguation
- * This is used when pressing Enter in the include-files input
- */
-async function loadDeferredGraphWithDisambiguation(): Promise<void> {
-  if (!deferredGraphUrl) return;
-  
-  // Prevent multiple simultaneous loads
-  if (isDeferredLoadInProgress) {
-    console.log('Deferred graph load already in progress, skipping');
-    return;
-  }
-  
-  // Check if user has entered a search query
-  if (!hasSearchFilters()) {
-    showError('Please enter a Source, Sink, or Include Files filter first to filter the large graph.');
-    return;
-  }
-  
-  isDeferredLoadInProgress = true;
-  
-  const statsDiv = document.getElementById('stats');
-  if (statsDiv) {
-    statsDiv.innerHTML = `
-      <div style="padding: 1rem; text-align: center;">
-        <div style="margin-bottom: 0.5rem;">⏳ Loading graph...</div>
         <div style="font-size: 0.8rem; color: var(--pg-text-muted);">This may take a few seconds...</div>
       </div>
     `;
