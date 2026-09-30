@@ -104,6 +104,19 @@ function roleClassifier(
 }
 
 /**
+ * Role of any of the atom's dependencies: in-project ones from the internal
+ * split, resolved externals from the external split.
+ */
+function atomRoleClassifier(atom: ProbeAtom): (dep: string) => LinkRole | undefined {
+  const internal = roleClassifier(atom["type-dependencies"], atom["term-dependencies"]);
+  // probe-lean omits an external array when it is empty
+  const external = roleClassifier(
+    atom["type-dependencies-external"] ?? [], atom["term-dependencies-external"] ?? [],
+  );
+  return dep => internal(dep) ?? external(dep);
+}
+
+/**
  * Convert probe atom dict format (probe-verus / probe-lean atoms.json) to D3Graph format.
  */
 export function convertAtomDictToD3Graph(atoms: Record<string, ProbeAtom>): D3Graph {
@@ -187,9 +200,11 @@ export function convertAtomDictToD3Graph(atoms: Record<string, ProbeAtom>): D3Gr
     };
   });
 
+  const roleOf = new Map(Object.entries(atoms).map(([name, a]) => [name, atomRoleClassifier(a)]));
   const links: D3Link[] = [];
   for (const [atomName, atom] of Object.entries(atoms)) {
     const srcLang = atom.language;
+    const depRole = roleOf.get(atomName)!;
     const isCrossLang = (dep: string) => {
       const tgtLang = atoms[dep]?.language;
       return Boolean(srcLang && tgtLang && srcLang !== tgtLang);
@@ -207,7 +222,6 @@ export function convertAtomDictToD3Graph(atoms: Record<string, ProbeAtom>): D3Gr
       }
     } else {
       // One inner link per target; its role comes from the split arrays
-      const internalRole = roleClassifier(atom["type-dependencies"], atom["term-dependencies"]);
       const seen = new Set<string>();
       for (const dep of atom.dependencies) {
         if (!knownIds.has(dep) || seen.has(dep)) continue;
@@ -216,22 +230,18 @@ export function convertAtomDictToD3Graph(atoms: Record<string, ProbeAtom>): D3Gr
           links.push({ source: atomName, target: dep, type: 'mapping' });
           continue;
         }
-        const role = internalRole(dep);
+        const role = depRole(dep);
         links.push({ source: atomName, target: dep, type: 'inner', ...(role && { role }) });
       }
     }
 
     // Cross-project edges: externals that resolve after a merge
-    // probe-lean omits an external array when it is empty
-    const externalRole = roleClassifier(
-      atom["type-dependencies-external"] ?? [], atom["term-dependencies-external"] ?? [],
-    );
     for (const dep of resolvedExternalDeps(atom, knownIds)) {
       if (isCrossLang(dep)) {
         links.push({ source: atomName, target: dep, type: 'mapping' });
         continue;
       }
-      const role = externalRole(dep);
+      const role = depRole(dep);
       links.push({ source: atomName, target: dep, type: 'inner', ...(role && { role }) });
     }
 
@@ -250,8 +260,7 @@ export function convertAtomDictToD3Graph(atoms: Record<string, ProbeAtom>): D3Gr
     if (atom.specs) {
       for (const specId of atom.specs) {
         if (knownIds.has(specId)) {
-          const spec = atoms[specId];
-          const role = roleClassifier(spec["type-dependencies"], spec["term-dependencies"])(atomName);
+          const role = roleOf.get(specId)!(atomName);
           links.push({ source: specId, target: atomName, type: 'spec', ...(role && { role }) });
         }
       }

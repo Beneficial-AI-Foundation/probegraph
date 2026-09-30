@@ -2079,7 +2079,7 @@ function renderCallTypeFilters(lang: ProjectLanguage): void {
   }
   if (hasSpecLinks) {
     html += `
-    <label class="checkbox-label">
+    <label class="checkbox-label" title="Spec theorem links; on graphs with statement / body-or-proof data they also follow those boxes">
       <input type="checkbox" id="show-spec-links" checked />
       <span class="spec-link-badge">Specifications</span>
     </label>`;

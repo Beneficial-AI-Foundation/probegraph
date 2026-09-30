@@ -172,4 +172,26 @@ test.describe('Guide on the Lean graph', () => {
     await expect(page.locator('#show-body-deps')).not.toBeChecked();
     await expect(page.locator('#show-statement-deps')).toBeChecked();
   });
+
+  test('statement box drops type-only spec links, Specifications still checked', async ({ page }) => {
+    await open(page);
+    await clickChip(page, /most connected/);
+    const links = () => page.locator('path.link').evaluateAll(els => els.map(el => {
+      const d = (el as any).__data__;
+      return { pair: `${d.source.id}>${d.target.id}`, kind: `${d.type}:${d.role ?? '-'}` };
+    }));
+    const pairsOf = async (kind: string) =>
+      (await links()).filter(l => l.kind === kind).map(l => l.pair);
+    await expect.poll(async () => (await pairsOf('spec:type')).length).toBeGreaterThan(0);
+    const typeOnly = await pairsOf('spec:type');
+    const both = await pairsOf('spec:both');
+    expect(both.length).toBeGreaterThan(0);
+
+    await page.locator('#show-statement-deps').uncheck();
+    expect(param(page, 'statement')).toBe('0');
+    await expect(page.locator('#show-spec-links')).toBeChecked();
+    await expect.poll(async () => (await links()).some(l => typeOnly.includes(l.pair))).toBe(false);
+    const after = await pairsOf('spec:both');
+    expect(both.some(p => after.includes(p))).toBe(true);
+  });
 });

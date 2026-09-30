@@ -259,4 +259,18 @@ describe('convertAtomDictToD3Graph statement / body-or-proof roles', () => {
     expect(links('probe:fallback')).toEqual([['inner', 'term'], ['spec', 'term']]);
     expect(links('probe:nosplit')).toEqual([['inner', undefined], ['spec', undefined]]);
   });
+
+  it('takes the spec role from external arrays when the def was external to the theorem', () => {
+    // After a merge of overlapping inputs: thm kept from a project without def
+    const g = convertAtomDictToD3Graph({
+      'probe:thm': atom({
+        "type-dependencies": [],
+        "term-dependencies": [],
+        "type-dependencies-external": ['probe:def'],
+      }),
+      'probe:def': atom({ kind: 'def', specs: ['probe:thm'] }),
+    });
+    const links = g.links.filter(l => l.source === 'probe:thm' && l.target === 'probe:def');
+    expect(links.map(l => [l.type, l.role]).sort()).toEqual([['inner', 'type'], ['spec', 'type']]);
+  });
 });
