@@ -34,6 +34,8 @@ function createFilters(overrides: Partial<FilterOptions> = {}): FilterOptions {
     showPostconditionCalls: true,
     showMappingLinks: true,
     showSpecLinks: true,
+    showStatementDeps: true,
+    showBodyDeps: true,
     showExecFunctions: true,
     showProofFunctions: true,
     showSpecFunctions: true,

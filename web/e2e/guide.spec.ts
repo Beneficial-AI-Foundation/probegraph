@@ -151,4 +151,47 @@ test.describe('Guide on the Lean graph', () => {
     expect(param(page, 'status')).toBeNull();
     await expect(page.locator('#show-failed-nodes')).not.toBeChecked();
   });
+
+  test('body/proof box drops term links from the view, and survives a reload', async ({ page }) => {
+    await open(page);
+    await clickChip(page, /most connected/);
+    const roles = () => page.locator('path.link').evaluateAll(els => els.map(el => {
+      const d = (el as any).__data__;
+      return `${d.type}:${d.role ?? '-'}`;
+    }));
+    await expect.poll(async () => (await roles()).some(r => r === 'inner:term')).toBe(true);
+
+    await page.locator('#show-body-deps').uncheck();
+    expect(param(page, 'body')).toBe('0');
+    await expect.poll(async () => (await roles()).some(r => r === 'inner:term')).toBe(false);
+    expect((await roles()).every(r => ['inner:type', 'inner:both', 'spec:type', 'spec:both'].includes(r))).toBe(true);
+    await expect(page.locator('#guide-summary')).toContainText('boxes do not change them');
+
+    await page.reload();
+    await expect(page.locator('#stats')).toContainText('Total Nodes', { timeout: 30000 });
+    await expect(page.locator('#show-body-deps')).not.toBeChecked();
+    await expect(page.locator('#show-statement-deps')).toBeChecked();
+  });
+
+  test('statement box drops type-only spec links, Specifications still checked', async ({ page }) => {
+    await open(page);
+    await clickChip(page, /most connected/);
+    const links = () => page.locator('path.link').evaluateAll(els => els.map(el => {
+      const d = (el as any).__data__;
+      return { pair: `${d.source.id}>${d.target.id}`, kind: `${d.type}:${d.role ?? '-'}` };
+    }));
+    const pairsOf = async (kind: string) =>
+      (await links()).filter(l => l.kind === kind).map(l => l.pair);
+    await expect.poll(async () => (await pairsOf('spec:type')).length).toBeGreaterThan(0);
+    const typeOnly = await pairsOf('spec:type');
+    const both = await pairsOf('spec:both');
+    expect(both.length).toBeGreaterThan(0);
+
+    await page.locator('#show-statement-deps').uncheck();
+    expect(param(page, 'statement')).toBe('0');
+    await expect(page.locator('#show-spec-links')).toBeChecked();
+    await expect.poll(async () => (await links()).some(l => typeOnly.includes(l.pair))).toBe(false);
+    const after = await pairsOf('spec:both');
+    expect(both.some(p => after.includes(p))).toBe(true);
+  });
 });

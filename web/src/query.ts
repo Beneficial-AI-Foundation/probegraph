@@ -59,6 +59,8 @@ export interface TraversalPredicates {
   includeFilePatterns: IncludeFilePattern[];
   hiddenNodes: Set<string>;
   excludeBuildArtifacts: boolean;
+  /** Links traversal may follow (the statement / body-or-proof boxes); all when absent. */
+  linkFilter?: (link: D3Link) => boolean;
 }
 
 export interface DisplayPredicates {
@@ -84,6 +86,8 @@ export interface LinkTypeFilter {
   showPostconditionCalls: boolean;
   showMappingLinks: boolean;
   showSpecLinks: boolean;
+  showStatementDeps: boolean;
+  showBodyDeps: boolean;
 }
 
 /** Full compiled result returned by compileQuery. */
@@ -181,7 +185,10 @@ export function getLinkId(link: D3Link): { sourceId: string; targetId: string } 
 // 3. Graph Operators
 // ============================================================================
 
-/** Build a traversable subgraph by keeping only nodes that pass all traversal predicates. */
+/**
+ * Build a traversable subgraph by keeping only nodes that pass all traversal
+ * predicates, and only links that pass `linkFilter`.
+ */
 export function selectNodes(
   graph: D3Graph,
   predicates: TraversalPredicates,
@@ -201,7 +208,8 @@ export function selectNodes(
     nodes: graph.nodes.filter(n => allowed.has(n.id)),
     links: graph.links.filter(l => {
       const { sourceId, targetId } = getLinkId(l);
-      return allowed.has(sourceId) && allowed.has(targetId);
+      if (!allowed.has(sourceId) || !allowed.has(targetId)) return false;
+      return predicates.linkFilter ? predicates.linkFilter(l) : true;
     }),
     metadata: graph.metadata,
   };
@@ -413,14 +421,42 @@ export function crateBoundary(
   return { nodeIds, boundaryLinkPairs };
 }
 
-/** Whether a link's type passes the filter. */
+/**
+ * Whether a link's role passes the statement / body-or-proof boxes. A `both`
+ * link passes if either box is on; links without a role always pass.
+ */
+export function linkRoleShown(
+  link: D3Link,
+  filter: Pick<LinkTypeFilter, 'showStatementDeps' | 'showBodyDeps'>,
+): boolean {
+  switch (link.role) {
+    case 'type': return filter.showStatementDeps;
+    case 'term': return filter.showBodyDeps;
+    case 'both': return filter.showStatementDeps || filter.showBodyDeps;
+    default: return true;
+  }
+}
+
+/**
+ * The graph with only the links the statement / body-or-proof boxes let
+ * traversal follow; the graph itself when both boxes are on.
+ */
+export function roleFilteredGraph(
+  graph: D3Graph,
+  filter: Pick<LinkTypeFilter, 'showStatementDeps' | 'showBodyDeps'>,
+): D3Graph {
+  if (filter.showStatementDeps && filter.showBodyDeps) return graph;
+  return { ...graph, links: graph.links.filter(l => linkRoleShown(l, filter)) };
+}
+
+/** Whether a link's type and role pass the filter. */
 export function linkTypeShown(link: D3Link, filter: LinkTypeFilter): boolean {
   const t = link.type || 'inner';
-  if (t === 'calls' || t === 'inner') return filter.showInnerCalls;
+  if (t === 'calls' || t === 'inner') return filter.showInnerCalls && linkRoleShown(link, filter);
   if (t === 'precondition') return filter.showPreconditionCalls;
   if (t === 'postcondition') return filter.showPostconditionCalls;
   if (t === 'mapping') return filter.showMappingLinks;
-  if (t === 'spec') return filter.showSpecLinks;
+  if (t === 'spec') return filter.showSpecLinks && linkRoleShown(link, filter);
   return true;
 }
 
@@ -582,6 +618,9 @@ export function compileQuery(
     includeFilePatterns: useFileAsResultFilter ? [] : parsedFilePatterns,
     hiddenNodes: filters.hiddenNodes,
     excludeBuildArtifacts: true,
+    // The role boxes restrict traversal, not only display: with body/proof
+    // deps off, A -term-> B -type-> C does not reach C from A
+    linkFilter: link => linkRoleShown(link, filters),
   };
 
   const displayPredicates: DisplayPredicates = {
@@ -605,6 +644,8 @@ export function compileQuery(
     showPostconditionCalls: filters.showPostconditionCalls,
     showMappingLinks: filters.showMappingLinks,
     showSpecLinks: filters.showSpecLinks,
+    showStatementDeps: filters.showStatementDeps,
+    showBodyDeps: filters.showBodyDeps,
   };
 
   return {
@@ -920,7 +961,9 @@ export function executeQuery(
 
   return {
     nodes: resultNodes.map(n => ({ ...n })),
-    links: resultLinks.map(l => ({ source: l.source, target: l.target, type: l.type })),
+    links: resultLinks.map(l => ({
+      source: l.source, target: l.target, type: l.type, ...(l.role && { role: l.role }),
+    })),
     metadata: {
       ...fullGraph.metadata,
       total_nodes: resultNodes.length,

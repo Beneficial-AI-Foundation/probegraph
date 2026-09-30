@@ -98,6 +98,15 @@ describe('most connected chip', () => {
   });
 });
 
+describe('edge role note', () => {
+  const all = { isCandidate: () => true, isLinkShown: () => true };
+  const note = 'the Statement deps / Body/proof deps boxes do not change them';
+  it('says rankings use the full relation while a role box is off', () => {
+    expect(formatSummaryText(buildGraphSummary(fixture(), { ...all, roleFilterActive: true }))).toContain(note);
+    expect(formatSummaryText(buildGraphSummary(fixture(), all))).not.toContain(note);
+  });
+});
+
 describe('verification counts and chip', () => {
   it('counts each status separately, over the full graph', () => {
     // S is not a candidate but still counted

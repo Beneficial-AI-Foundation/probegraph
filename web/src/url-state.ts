@@ -44,7 +44,7 @@ const OWNED_PARAMS = [
   'source', 'sink', 'id', 'dir', 'label', 'boundary-source', 'boundary-target', 'focus',
   'sel', 'exclude', 'files', 'depth',
   'exec', 'proof', 'spec', 'axioms', 'types', 'proj', 'inst',
-  'inner', 'pre', 'post', 'mapping', 'speclinks',
+  'inner', 'pre', 'post', 'mapping', 'speclinks', 'statement', 'body',
   'libsignal', 'external', 'rust', 'lean',
   'verified', 'failed', 'unverified', 'status',
   'excludeName', 'excludePath', 'hidden', 'hide',
@@ -66,6 +66,8 @@ export function defaultFilters(): FilterOptions {
     showPostconditionCalls: false,  // Hide ensures calls by default
     showMappingLinks: true,         // Show cross-language mapping edges by default
     showSpecLinks: true,            // Show spec theorem edges by default
+    showStatementDeps: true,        // Show statement dependencies by default
+    showBodyDeps: true,             // Show body/proof dependencies by default
     showExecFunctions: true,        // Show exec functions by default
     showProofFunctions: true,       // Show proof functions by default
     showSpecFunctions: false,       // Hide Verus spec functions by default
@@ -150,9 +152,11 @@ export function writeURLState(params: URLSearchParams, s: URLViewState): void {
     if (!f.showInnerCalls) params.set('inner', '0');
     if (f.showPreconditionCalls) params.set('pre', '1');
     if (f.showPostconditionCalls) params.set('post', '1');
-    if (!f.showMappingLinks) params.set('mapping', '0');
-    if (!f.showSpecLinks) params.set('speclinks', '0');
   }
+  if (!f.showMappingLinks) params.set('mapping', '0');
+  if (!f.showSpecLinks) params.set('speclinks', '0');
+  if (!f.showStatementDeps) params.set('statement', '0');
+  if (!f.showBodyDeps) params.set('body', '0');
   if (!f.showLibsignal) params.set('libsignal', '0');
   if (!f.showNonLibsignal) params.set('external', '0');
   if (!f.showRustNodes) params.set('rust', '0');
@@ -233,6 +237,8 @@ export function readURLState(
   readBool('post', v => { filters.showPostconditionCalls = v; });
   readBool('mapping', v => { filters.showMappingLinks = v; });
   readBool('speclinks', v => { filters.showSpecLinks = v; });
+  readBool('statement', v => { filters.showStatementDeps = v; });
+  readBool('body', v => { filters.showBodyDeps = v; });
   readBool('libsignal', v => { filters.showLibsignal = v; });
   readBool('external', v => { filters.showNonLibsignal = v; });
   readBool('rust', v => { filters.showRustNodes = v; });

@@ -14,6 +14,7 @@ import {
   findPaths,
   crateBoundary,
   filterLinksByType,
+  linkTypeShown,
   depthFilterLinks,
   removeIsolated,
   resolveNodeMatcher,
@@ -21,7 +22,7 @@ import {
   compileSeededDisplayPredicate,
   TraversalPredicates,
 } from './query';
-import { D3Graph, D3Node, D3Link, FilterOptions } from './types';
+import { D3Graph, D3Node, D3Link, FilterOptions, LinkRole } from './types';
 import { NONE_INTENT, textIntent } from './intent';
 
 // ============================================================================
@@ -78,6 +79,8 @@ function createFilters(overrides: Partial<FilterOptions> = {}): FilterOptions {
     showPostconditionCalls: true,
     showMappingLinks: true,
     showSpecLinks: true,
+    showStatementDeps: true,
+    showBodyDeps: true,
     showExecFunctions: true,
     showProofFunctions: true,
     showSpecFunctions: true,
@@ -343,6 +346,34 @@ describe('crateBoundary', () => {
 // filterLinksByType
 // ============================================================================
 
+describe('linkTypeShown for spec links', () => {
+  const allOn = {
+    showInnerCalls: true, showPreconditionCalls: true, showPostconditionCalls: true,
+    showMappingLinks: true, showSpecLinks: true, showStatementDeps: true, showBodyDeps: true,
+  };
+  const spec = (role?: LinkRole): D3Link => ({ source: 'thm', target: 'def', type: 'spec', ...(role && { role }) });
+
+  // [role, showSpecLinks, showStatementDeps, showBodyDeps, shown]
+  it.each([
+    [undefined, true, false, false, true],
+    [undefined, false, true, true, false],
+    ['type', true, true, true, true],
+    ['type', true, false, true, false],
+    ['type', false, true, true, false],
+    ['term', true, true, false, false],
+    ['term', true, false, true, true],
+    ['both', true, false, true, true],
+    ['both', true, true, false, true],
+    ['both', true, false, false, false],
+  ] as [LinkRole | undefined, boolean, boolean, boolean, boolean][])(
+    'role %s, spec=%s statement=%s body=%s -> %s',
+    (role, showSpecLinks, showStatementDeps, showBodyDeps, shown) => {
+      expect(linkTypeShown(spec(role), { ...allOn, showSpecLinks, showStatementDeps, showBodyDeps }))
+        .toBe(shown);
+    },
+  );
+});
+
 describe('filterLinksByType', () => {
   const links: D3Link[] = [
     createLink('a', 'b', 'inner'),
@@ -357,6 +388,8 @@ describe('filterLinksByType', () => {
       showPostconditionCalls: true,
       showMappingLinks: true,
       showSpecLinks: true,
+      showStatementDeps: true,
+      showBodyDeps: true,
     });
     expect(result.length).toBe(3);
   });
@@ -368,6 +401,8 @@ describe('filterLinksByType', () => {
       showPostconditionCalls: true,
       showMappingLinks: true,
       showSpecLinks: true,
+      showStatementDeps: true,
+      showBodyDeps: true,
     });
     expect(result.length).toBe(2);
     expect(result.every(l => l.type !== 'precondition')).toBe(true);
@@ -380,6 +415,8 @@ describe('filterLinksByType', () => {
       showPostconditionCalls: false,
       showMappingLinks: true,
       showSpecLinks: true,
+      showStatementDeps: true,
+      showBodyDeps: true,
     });
     expect(result.length).toBe(1);
     expect(result[0].type).toBe('inner');
@@ -393,6 +430,8 @@ describe('filterLinksByType', () => {
       showPostconditionCalls: true,
       showMappingLinks: true,
       showSpecLinks: true,
+      showStatementDeps: true,
+      showBodyDeps: true,
     });
     expect(result.length).toBe(0);
   });
@@ -409,6 +448,8 @@ describe('filterLinksByType', () => {
       showPostconditionCalls: true,
       showMappingLinks: false,
       showSpecLinks: true,
+      showStatementDeps: true,
+      showBodyDeps: true,
     });
     expect(result.length).toBe(2);
     expect(result.every(l => l.type !== 'mapping')).toBe(true);
@@ -426,6 +467,8 @@ describe('filterLinksByType', () => {
       showPostconditionCalls: true,
       showMappingLinks: true,
       showSpecLinks: false,
+      showStatementDeps: true,
+      showBodyDeps: true,
     });
     expect(result.length).toBe(2);
     expect(result.every(l => l.type !== 'spec')).toBe(true);

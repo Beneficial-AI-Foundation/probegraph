@@ -1,6 +1,9 @@
 import { D3Graph, D3Node, GraphState, FilterOptions, ProjectLanguage, detectProjectLanguage, getKindSetsForLanguage, extractCrateName, isSchema2Envelope } from './types';
 import { applyFilters, getCallers, getCallees } from './filters';
-import { compileQuery, GraphQuery, NodeMatcher, filterLinksByType, linkTypeShown, compileSeededDisplayPredicate } from './query';
+import {
+  compileQuery, GraphQuery, NodeMatcher, filterLinksByType, linkTypeShown, roleFilteredGraph,
+  compileSeededDisplayPredicate,
+} from './query';
 import { computeSeedTiers, expandFromSeeds, SeedTier, SeedExpansion } from './graph-utils';
 import { CallGraphVisualization } from './graph';
 import { BlueprintVisualization } from './blueprint';
@@ -301,6 +304,8 @@ function syncFilterUI(): void {
   setCheckbox('show-postcondition-calls', state.filters.showPostconditionCalls);
   setCheckbox('show-mapping-links', state.filters.showMappingLinks);
   setCheckbox('show-spec-links', state.filters.showSpecLinks);
+  setCheckbox('show-statement-deps', state.filters.showStatementDeps);
+  setCheckbox('show-body-deps', state.filters.showBodyDeps);
   setCheckbox('show-libsignal', state.filters.showLibsignal);
   setCheckbox('show-non-libsignal', state.filters.showNonLibsignal);
   setCheckbox('show-rust-nodes', state.filters.showRustNodes);
@@ -607,6 +612,7 @@ function refreshGuidePanel(opts: { onlyIfFiltersChanged?: boolean } = {}): void 
   guidePanel.renderSummary(buildGraphSummary(state.fullGraph, {
     isCandidate: compiled.traversalPredicates.kindFilter,
     isLinkShown: link => linkTypeShown(link, compiled.linkTypeFilter),
+    roleFilterActive: graphHasLinkRoles() && !(f.showStatementDeps && f.showBodyDeps),
   }));
 }
 
@@ -683,9 +689,13 @@ function syncInputsToState(): void {
   const innerEl = document.getElementById('show-inner-calls') as HTMLInputElement | null;
   const preEl = document.getElementById('show-precondition-calls') as HTMLInputElement | null;
   const postEl = document.getElementById('show-postcondition-calls') as HTMLInputElement | null;
+  const statementEl = document.getElementById('show-statement-deps') as HTMLInputElement | null;
+  const bodyEl = document.getElementById('show-body-deps') as HTMLInputElement | null;
   if (innerEl) state.filters.showInnerCalls = innerEl.checked;
   if (preEl) state.filters.showPreconditionCalls = preEl.checked;
   if (postEl) state.filters.showPostconditionCalls = postEl.checked;
+  if (statementEl) state.filters.showStatementDeps = statementEl.checked;
+  if (bodyEl) state.filters.showBodyDeps = bodyEl.checked;
   state.filters.showExecFunctions = (document.getElementById('show-exec-functions') as HTMLInputElement)?.checked ?? true;
   state.filters.showProofFunctions = (document.getElementById('show-proof-functions') as HTMLInputElement)?.checked ?? true;
   state.filters.showSpecFunctions = (document.getElementById('show-spec-functions') as HTMLInputElement)?.checked ?? false;
@@ -1444,8 +1454,9 @@ interface SeededViewInfo {
 
 // Set while the current view is the entry-point-seeded initial view
 let seededViewInfo: SeededViewInfo | null = null;
-// Seed tiers are a property of the loaded graph; reset in loadGraph()
-let seedTiersCache: SeedTier[] | null = null;
+// Seed tiers of the role-filtered graph, keyed by the statement / body-or-proof
+// boxes (turning off a role can create new sources); reset in loadGraph()
+let seedTiersCache: { roleKey: string; tiers: SeedTier[] } | null = null;
 // The depth the user actually asked for (?depth= or slider), kept separate
 // from state.filters.maxDepth: the seeded render commits the *achieved* depth
 // there, and an async re-seed (a late ?entrypoints= payload whose tier fits
@@ -1513,13 +1524,19 @@ function computeSeededExpansion(
   requestedDepth: number,
 ): { tier: SeedTier; expansion: SeedExpansion } | null {
   if (!state.fullGraph) return null;
-  seedTiersCache ??= computeSeedTiers(state.fullGraph);
+  // The statement / body-or-proof boxes restrict the expansion, as they do
+  // query traversal
+  const graph = roleFilteredGraph(state.fullGraph, state.filters);
+  const roleKey = `${state.filters.showStatementDeps}:${state.filters.showBodyDeps}`;
+  if (seedTiersCache?.roleKey !== roleKey) {
+    seedTiersCache = { roleKey, tiers: computeSeedTiers(graph) };
+  }
   const tiers: SeedTier[] = entrypointsParam
-    ? [{ name: 'blueprint-param', seeds: entrypointsParam.seeds }, ...seedTiersCache]
-    : seedTiersCache;
+    ? [{ name: 'blueprint-param', seeds: entrypointsParam.seeds }, ...seedTiersCache.tiers]
+    : seedTiersCache.tiers;
   const budget = { maxNodes: LARGE_GRAPH_NODE_THRESHOLD, maxLinks: LARGE_GRAPH_LINK_THRESHOLD };
   for (const tier of tiers) {
-    const expansion = expandFromSeeds(state.fullGraph, tier.seeds, requestedDepth, budget);
+    const expansion = expandFromSeeds(graph, tier.seeds, requestedDepth, budget);
     if (expansion.ok) return { tier, expansion };
   }
   return null;
@@ -1984,44 +2001,54 @@ function renderKindFilters(lang: ProjectLanguage): void {
   setCheckbox('show-instances', state.filters.showInstances);
 }
 
+/** Whether the loaded graph splits dependencies into statement and body/proof (Lean). */
+function graphHasLinkRoles(): boolean {
+  return state.fullGraph?.links.some(l => l.role !== undefined) ?? false;
+}
+
 /**
  * Dynamically render Call Type filter checkboxes based on detected language.
  * Verus has precondition/postcondition edges (requires/ensures clauses);
- * Lean and other languages only have body calls.
+ * Lean graphs split dependencies into statement and body/proof. Other
+ * languages only have body calls.
  */
 function renderCallTypeFilters(lang: ProjectLanguage): void {
   const container = document.getElementById('call-types-container');
   if (!container) return;
 
-  if (lang === 'lean') {
-    container.style.display = 'none';
+  const isLean = lang === 'lean';
+  const isVerus = lang === 'verus' || lang === 'mixed';
+  const hasMappingLinks = state.fullGraph?.links.some(l => l.type === 'mapping') ?? false;
+  const hasSpecLinks = state.fullGraph?.links.some(l => l.type === 'spec') ?? false;
+  const hasRoles = graphHasLinkRoles();
+
+  if (isLean) {
+    // Lean dependencies are all body calls; the role boxes split them
     state.filters.showInnerCalls = true;
     state.filters.showPreconditionCalls = true;
     state.filters.showPostconditionCalls = true;
+  } else if (!isVerus && !hasMappingLinks && !hasSpecLinks && !hasRoles) {
+    state.filters.showInnerCalls = true;
+    state.filters.showPreconditionCalls = false;
+    state.filters.showPostconditionCalls = false;
+  }
+
+  if (!isVerus && !hasMappingLinks && !hasSpecLinks && !hasRoles) {
+    container.style.display = 'none';
     return;
   }
 
   container.style.display = '';
 
-  const isVerus = lang === 'verus' || lang === 'mixed';
-  const hasMappingLinks = state.fullGraph?.links.some(l => l.type === 'mapping') ?? false;
-  const hasSpecLinks = state.fullGraph?.links.some(l => l.type === 'spec') ?? false;
-
-  if (!isVerus && !hasMappingLinks && !hasSpecLinks) {
-    container.style.display = 'none';
-    state.filters.showInnerCalls = true;
-    state.filters.showPreconditionCalls = false;
-    state.filters.showPostconditionCalls = false;
-    return;
-  }
-
   let html = '<h3>Edge Types</h3>';
 
-  html += `
+  if (!isLean) {
+    html += `
     <label class="checkbox-label">
       <input type="checkbox" id="show-inner-calls" checked />
       <span class="inner-badge">Body Calls</span>
     </label>`;
+  }
 
   if (isVerus) {
     html += `
@@ -2035,6 +2062,18 @@ function renderCallTypeFilters(lang: ProjectLanguage): void {
     </label>`;
   }
 
+  if (hasRoles) {
+    html += `
+    <label class="checkbox-label" title="Dependencies used in the declaration's type (the statement)">
+      <input type="checkbox" id="show-statement-deps" checked />
+      <span class="inner-badge">Statement deps</span>
+    </label>
+    <label class="checkbox-label" title="Dependencies used in the definition body or proof, plus those reached through auxiliary declarations">
+      <input type="checkbox" id="show-body-deps" checked />
+      <span class="inner-badge">Body/proof deps</span>
+    </label>`;
+  }
+
   if (hasMappingLinks) {
     html += `
     <label class="checkbox-label">
@@ -2044,7 +2083,7 @@ function renderCallTypeFilters(lang: ProjectLanguage): void {
   }
   if (hasSpecLinks) {
     html += `
-    <label class="checkbox-label">
+    <label class="checkbox-label" title="Spec theorem links; on graphs with statement / body-or-proof data they also follow those boxes">
       <input type="checkbox" id="show-spec-links" checked />
       <span class="spec-link-badge">Specifications</span>
     </label>`;
@@ -2059,26 +2098,19 @@ function renderCallTypeFilters(lang: ProjectLanguage): void {
 
   container.innerHTML = html;
 
-  document.getElementById('show-inner-calls')?.addEventListener('change', (e) => {
-    state.filters.showInnerCalls = (e.target as HTMLInputElement).checked;
-    applyFiltersAndUpdate();
-  });
-  document.getElementById('show-precondition-calls')?.addEventListener('change', (e) => {
-    state.filters.showPreconditionCalls = (e.target as HTMLInputElement).checked;
-    applyFiltersAndUpdate();
-  });
-  document.getElementById('show-postcondition-calls')?.addEventListener('change', (e) => {
-    state.filters.showPostconditionCalls = (e.target as HTMLInputElement).checked;
-    applyFiltersAndUpdate();
-  });
-  document.getElementById('show-mapping-links')?.addEventListener('change', (e) => {
-    state.filters.showMappingLinks = (e.target as HTMLInputElement).checked;
-    applyFiltersAndUpdate();
-  });
-  document.getElementById('show-spec-links')?.addEventListener('change', (e) => {
-    state.filters.showSpecLinks = (e.target as HTMLInputElement).checked;
-    applyFiltersAndUpdate();
-  });
+  const bindCheckbox = (id: string, apply: (checked: boolean) => void) => {
+    document.getElementById(id)?.addEventListener('change', (e) => {
+      apply((e.target as HTMLInputElement).checked);
+      applyFiltersAndUpdate();
+    });
+  };
+  bindCheckbox('show-inner-calls', v => { state.filters.showInnerCalls = v; });
+  bindCheckbox('show-precondition-calls', v => { state.filters.showPreconditionCalls = v; });
+  bindCheckbox('show-postcondition-calls', v => { state.filters.showPostconditionCalls = v; });
+  bindCheckbox('show-statement-deps', v => { state.filters.showStatementDeps = v; });
+  bindCheckbox('show-body-deps', v => { state.filters.showBodyDeps = v; });
+  bindCheckbox('show-mapping-links', v => { state.filters.showMappingLinks = v; });
+  bindCheckbox('show-spec-links', v => { state.filters.showSpecLinks = v; });
 
   const setCheckbox = (id: string, checked: boolean) => {
     const el = document.getElementById(id) as HTMLInputElement | null;
@@ -2087,6 +2119,8 @@ function renderCallTypeFilters(lang: ProjectLanguage): void {
   setCheckbox('show-inner-calls', state.filters.showInnerCalls);
   setCheckbox('show-precondition-calls', state.filters.showPreconditionCalls);
   setCheckbox('show-postcondition-calls', state.filters.showPostconditionCalls);
+  setCheckbox('show-statement-deps', state.filters.showStatementDeps);
+  setCheckbox('show-body-deps', state.filters.showBodyDeps);
   setCheckbox('show-mapping-links', state.filters.showMappingLinks);
   setCheckbox('show-spec-links', state.filters.showSpecLinks);
 }
