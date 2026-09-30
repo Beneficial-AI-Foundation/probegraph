@@ -211,10 +211,15 @@ export function convertAtomDictToD3Graph(atoms: Record<string, ProbeAtom>): D3Gr
     };
 
     if (atom["dependencies-with-locations"] && atom["dependencies-with-locations"].length > 0) {
+      // One entry per call site; D3Link has no line, so keep one link per (target, type)
+      const seen = new Set<string>();
       for (const dep of atom["dependencies-with-locations"]) {
         const target = dep["code-name"];
         if (!knownIds.has(target)) continue;
         const type = isCrossLang(target) ? 'mapping' : (dep.location || 'inner');
+        const key = `${target}\0${type}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
         // Only inner links carry a role; pre/postcondition links do not
         const role = type === 'inner' ? depRole(target) : undefined;
         links.push({ source: atomName, target, type, ...(role && { role }) });

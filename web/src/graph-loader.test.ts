@@ -226,6 +226,21 @@ describe('convertAtomDictToD3Graph statement / body-or-proof roles', () => {
     expect(links('probe:p')).toEqual([['precondition', undefined]]);
   });
 
+  it('merges repeated call sites into one link per target and type', () => {
+    const g = convertAtomDictToD3Graph({
+      'probe:a': atom({
+        dependencies: ['probe:b'],
+        "dependencies-with-locations": [
+          { "code-name": 'probe:b', location: 'inner', line: 1 },
+          { "code-name": 'probe:b', location: 'inner', line: 5 },
+          { "code-name": 'probe:b', location: 'precondition', line: 2 },
+        ],
+      }),
+      'probe:b': atom({}),
+    });
+    expect(g.links.map(l => l.type).sort()).toEqual(['inner', 'precondition']);
+  });
+
   it('gives no role when a split array is absent, and reads empty arrays as no edges of that role', () => {
     const g = convertAtomDictToD3Graph({
       'probe:absent': atom({ dependencies: ['probe:x'], "type-dependencies": ['probe:x'] }),
