@@ -560,7 +560,8 @@ const initialFilters: FilterOptions = defaultFilters();
 let state: GraphState = {
   fullGraph: null,
   filteredGraph: null,
-  filters: initialFilters,
+  // A copy: filters edited before a graph loads must not become the defaults
+  filters: freshFilters(initialFilters),
   selectedNode: null,
   hoveredNode: null,
   projectLanguage: 'unknown',
@@ -1082,6 +1083,8 @@ function setupUIHandlers(): void {
   document.getElementById('include-files')?.addEventListener('input', (e) => {
     state.filters.includeFiles = (e.target as HTMLInputElement).value;
     updateFileListSelection();  // Update file list checkmarks
+    // Deferred large graph: the URL carries the pattern into loadGraph()
+    if (!state.fullGraph) updateURLWithFilters();
     // Only auto-apply if graph is already loaded, use debounce for large graphs
     if (state.fullGraph) {
       if (isLargeGraph(state.fullGraph)) {
@@ -1398,49 +1401,12 @@ async function loadDeferredGraphWithDisambiguation(): Promise<void> {
     const graph = parseAndNormalizeGraph(rawData);
     
     deferredGraphUrl = null; // Clear the deferred URL
-    
-    // Load the graph but DON'T apply filters yet. File disambiguation runs
-    // on the code layer.
-    codeLayer = copyGraph(graph);
-    blueprintLayer = graph.blueprintLayer ? copyGraph(graph.blueprintLayer) : null;
-    inactiveLayerFilters = null;
-    activeLayer = 'code';
-    state.fullGraph = codeLayer;
-    renderLayerSwitcher();
 
-    const earlyLang = detectProjectLanguage(state.fullGraph);
-    for (const node of state.fullGraph.nodes) {
-      if (!node.crate_name) {
-        node.crate_name = extractCrateName(node, earlyLang);
-      }
-    }
-    
-    // Populate the file list so disambiguation has data
-    populateFileList();
-    
-    console.log('Graph loaded, checking for disambiguation...');
-    
-    // Now check for disambiguation
-    const hasAmbiguity = checkAndShowDisambiguation();
-    if (!hasAmbiguity) {
-      // No ambiguity - apply filters
-      console.log('No ambiguity, applying filters');
-      // Include Files patterns name code files; source/sink text also matches blueprint labels
-      const includeFiles = (document.getElementById('include-files') as HTMLInputElement | null)?.value.trim();
-      loadGraph(graph, 'Loaded from deferred graph', includeFiles ? 'code' : undefined);
-    } else {
-      // Show success message but don't apply filters yet (user selecting)
-      console.log('Ambiguity found, waiting for user selection');
-      const statsDiv = document.getElementById('stats');
-      if (statsDiv) {
-        statsDiv.innerHTML = `
-          <div style="padding: 1rem; text-align: center;">
-            <div style="margin-bottom: 0.5rem;">Graph loaded (${graph.nodes.length.toLocaleString()} nodes)</div>
-            <div style="font-size: 0.8rem; color: var(--pg-text-muted);">Select files from the dropdown above...</div>
-          </div>
-        `;
-      }
-    }
+    // Include Files patterns name code files; source/sink text also matches blueprint labels
+    const includeFiles = (document.getElementById('include-files') as HTMLInputElement | null)?.value.trim();
+    loadGraph(graph, 'Loaded from deferred graph', includeFiles ? 'code' : undefined);
+    // An ambiguous pattern includes every matching file until the user picks
+    checkAndShowDisambiguation();
   } catch (error) {
     console.error('Failed to load deferred graph:', error);
     showError(`Failed to load graph: ${error instanceof Error ? error.message : 'Unknown error'}`);
