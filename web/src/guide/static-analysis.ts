@@ -6,7 +6,7 @@
  */
 
 import type { D3Graph, D3Link, D3Node, ProjectLanguage } from '../types';
-import { detectProjectLanguage, isVerifiedStatus } from '../types';
+import { crateNoun, detectProjectLanguage, isVerifiedStatus } from '../types';
 import { getLinkId } from '../query';
 import type {
   GraphSummary, CrateSummary, GroupBoundary, VerificationBreakdown,
@@ -235,10 +235,10 @@ function generateSuggestedQueries(
   }
 
   if (boundary) {
-    const noun = lang === 'lean' ? 'Namespace' : 'Crate';
+    const noun = crateNoun(lang);
     queries.push({
-      label: `${noun} boundary: ${boundary.source} → ${boundary.target}`,
-      description: `${boundary.edgeCount} edges, the most between any two ${noun.toLowerCase()}s`,
+      label: `${noun.charAt(0).toUpperCase() + noun.slice(1)} boundary: ${boundary.source} → ${boundary.target}`,
+      description: `${boundary.edgeCount} edges, the most between any two ${noun}s`,
       action: { type: 'setCrateBoundary', source: boundary.source, target: boundary.target },
     });
   }
@@ -260,8 +260,8 @@ function generateSuggestedQueries(
 
   if (crates.length > 1) {
     queries.push({
-      label: 'View crate/namespace map',
-      description: `High-level view of ${crates.length} ${lang === 'lean' ? 'namespaces' : 'crates'}`,
+      label: lang === 'blueprint' ? 'View chapter map' : 'View crate/namespace map',
+      description: `High-level view of ${crates.length} ${crateNoun(lang)}s`,
       action: { type: 'switchView', view: 'crate-map' },
     });
   }
@@ -278,10 +278,15 @@ function verificationTotal(v: VerificationBreakdown): number {
  */
 export function formatSummaryText(summary: GraphSummary): string {
   const lines: string[] = [];
-  const langLabel = summary.projectLanguage === 'lean' ? 'Lean 4'
-    : summary.projectLanguage === 'verus' ? 'Verus/Rust' : 'unknown language';
-
-  lines.push(`This is a ${langLabel} project with ${summary.totalNodes} functions across ${summary.crates.length} ${summary.projectLanguage === 'lean' ? 'namespaces' : 'crates'} and ${summary.files.length} files.`);
+  const lang = summary.projectLanguage;
+  const groups = `${crateNoun(lang)}s`;
+  if (lang === 'blueprint') {
+    lines.push(`This is a blueprint with ${summary.totalNodes} entries across ${summary.crates.length} ${groups}.`);
+  } else {
+    const langLabel = lang === 'lean' ? 'Lean 4'
+      : lang === 'verus' ? 'Verus/Rust' : 'unknown language';
+    lines.push(`This is a ${langLabel} project with ${summary.totalNodes} functions across ${summary.crates.length} ${groups} and ${summary.files.length} files.`);
+  }
   lines.push('');
 
   // Verification
@@ -301,7 +306,7 @@ export function formatSummaryText(summary: GraphSummary): string {
   // Crates
   if (summary.crates.length > 0) {
     const topCrates = summary.crates.slice(0, 5);
-    lines.push(`Top ${summary.projectLanguage === 'lean' ? 'namespaces' : 'crates'}: ${topCrates.map(c => `${c.name} (${c.nodeCount})`).join(', ')}.`);
+    lines.push(`Top ${groups}: ${topCrates.map(c => `${c.name} (${c.nodeCount})`).join(', ')}.`);
   }
 
   // Kinds

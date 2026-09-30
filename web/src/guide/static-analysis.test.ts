@@ -98,6 +98,17 @@ describe('most connected chip', () => {
   });
 });
 
+describe('blueprint layer text', () => {
+  it('names entries and chapters', () => {
+    const g = fixture();
+    for (const n of g.nodes) n.language = 'blueprint';
+    const s = buildGraphSummary(g, notStructure);
+    expect(formatSummaryText(s)).toContain(`This is a blueprint with ${g.nodes.length} entries across 2 chapters.`);
+    expect(formatSummaryText(s)).toContain('Top chapters:');
+    expect(s.suggestedQueries.map(q => q.label)).toContain('Chapter boundary: A → B');
+  });
+});
+
 describe('edge role note', () => {
   const all = { isCandidate: () => true, isLinkShown: () => true };
   const note = 'the Statement deps / Body/proof deps boxes do not change them';

@@ -1,4 +1,4 @@
-import { D3Graph, D3Node, GraphState, FilterOptions, ProjectLanguage, BLUEPRINT_LANGUAGE, detectProjectLanguage, getKindSetsForLanguage, extractCrateName, isSchema2Envelope } from './types';
+import { D3Graph, D3Node, GraphState, FilterOptions, ProjectLanguage, BLUEPRINT_LANGUAGE, crateNoun, detectProjectLanguage, getKindSetsForLanguage, extractCrateName, isSchema2Envelope } from './types';
 import { blueprintBackrefHtml, blueprintNodeDetailsHtml } from './blueprint-details';
 import { applyFilters, getCallers, getCallees } from './filters';
 import {
@@ -81,11 +81,13 @@ function navigateToSource(node: D3Node): void {
   const api = getVSCodeAPI();
   if (api) {
     // In VS Code: send message to extension to open the file
+    const loc = sourceLocation(node);
+    if (!loc) return;
     api.postMessage({
       type: 'navigate',
-      relativePath: node.relative_path,
-      startLine: node.start_line,
-      endLine: node.end_line,
+      relativePath: loc.path,
+      startLine: loc.start,
+      endLine: loc.end,
       displayName: node.display_name
     });
   } else {
@@ -230,38 +232,47 @@ function appendLineFragment(link: string, start?: number, end?: number): string 
  * falling back to the global githubBaseUrl / githubBranch / githubPathPrefix.
  */
 function buildGitHubLink(node: D3Node): string | null {
-  // A blueprint entry's code-path is its chapter; link its declaration site
-  if (node.language === BLUEPRINT_LANGUAGE) {
-    const bp = node.blueprint;
-    const configs = state.fullGraph?.metadata.source_configs;
-    if (!bp?.sourcePath || !configs) return null;
-    const config = pickSourceConfig(configs, 'lean', bp.sourcePath);
-    if (!config) return null;
-    const link = `${config.github_url}/blob/${config.ref}/${buildFullPath(bp.sourcePath, config.path_prefix)}`;
-    return appendLineFragment(link, bp.sourceLines?.start, bp.sourceLines?.end);
-  }
-  if (!node.relative_path) return null;
+  const loc = sourceLocation(node);
+  if (!loc) return null;
 
   // Try per-language source config (from Schema 2.0 envelope metadata)
-  if (node.language && state.fullGraph?.metadata.source_configs) {
-    const config = pickSourceConfig(
-      state.fullGraph.metadata.source_configs,
-      node.language,
-      node.relative_path,
-    );
+  if (loc.language && state.fullGraph?.metadata.source_configs) {
+    const config = pickSourceConfig(state.fullGraph.metadata.source_configs, loc.language, loc.path);
     if (config) {
-      const fullPath = buildFullPath(node.relative_path, config.path_prefix);
+      const fullPath = buildFullPath(loc.path, config.path_prefix);
       const link = `${config.github_url}/blob/${config.ref}/${fullPath}`;
-      return appendLineFragment(link, node.start_line, node.end_line);
+      return appendLineFragment(link, loc.start, loc.end);
     }
   }
 
   // Fallback: global settings
   if (!githubBaseUrl) return null;
   const baseUrl = githubBaseUrl.replace(/\/$/, '');
-  const fullPath = buildFullPath(node.relative_path, githubPathPrefix);
+  const fullPath = buildFullPath(loc.path, githubPathPrefix);
   const link = `${baseUrl}/blob/${githubBranch}/${fullPath}`;
-  return appendLineFragment(link, node.start_line, node.end_line);
+  return appendLineFragment(link, loc.start, loc.end);
+}
+
+interface SourceLocation {
+  path: string;
+  start?: number;
+  end?: number;
+  /** Language whose source config the path resolves against. */
+  language?: string;
+}
+
+/**
+ * Where a node's source is. A blueprint entry's relative_path is its
+ * chapter, so it points at the entry's Lean declaration site instead.
+ */
+function sourceLocation(node: D3Node): SourceLocation | null {
+  if (node.language === BLUEPRINT_LANGUAGE) {
+    const bp = node.blueprint;
+    if (!bp?.sourcePath) return null;
+    return { path: bp.sourcePath, start: bp.sourceLines?.start, end: bp.sourceLines?.end, language: 'lean' };
+  }
+  if (!node.relative_path) return null;
+  return { path: node.relative_path, start: node.start_line, end: node.end_line, language: node.language };
 }
 
 /**
@@ -278,7 +289,9 @@ function generateShareableURL(): string {
     pendingFocusUrl: pendingFocus?.url ?? null,
     entrypointsUrl: entrypointsJsonUrl,
     projectLanguage: state.projectLanguage,
-    layer: blueprintLayer && activeLayer !== DEFAULT_LAYER ? activeLayer : null,
+    // Before a graph loads it is unknown whether it has a blueprint layer
+    layer: !codeLayer ? urlLayer()
+      : blueprintLayer && activeLayer !== DEFAULT_LAYER ? activeLayer : null,
   });
   return url.toString();
 }
@@ -567,8 +580,19 @@ let inactiveLayerFilters: FilterOptions | null = null;
 /** The layer the URL asks for; the default when absent or unavailable. */
 function layerFromURL(): Layer {
   if (!blueprintLayer) return 'code';
-  return readURLState(new URLSearchParams(window.location.search), freshFilters(initialFilters), null).layer
-    ?? DEFAULT_LAYER;
+  return urlLayer() ?? DEFAULT_LAYER;
+}
+
+/** The URL's `layer=`, whether or not the graph has that layer. */
+function urlLayer(): Layer | null {
+  return readURLState(new URLSearchParams(window.location.search), freshFilters(initialFilters), null).layer;
+}
+
+function replaceURLLayer(layer: Layer): void {
+  const url = new URL(window.location.href);
+  if (layer === DEFAULT_LAYER) url.searchParams.delete('layer');
+  else url.searchParams.set('layer', layer);
+  window.history.replaceState(window.history.state, '', url.toString());
 }
 let visualization: CallGraphVisualization | FileMapVisualization | CrateMapVisualization | HierarchyMapVisualization | null = null;
 
@@ -659,11 +683,6 @@ function refreshGuidePanel(opts: { onlyIfFiltersChanged?: boolean } = {}): void 
 /** Language-aware label for the crate/namespace map view. */
 function crateMapLabel(lang: ProjectLanguage): string {
   return lang === 'lean' ? 'Namespace Map' : lang === 'blueprint' ? 'Chapter Map' : 'Crate Map';
-}
-
-/** Language-aware noun for crate/namespace used in UI text. */
-function crateNoun(lang: ProjectLanguage): string {
-  return lang === 'lean' ? 'namespace' : lang === 'blueprint' ? 'chapter' : 'crate';
 }
 
 /** Update all language-sensitive UI labels (button, legend, hints). */
@@ -1406,7 +1425,9 @@ async function loadDeferredGraphWithDisambiguation(): Promise<void> {
     if (!hasAmbiguity) {
       // No ambiguity - apply filters
       console.log('No ambiguity, applying filters');
-      loadGraph(graph, 'Loaded from deferred graph');
+      // Include Files patterns name code files; source/sink text also matches blueprint labels
+      const includeFiles = (document.getElementById('include-files') as HTMLInputElement | null)?.value.trim();
+      loadGraph(graph, 'Loaded from deferred graph', includeFiles ? 'code' : undefined);
     } else {
       // Show success message but don't apply filters yet (user selecting)
       console.log('Ambiguity found, waiting for user selection');
@@ -2237,7 +2258,10 @@ function showLayer(layer: Layer): void {
   // Populate the file list panel and crate dropdowns (defer for large graphs)
   if (!isLarge) {
     populateFileList();
+  } else {
+    clearFileList();
   }
+  crateDropdownKey = '';
   populateCrateDropdowns();
 
   // The render functions above force per-language call-type values; those
@@ -2283,11 +2307,16 @@ function switchLayer(layer: Layer): void {
   window.history.pushState({ pushed: true }, '', generateShareableURL());
 }
 
-function loadGraph(graph: D3Graph, message: string): void {
+/**
+ * `layer` overrides the URL's layer (and is written to it), for callers
+ * whose query names code declarations.
+ */
+function loadGraph(graph: D3Graph, message: string, layer?: Layer): void {
   // Deep copy the graph to prevent D3 from mutating original data
   codeLayer = copyGraph(graph);
   blueprintLayer = graph.blueprintLayer ? copyGraph(graph.blueprintLayer) : null;
   inactiveLayerFilters = null;
+  if (layer && blueprintLayer) replaceURLLayer(layer);
 
   // Seed tiers and the ?entrypoints= payload belong to the previous graph;
   // bumping the generation invalidates any of its in-flight fetches
@@ -2779,11 +2808,11 @@ function updateNodeInfo(): void {
 
   const githubLink = buildGitHubLink(node);
   const isBlueprintNode = node.language === BLUEPRINT_LANGUAGE;
-  // A blueprint entry's code-path is its chapter; show its declaration site
-  const sourcePath = isBlueprintNode ? node.blueprint?.sourcePath ?? '' : node.relative_path;
+  const loc = sourceLocation(node);
+  const sourcePath = loc?.path ?? '';
   const sourceFile = isBlueprintNode ? sourcePath.split('/').pop() ?? '' : node.file_name;
-  const startLine = isBlueprintNode ? node.blueprint?.sourceLines?.start : node.start_line;
-  const endLine = isBlueprintNode ? node.blueprint?.sourceLines?.end : node.end_line;
+  const startLine = loc?.start;
+  const endLine = loc?.end;
   const lineInfo = startLine
     ? (endLine && endLine !== startLine
         ? `Lines ${startLine}-${endLine}`
@@ -3208,6 +3237,14 @@ function populateFileList(): void {
 
   // Update selection state based on current filter
   updateFileListSelection();
+}
+
+/** Empty the file list until populateFileList runs for the current graph. */
+function clearFileList(): void {
+  const fileListDiv = document.getElementById('file-list');
+  if (fileListDiv) fileListDiv.innerHTML = '';
+  const fileCountSpan = document.getElementById('file-count');
+  if (fileCountSpan) fileCountSpan.textContent = '0';
 }
 
 /**
@@ -3713,10 +3750,12 @@ function handleVSCodeMessage(event: MessageEvent): void {
         const normalizedGraph = parseAndNormalizeGraph(message.graph);
         console.log('[VS Code] Received graph data:', normalizedGraph.nodes?.length, 'nodes');
         
-        loadGraph(normalizedGraph, 'Loaded from VS Code extension');
-
         const initialQuery = message.initialQuery ?? {};
         const selectedId: string | undefined = message.selectedNodeId || undefined;
+        // The editor's selection and query name code declarations
+        const editorQuery = !!(selectedId || initialQuery.source || initialQuery.sink);
+        loadGraph(normalizedGraph, 'Loaded from VS Code extension', editorQuery ? 'code' : undefined);
+
         const selectedNode = selectedId
           ? state.fullGraph?.nodes.find(n => n.id === selectedId)
           : undefined;
@@ -3751,6 +3790,7 @@ function handleVSCodeMessage(event: MessageEvent): void {
       
     case 'setQuery':
       // Update the query (e.g., user clicked on a different function)
+      if (activeLayer !== 'code') switchLayer('code');
       setIntent(
         vscodeSetQueryIntent(state.filters.intent, message.source, message.sink),
         { history: 'replace' },

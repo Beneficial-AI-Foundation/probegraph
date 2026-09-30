@@ -110,6 +110,11 @@ export function detectProjectLanguage(graph: D3Graph): ProjectLanguage {
   return 'unknown';
 }
 
+/** Language-aware noun for crate/namespace used in UI text. */
+export function crateNoun(lang: ProjectLanguage): string {
+  return lang === 'lean' ? 'namespace' : lang === 'blueprint' ? 'chapter' : 'crate';
+}
+
 /**
  * Get the kind sets for a given language. Everything not in any set is
  * treated as exec/definitions. Axioms are their own bucket (not spec):

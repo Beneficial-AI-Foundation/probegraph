@@ -33,6 +33,20 @@ test('opens on the blueprint layer and switches to code and back', async ({ page
   await expect(page.locator('#view-crate-map')).toHaveText(/Chapter Map/);
 });
 
+test('crate dropdowns and file list follow the layer', async ({ page }) => {
+  await loadFixture(page);
+  await expect(nodes(page)).toHaveCount(9, { timeout: 15000 });
+  const options = () => page.locator('#source-crate-select option').allTextContents();
+  const files = () => page.locator('#file-list .file-list-item').evaluateAll(
+    els => els.map(el => el.getAttribute('data-path')));
+  expect(await options()).toContain('blueprint/Addition');
+
+  await page.locator('#layer-code').click();
+  await expect(page.locator('#layer-code')).toHaveClass(/active/);
+  expect((await options()).some(o => o.startsWith('blueprint/'))).toBe(false);
+  expect((await files()).some(p => p?.startsWith('blueprint/'))).toBe(false);
+});
+
 test('keeps each layer\'s filters across switches, including after back', async ({ page }) => {
   await loadFixture(page);
   await expect(nodes(page)).toHaveCount(9, { timeout: 15000 });
