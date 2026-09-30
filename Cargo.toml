@@ -28,7 +28,6 @@ quote = "1.0"
 prettyplease = "0.2.31"
 
 # SCIP
-scip = "0.5.2"
 prost = "0.13.5"
 protobuf = "4.31.0-beta1"
 
