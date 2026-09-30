@@ -43,6 +43,42 @@ test('the Chapter Map legend names chapters', async ({ page }) => {
   await expect(legend).not.toContainText(/crate/i);
 });
 
+test('the Crate Map legend follows a layer switch', async ({ page }) => {
+  await loadFixture(page);
+  await expect(nodes(page)).toHaveCount(9, { timeout: 15000 });
+  await page.locator('#view-crate-map').click();
+  const header = page.locator('.cm-legend .cm-legend-header');
+  await expect(header).toContainText('Chapter Map');
+  await page.locator('#layer-code').click();
+  await expect(header).toContainText('Namespace Map');
+  await page.locator('#layer-blueprint').click();
+  await expect(header).toContainText('Chapter Map');
+});
+
+test('keeps each layer\'s Chapter Map boundary across switches', async ({ page }) => {
+  await loadFixture(page);
+  await expect(nodes(page)).toHaveCount(9, { timeout: 15000 });
+  await page.locator('#view-crate-map').click();
+  const src = page.locator('#source-crate-select');
+  const tgt = page.locator('#target-crate-select');
+  const firstChoice = (sel: typeof src, except = '') => sel.locator('option').evaluateAll(
+    (els, except) => els.map(el => (el as HTMLOptionElement).value).find(v => v !== '' && v !== except) ?? '',
+    except);
+  const source = await firstChoice(src);
+  await src.selectOption(source);
+  const target = await firstChoice(tgt, source);
+  expect(target).not.toBe('');
+  await tgt.selectOption(target);
+  await expect(src).toHaveValue(source);
+
+  await page.locator('#layer-code').click();
+  await expect(src).toHaveValue('');
+  await expect(tgt).toHaveValue('');
+  await page.locator('#layer-blueprint').click();
+  await expect(src).toHaveValue(source);
+  await expect(tgt).toHaveValue(target);
+});
+
 test('crate dropdowns and file list follow the layer', async ({ page }) => {
   await loadFixture(page);
   await expect(nodes(page)).toHaveCount(9, { timeout: 15000 });

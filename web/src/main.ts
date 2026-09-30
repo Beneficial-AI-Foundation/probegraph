@@ -476,7 +476,7 @@ function stateFromURL(): { focusUrl: string | null; view: ActiveView; layerChang
   const layer = layerFromURL();
   const layerChanged = layer !== activeLayer;
   if (layerChanged) {
-    inactiveLayerFilters = state.filters;
+    inactiveLayer = currentLayerFilters();
     showLayer(layer);
   }
 
@@ -575,8 +575,18 @@ let codeLayer: D3Graph | null = null;
 let blueprintLayer: D3Graph | null = null;
 const DEFAULT_LAYER: Layer = 'blueprint';
 let activeLayer: Layer = 'code';
-// Filters of the layer not shown, restored when switching back to it
-let inactiveLayerFilters: FilterOptions | null = null;
+// Filters and boundary crates of the layer not shown, restored when
+// switching back to it
+interface LayerFilters {
+  filters: FilterOptions;
+  sourceCrate: string;
+  targetCrate: string;
+}
+let inactiveLayer: LayerFilters | null = null;
+
+function currentLayerFilters(): LayerFilters {
+  return { filters: state.filters, sourceCrate: selectedSourceCrate, targetCrate: selectedTargetCrate };
+}
 
 /** The layer the URL asks for; the default when absent or unavailable. */
 function layerFromURL(): Layer {
@@ -2092,6 +2102,8 @@ function showLayer(layer: Layer): void {
   crateDependencyMap = new Map();
   crateReverseDependencyMap = new Map();
   state.selectedNode = null;
+  selectedSourceCrate = '';
+  selectedTargetCrate = '';
 
   // Deep copy filters - spread only does shallow copy, so Sets would be shared!
   state.filters = freshFilters(initialFilters);
@@ -2149,10 +2161,13 @@ function renderLayerSwitcher(): void {
 function switchLayer(layer: Layer): void {
   if (layer === activeLayer || !blueprintLayer) return;
   const { showStatementDeps, showBodyDeps } = state.filters;
-  const saved = inactiveLayerFilters;
-  inactiveLayerFilters = state.filters;
+  const saved = inactiveLayer;
+  inactiveLayer = currentLayerFilters();
   showLayer(layer);
-  state.filters = saved ?? freshFilters(graphDefaultFilters!);
+  state.filters = saved?.filters ?? freshFilters(graphDefaultFilters!);
+  selectedSourceCrate = saved?.sourceCrate ?? '';
+  selectedTargetCrate = saved?.targetCrate ?? '';
+  populateCrateDropdowns();
   state.filters.showStatementDeps = showStatementDeps;
   state.filters.showBodyDeps = showBodyDeps;
   pendingFocus = null;
@@ -2163,6 +2178,9 @@ function switchLayer(layer: Layer): void {
   try {
     syncFilterUI();
     applyFiltersAndUpdate();
+    if (activeView === 'crate-map' && visualization instanceof CrateMapVisualization) {
+      visualization.setBoundaryCrates(selectedSourceCrate || null, selectedTargetCrate || null);
+    }
     refreshGuidePanel();
     updateNodeInfo();
   } finally {
@@ -2179,7 +2197,7 @@ function loadGraph(graph: D3Graph, message: string, layer?: Layer): void {
   // Deep copy the graph to prevent D3 from mutating original data
   codeLayer = copyGraph(graph);
   blueprintLayer = graph.blueprintLayer ? copyGraph(graph.blueprintLayer) : null;
-  inactiveLayerFilters = null;
+  inactiveLayer = null;
   if (layer && blueprintLayer) replaceURLLayer(layer);
 
   // Seed tiers and the ?entrypoints= payload belong to the previous graph;

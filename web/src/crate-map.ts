@@ -167,6 +167,9 @@ export class CrateMapVisualization {
   // ----- Public interface -----
 
   public update(filteredGraph: D3Graph): void {
+    // A layer switch reuses this visualization with another projectLanguage
+    this.renderLegend();
+
     if (!filteredGraph || filteredGraph.nodes.length === 0) {
       this.clear();
       return;
