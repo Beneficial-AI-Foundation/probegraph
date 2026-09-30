@@ -105,7 +105,8 @@ function roleClassifier(
 
 /**
  * Role of any of the atom's dependencies: in-project ones from the internal
- * split, resolved externals from the external split.
+ * split, resolved externals from the external split, combined if a name is
+ * in both.
  */
 function atomRoleClassifier(atom: ProbeAtom): (dep: string) => LinkRole | undefined {
   const internal = roleClassifier(atom["type-dependencies"], atom["term-dependencies"]);
@@ -113,7 +114,12 @@ function atomRoleClassifier(atom: ProbeAtom): (dep: string) => LinkRole | undefi
   const external = roleClassifier(
     atom["type-dependencies-external"] ?? [], atom["term-dependencies-external"] ?? [],
   );
-  return dep => internal(dep) ?? external(dep);
+  return dep => {
+    const a = internal(dep);
+    const b = external(dep);
+    // A name in both splits (not expected from one extraction) keeps both roles
+    return a && b && a !== b ? 'both' : a ?? b;
+  };
 }
 
 /**

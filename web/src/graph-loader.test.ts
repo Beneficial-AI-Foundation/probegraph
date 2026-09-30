@@ -275,6 +275,19 @@ describe('convertAtomDictToD3Graph statement / body-or-proof roles', () => {
     expect(roleOf(g, 'probe:only-type', 'probe:other.Type')).toEqual(['type']);
   });
 
+  it('combines the internal and external roles of a name in both splits', () => {
+    const g = convertAtomDictToD3Graph({
+      'probe:a': atom({
+        dependencies: ['probe:x'],
+        "type-dependencies": ['probe:x'],
+        "term-dependencies": [],
+        "term-dependencies-external": ['probe:x'],
+      }),
+      'probe:x': atom({}),
+    });
+    expect(roleOf(g, 'probe:a', 'probe:x')).toEqual(['both']);
+  });
+
   it('gives a spec link the role of the parallel inner link', () => {
     const g = convertAtomDictToD3Graph({
       'probe:thm': atom({
