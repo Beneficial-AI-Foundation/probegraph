@@ -2162,7 +2162,9 @@ function showLayer(layer: Layer): void {
 /** Show the layer switcher only for graphs with a blueprint layer. */
 function renderLayerSwitcher(): void {
   const container = document.getElementById('layer-switcher');
-  if (container) container.style.display = blueprintLayer ? '' : 'none';  document.getElementById('layer-blueprint')?.classList.toggle('active', activeLayer === 'blueprint');
+  if (container) container.style.display = blueprintLayer ? '' : 'none';
+  const drilldownHint = document.getElementById('instructions-drilldown');
+  if (drilldownHint) drilldownHint.style.display = blueprintLayer ? '' : 'none';  document.getElementById('layer-blueprint')?.classList.toggle('active', activeLayer === 'blueprint');
   document.getElementById('layer-code')?.classList.toggle('active', activeLayer === 'code');
 }
 
