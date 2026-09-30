@@ -146,7 +146,7 @@ export function convertAtomDictToD3Graph(atoms: Record<string, ProbeAtom>): D3Gr
     if (!dependentsMap.has(atomName)) {
       dependentsMap.set(atomName, []);
     }
-    for (const dep of [...atom.dependencies, ...resolvedExternalDeps(atom, knownIds)]) {
+    for (const dep of new Set([...atom.dependencies, ...resolvedExternalDeps(atom, knownIds)])) {
       if (!dependentsMap.has(dep)) {
         dependentsMap.set(dep, []);
       }
@@ -160,10 +160,10 @@ export function convertAtomDictToD3Graph(atoms: Record<string, ProbeAtom>): D3Gr
     const fileName = parts[parts.length - 1] || 'unknown';
     const parentFolder = parts.length >= 2 ? parts[parts.length - 2] : 'unknown';
 
-    const filteredDeps = [
+    const filteredDeps = [...new Set([
       ...atom.dependencies.filter(dep => knownIds.has(dep)),
       ...resolvedExternalDeps(atom, knownIds),
-    ];
+    ])];
     const dependents = (dependentsMap.get(atomName) || []).filter(dep => knownIds.has(dep));
 
     const codeText = atom["code-text"];
@@ -212,13 +212,12 @@ export function convertAtomDictToD3Graph(atoms: Record<string, ProbeAtom>): D3Gr
 
     if (atom["dependencies-with-locations"] && atom["dependencies-with-locations"].length > 0) {
       for (const dep of atom["dependencies-with-locations"]) {
-        if (knownIds.has(dep["code-name"])) {
-          links.push({
-            source: atomName,
-            target: dep["code-name"],
-            type: isCrossLang(dep["code-name"]) ? 'mapping' : (dep.location || 'inner'),
-          });
-        }
+        const target = dep["code-name"];
+        if (!knownIds.has(target)) continue;
+        const type = isCrossLang(target) ? 'mapping' : (dep.location || 'inner');
+        // Only inner links carry a role; pre/postcondition links do not
+        const role = type === 'inner' ? depRole(target) : undefined;
+        links.push({ source: atomName, target, type, ...(role && { role }) });
       }
     } else {
       // One inner link per target; its role comes from the split arrays

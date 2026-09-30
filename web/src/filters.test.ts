@@ -9,7 +9,7 @@ import { describe, it, expect } from 'vitest';
 import { globToRegex, asSubstringGlob, matchesQuery, applyFilters, pathPatternToRegex } from './filters';
 import { D3Graph, D3Node, D3Link, FilterOptions, LinkRole } from './types';
 import { getLinkId, roleFilteredGraph } from './query';
-import { expandFromSeeds } from './graph-utils';
+import { computeSeedTiers, expandFromSeeds } from './graph-utils';
 import { NONE_INTENT, textIntent } from './intent';
 
 // ============================================================================
@@ -1141,6 +1141,14 @@ describe('Statement / body-or-proof edge filter', () => {
       roleFilteredGraph(bridge, { showStatementDeps: true, showBodyDeps: true }), ['a'], 2, budget,
     );
     expect(on.ok && [...on.nodeIds].sort()).toEqual(['a', 'b', 'c']);
+  });
+
+  it('computes source tiers on the role-filtered graph: with body/proof off, b is a source', () => {
+    const sources = (showBodyDeps: boolean) => computeSeedTiers(
+      roleFilteredGraph(bridge, { showStatementDeps: true, showBodyDeps }),
+    ).find(t => t.name === 'sources')?.seeds.sort();
+    expect(sources(true)).toEqual(['a']);
+    expect(sources(false)).toEqual(['a', 'b']);
   });
 
   it('keeps roles in the result and parallel inner and spec links apart', () => {

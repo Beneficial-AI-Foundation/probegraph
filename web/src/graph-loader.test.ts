@@ -200,6 +200,30 @@ describe('convertAtomDictToD3Graph statement / body-or-proof roles', () => {
       'probe:b': atom({}),
     });
     expect(roleOf(g, 'probe:a', 'probe:b')).toEqual(['both']);
+    const node = (id: string) => g.nodes.find(n => n.id === id)!;
+    expect(node('probe:a').dependencies).toEqual(['probe:b']);
+    expect(node('probe:b').dependents).toEqual(['probe:a']);
+  });
+
+  it('tags inner links from dependencies-with-locations, but not pre/postcondition links', () => {
+    const g = convertAtomDictToD3Graph({
+      'probe:a': atom({
+        dependencies: ['probe:t', 'probe:p'],
+        "dependencies-with-locations": [
+          { "code-name": 'probe:t', location: 'inner', line: 1 },
+          { "code-name": 'probe:p', location: 'precondition', line: 2 },
+        ],
+        "type-dependencies": ['probe:t', 'probe:p'],
+        "term-dependencies": [],
+      }),
+      'probe:t': atom({}),
+      'probe:p': atom({}),
+    });
+    const links = (t: string) => g.links
+      .filter(l => l.source === 'probe:a' && l.target === t)
+      .map(l => [l.type, l.role]);
+    expect(links('probe:t')).toEqual([['inner', 'type']]);
+    expect(links('probe:p')).toEqual([['precondition', undefined]]);
   });
 
   it('gives no role when a split array is absent, and reads empty arrays as no edges of that role', () => {

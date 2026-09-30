@@ -1454,8 +1454,9 @@ interface SeededViewInfo {
 
 // Set while the current view is the entry-point-seeded initial view
 let seededViewInfo: SeededViewInfo | null = null;
-// Seed tiers are a property of the loaded graph; reset in loadGraph()
-let seedTiersCache: SeedTier[] | null = null;
+// Seed tiers of the role-filtered graph, keyed by the statement / body-or-proof
+// boxes (turning off a role can create new sources); reset in loadGraph()
+let seedTiersCache: { roleKey: string; tiers: SeedTier[] } | null = null;
 // The depth the user actually asked for (?depth= or slider), kept separate
 // from state.filters.maxDepth: the seeded render commits the *achieved* depth
 // there, and an async re-seed (a late ?entrypoints= payload whose tier fits
@@ -1523,14 +1524,17 @@ function computeSeededExpansion(
   requestedDepth: number,
 ): { tier: SeedTier; expansion: SeedExpansion } | null {
   if (!state.fullGraph) return null;
-  seedTiersCache ??= computeSeedTiers(state.fullGraph);
-  const tiers: SeedTier[] = entrypointsParam
-    ? [{ name: 'blueprint-param', seeds: entrypointsParam.seeds }, ...seedTiersCache]
-    : seedTiersCache;
-  const budget = { maxNodes: LARGE_GRAPH_NODE_THRESHOLD, maxLinks: LARGE_GRAPH_LINK_THRESHOLD };
   // The statement / body-or-proof boxes restrict the expansion, as they do
   // query traversal
   const graph = roleFilteredGraph(state.fullGraph, state.filters);
+  const roleKey = `${state.filters.showStatementDeps}:${state.filters.showBodyDeps}`;
+  if (seedTiersCache?.roleKey !== roleKey) {
+    seedTiersCache = { roleKey, tiers: computeSeedTiers(graph) };
+  }
+  const tiers: SeedTier[] = entrypointsParam
+    ? [{ name: 'blueprint-param', seeds: entrypointsParam.seeds }, ...seedTiersCache.tiers]
+    : seedTiersCache.tiers;
+  const budget = { maxNodes: LARGE_GRAPH_NODE_THRESHOLD, maxLinks: LARGE_GRAPH_LINK_THRESHOLD };
   for (const tier of tiers) {
     const expansion = expandFromSeeds(graph, tier.seeds, requestedDepth, budget);
     if (expansion.ok) return { tier, expansion };
