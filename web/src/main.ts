@@ -158,6 +158,10 @@ let entrypointsDeferredByFocus = false;
 // it and recheck before committing, so a late response can neither apply to a
 // different graph nor overwrite newer query intent.
 let graphLoadGeneration = 0;
+// Incremented when a graph source is requested (auto-load, file pick,
+// deferred load). A request installs its graph only while it is the latest,
+// so a slow auto-load cannot replace a file the user picked meanwhile.
+let graphRequest = 0;
 
 // Debounce timer for search inputs
 let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1165,6 +1169,9 @@ function setupUIHandlers(): void {
  * Priority: URL param > env var > local file
  */
 async function autoLoadGraph(): Promise<void> {
+  const request = ++graphRequest;
+  const superseded = () => request !== graphRequest;
+
   // Check for URL parameters (highest priority)
   const urlParams = new URLSearchParams(window.location.search);
   const jsonUrlParam = urlParams.get('json') || urlParams.get('url');
@@ -1191,7 +1198,8 @@ async function autoLoadGraph(): Promise<void> {
       // Check file size first with HEAD request
       const headResponse = await fetch(jsonUrl, { method: 'HEAD' });
       const contentLength = parseInt(headResponse.headers.get('Content-Length') || '0');
-      
+      if (superseded()) return;
+
       if (contentLength > LARGE_FILE_SIZE_THRESHOLD) {
         console.log(`Large file detected (${(contentLength / 1024 / 1024).toFixed(1)} MB), deferring load`);
         deferredGraphUrl = jsonUrl;
@@ -1214,11 +1222,13 @@ async function autoLoadGraph(): Promise<void> {
 
       // Yield again before loadGraph (deep copy + initialization)
       await new Promise(r => setTimeout(r, 0));
+      if (superseded()) return;
 
       const source = jsonUrlParam ? 'URL parameter' : 'configured default';
       loadGraph(graph, `Loaded from ${source}: ${jsonUrl}`);
       return;
     } catch (error) {
+      if (superseded()) return;
       console.error('Failed to load graph from URL:', error);
       showError(`Failed to load graph from URL: ${error instanceof Error ? error.message : 'Unknown error'}`);
       // Continue to try local graph.json
@@ -1232,7 +1242,8 @@ async function autoLoadGraph(): Promise<void> {
     const contentLength = parseInt(headResponse.headers.get('Content-Length') || '0');
     
     console.log(`graph.json size: ${(contentLength / 1024 / 1024).toFixed(1)} MB`);
-    
+    if (superseded()) return;
+
     if (contentLength > LARGE_FILE_SIZE_THRESHOLD && !isAggregatedView(activeView)) {
       console.log(`Large file detected, deferring load until user searches`);
       deferredGraphUrl = './graph.json';
@@ -1258,6 +1269,7 @@ async function autoLoadGraph(): Promise<void> {
 
     // Yield again before loadGraph (deep copy + initialization)
     await new Promise(r => setTimeout(r, 0));
+    if (superseded()) return;
 
     loadGraph(graph, 'Auto-loaded from local file');
   } catch (error) {
@@ -1287,7 +1299,8 @@ async function loadDeferredGraph(): Promise<void> {
   }
   
   isDeferredLoadInProgress = true;
-  
+  const request = ++graphRequest;
+
   const statsDiv = document.getElementById('stats');
   if (statsDiv) {
     statsDiv.innerHTML = `
@@ -1307,7 +1320,8 @@ async function loadDeferredGraph(): Promise<void> {
     const text = await response.text();
     const rawData = JSON.parse(text);
     const graph = parseAndNormalizeGraph(rawData);
-    
+    if (request !== graphRequest) return;
+
     deferredGraphUrl = null; // Clear the deferred URL
 
     // Include Files patterns name code files; source/sink text also matches blueprint labels
@@ -2148,8 +2162,7 @@ function showLayer(layer: Layer): void {
 /** Show the layer switcher only for graphs with a blueprint layer. */
 function renderLayerSwitcher(): void {
   const container = document.getElementById('layer-switcher');
-  if (container) container.style.display = blueprintLayer ? '' : 'none';
-  document.getElementById('layer-blueprint')?.classList.toggle('active', activeLayer === 'blueprint');
+  if (container) container.style.display = blueprintLayer ? '' : 'none';  document.getElementById('layer-blueprint')?.classList.toggle('active', activeLayer === 'blueprint');
   document.getElementById('layer-code')?.classList.toggle('active', activeLayer === 'code');
 }
 
@@ -2362,14 +2375,17 @@ async function handleFileLoad(event: Event): Promise<void> {
   const file = input.files?.[0];
   
   if (!file) return;
+  const request = ++graphRequest;
 
   try {
     const text = await file.text();
     const rawData = JSON.parse(text);
     const graph = parseAndNormalizeGraph(rawData);
-    
+    if (request !== graphRequest) return;
+
     loadGraph(graph, `Loaded from file: ${file.name}`);
   } catch (error) {
+    if (request !== graphRequest) return;
     console.error('Error loading graph:', error);
     showError(`Error loading graph file: ${error instanceof Error ? error.message : 'Invalid JSON'}`);
   }

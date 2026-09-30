@@ -14,6 +14,23 @@ async function loadFixture(page: Page): Promise<void> {
 const nodes = (page: Page) => page.locator('circle.node');
 const layerParam = (page: Page) => new URL(page.url()).searchParams.get('layer');
 
+test('a file picked while the default graph loads is not replaced by it', async ({ page }) => {
+  let release!: () => void;
+  const released = new Promise<void>(r => { release = r; });
+  await page.route('**/graph.json', async route => {
+    if (route.request().method() === 'GET') await released;
+    await route.continue();
+  });
+  const defaultGraph = page.waitForResponse(r => r.url().endsWith('/graph.json') && r.request().method() === 'GET');
+  await loadFixture(page);
+  await expect(nodes(page)).toHaveCount(9, { timeout: 15000 });
+  release();
+  await defaultGraph;
+  await page.waitForTimeout(1000);
+  await expect(nodes(page)).toHaveCount(9);
+  await expect(page.locator('#layer-switcher')).toBeVisible();
+});
+
 test('opens on the blueprint layer and switches to code and back', async ({ page }) => {
   await loadFixture(page);
   await expect(page.locator('#layer-switcher')).toBeVisible();
