@@ -1,4 +1,4 @@
-import { D3Graph, D3Node, GraphState, FilterOptions, ProjectLanguage, BLUEPRINT_LANGUAGE, crateMapLabel, crateNoun, detectProjectLanguage, getKindSetsForLanguage, extractCrateName, isSchema2Envelope } from './types';
+import { D3Graph, D3Node, GraphState, FilterOptions, ProjectLanguage, BLUEPRINT_LANGUAGE, compileKindFlag, crateMapLabel, crateNoun, detectProjectLanguage, getKindSetsForLanguage, extractCrateName, isSchema2Envelope } from './types';
 import { blueprintBackrefHtml, blueprintNodeDetailsHtml } from './blueprint-details';
 import { applyFilters, getCallers, getCallees } from './filters';
 import {
@@ -15,12 +15,12 @@ import { parseAndNormalizeGraph, pickSourceConfig } from './graph-loader';
 import { escapeHtml } from './html';
 import { StatusGroup, exactStatusFilter, groupCheckState, withGroupChecked } from './status-filter';
 import {
-  QueryIntent, NONE_INTENT, textIntent, focusIntent, boundaryIntent,
+  QueryIntent, NONE_INTENT, textIntent, focusIntent, boundaryIntent, exactIntent,
   isFocusIntent, inputsForIntent, intentAfterInputEdit, vscodeIntent, vscodeSetQueryIntent,
 } from './intent';
 import { ActiveView, Layer, defaultFilters, readURLState, writeURLState } from './url-state';
 
-import { GuidePanel } from './guide/guide-panel';
+import { GuidePanel, showToast } from './guide/guide-panel';
 import { buildGraphSummary } from './guide/static-analysis';
 import type { GuideActions, GuideResult, GuideTransition } from './guide/types';
 
@@ -813,7 +813,7 @@ function createVisualization(container: HTMLElement): void {
   } else if (activeView === 'file-map') {
     visualization = new FileMapVisualization(container, state, handleStateChange);
   } else {
-    visualization = new CallGraphVisualization(container, state, handleStateChange);
+    visualization = new CallGraphVisualization(container, state, handleStateChange, drillDownToCode);
   }
 }
 
@@ -2190,6 +2190,57 @@ function switchLayer(layer: Layer): void {
 }
 
 /**
+ * Switch to `layer` and query `ids` with their immediate neighbours,
+ * turning on the Declaration Kind boxes of the targets if they are off. A
+ * single target is shown in node details. One pushed history entry.
+ */
+function openOnLayer(layer: Layer, ids: string[], label: string): void {
+  const graph = layer === 'blueprint' ? blueprintLayer : codeLayer;
+  const targets = ids.flatMap(id => graph?.nodes.find(n => n.id === id) ?? []);
+  if (targets.length === 0) return;
+  const switched = layer !== activeLayer;
+  switchLayer(layer);
+  setIntent(exactIntent(targets.map(t => t.id), 'both', label, { type: 'drilldown' }), {
+    history: switched ? 'replace' : 'push',
+    pushed: true,
+    before: () => {
+      const flagOf = compileKindFlag(state.projectLanguage);
+      for (const t of targets) state.filters[flagOf(t.kind || 'exec')] = true;
+      state.filters.maxDepth = 1;
+      seededRequestedDepth = clampSeededDepth(1);
+      syncFilterUI();
+    },
+  });
+  if (targets.length !== 1) return;
+  const shown = state.fullGraph?.nodes.find(n => n.id === targets[0].id);
+  if (shown) handleStateChange({ ...state, selectedNode: shown }, false);
+}
+
+/** Follow a blueprint entry <-> Lean declaration link in node details. */
+function navigateToLayerNode(layer: Layer, id: string): void {
+  const target = (layer === 'blueprint' ? blueprintLayer : codeLayer)?.nodes.find(n => n.id === id);
+  if (target) openOnLayer(layer, [id], target.display_name);
+}
+
+/** Double-click on a blueprint entry: open its bound declarations on the code layer. */
+function drillDownToCode(node: D3Node): void {
+  if (node.language !== BLUEPRINT_LANGUAGE) return;
+  const bindings = node.blueprint?.bindings ?? [];
+  if (bindings.length === 0) {
+    showToast(`${node.display_name}: no bound declarations`);
+    return;
+  }
+  const label = bindings.length === 1
+    ? codeLayer?.nodes.find(n => n.id === bindings[0])?.display_name ?? bindings[0]
+    : `${node.display_name} (${bindings.length} declarations)`;
+  // Undo the selection made by the double-click's first click, which the
+  // blueprint layer would otherwise keep
+  state.filters.selectedNodes.delete(node.id);
+  openOnLayer('code', bindings, label);
+  showToast(`${node.display_name}: ${bindings.length} bound declaration${bindings.length === 1 ? '' : 's'}`);
+}
+
+/**
  * `layer` overrides the URL's layer (and is written to it), for callers
  * whose query names code declarations.
  */
@@ -2708,8 +2759,12 @@ function updateNodeInfo(): void {
       repo: configs ? pickSourceConfig(configs, 'lean', sourcePath)?.github_url : undefined,
       codeName: id => codeLayer?.nodes.find(n => n.id === id)?.display_name,
     });
-  } else if (node.blueprint) {
-    blueprintHtml = blueprintBackrefHtml(node.blueprint);
+  } else if (!isBlueprintNode) {
+    const label = node.blueprint?.label;
+    const entries = (blueprintLayer?.nodes ?? [])
+      .filter(n => n.blueprint && (n.blueprint.label === label || n.blueprint.bindings?.includes(node.id)))
+      .map(n => ({ id: n.id, info: n.blueprint! }));
+    blueprintHtml = blueprintBackrefHtml(node.blueprint, entries);
   }
   const [callersLabel, calleesLabel] = isBlueprintNode ? ['Used by', 'Uses'] : ['Callers', 'Callees'];
 
@@ -2873,6 +2928,14 @@ function updateNodeInfo(): void {
         newState.selectedNode = targetNode;
         handleStateChange(newState, false);
       }
+    });
+  });
+
+  nodeInfoDiv.querySelectorAll<HTMLElement>('.navigate-to-layer').forEach(el => {
+    el.addEventListener('click', (e) => {
+      e.preventDefault();
+      const { layer, nodeId } = el.dataset;
+      if ((layer === 'blueprint' || layer === 'code') && nodeId) navigateToLayerNode(layer, nodeId);
     });
   });
 }

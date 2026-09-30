@@ -152,26 +152,34 @@ export function getKindSetsForLanguage(lang: ProjectLanguage): {
 
 /**
  * Compile a kind predicate from the filter flags: returns whether a node of
- * the given kind should be visible. Single source of truth for the kind
- * bucket -> filter flag mapping (used by both the traversal predicates and
- * the seeded-view display predicate).
+ * the given kind should be visible. Used by both the traversal predicates
+ * and the seeded-view display predicate; the kind bucket -> filter flag
+ * mapping is `compileKindFlag`.
  */
 export function compileKindPredicate(
-  filters: Pick<FilterOptions,
-    'showExecFunctions' | 'showProofFunctions' | 'showSpecFunctions'
-    | 'showAxioms' | 'showTypes' | 'showProjections' | 'showInstances'>,
+  filters: Pick<FilterOptions, KindFlag>,
   lang: ProjectLanguage,
 ): (kind: string) => boolean {
+  const flagOf = compileKindFlag(lang);
+  return (kind: string) => filters[flagOf(kind)];
+}
+
+export type KindFlag =
+  | 'showExecFunctions' | 'showProofFunctions' | 'showSpecFunctions'
+  | 'showAxioms' | 'showTypes' | 'showProjections' | 'showInstances';
+
+/** The Declaration Kind filter flag that shows nodes of a given kind. */
+export function compileKindFlag(lang: ProjectLanguage): (kind: string) => KindFlag {
   const { proofKinds, specKinds, axiomKinds, typeKinds, projectionKinds, instanceKinds } =
     getKindSetsForLanguage(lang);
   return (kind: string) => {
-    if (proofKinds.has(kind)) return filters.showProofFunctions;
-    if (specKinds.has(kind)) return filters.showSpecFunctions;
-    if (axiomKinds.has(kind)) return filters.showAxioms;
-    if (typeKinds.has(kind)) return filters.showTypes;
-    if (projectionKinds.has(kind)) return filters.showProjections;
-    if (instanceKinds.has(kind)) return filters.showInstances;
-    return filters.showExecFunctions;
+    if (proofKinds.has(kind)) return 'showProofFunctions';
+    if (specKinds.has(kind)) return 'showSpecFunctions';
+    if (axiomKinds.has(kind)) return 'showAxioms';
+    if (typeKinds.has(kind)) return 'showTypes';
+    if (projectionKinds.has(kind)) return 'showProjections';
+    if (instanceKinds.has(kind)) return 'showInstances';
+    return 'showExecFunctions';
   };
 }
 
