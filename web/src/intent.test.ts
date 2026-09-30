@@ -317,6 +317,23 @@ describe('URL reading', () => {
     expect([...parsed.filters.hiddenNodes]).toEqual(['dup']);
   });
 
+  it('legacy view=blueprint opens the File Map', () => {
+    const read = (q: string) => readURLState(new URLSearchParams(q), defaultFilters(), graph()).view;
+    expect(read('view=blueprint')).toBe('file-map');
+    expect(read('view=file-map')).toBe('file-map');
+    expect(write(defaultFilters(), { view: 'file-map' }).get('view')).toBe('file-map');
+  });
+
+  it('round-trips layer= and ignores unknown layers', () => {
+    const read = (q: string) => readURLState(new URLSearchParams(q), defaultFilters(), graph()).layer;
+    expect(write(defaultFilters(), { layer: 'code' }).get('layer')).toBe('code');
+    expect(write(defaultFilters(), { layer: null }, 'layer=code').has('layer')).toBe(false);
+    expect(read('layer=blueprint')).toBe('blueprint');
+    expect(read('layer=code')).toBe('code');
+    expect(read('layer=other')).toBeNull();
+    expect(read('')).toBeNull();
+  });
+
   it('builds from defaults, not from the previous state', () => {
     const defaults = defaultFilters();
     const parsed = readURLState(new URLSearchParams('sel=a'), defaults, graph());

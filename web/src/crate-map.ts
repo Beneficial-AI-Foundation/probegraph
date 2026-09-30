@@ -1,7 +1,7 @@
 import * as d3 from 'd3';
 import dagreModule from '@dagrejs/dagre';
 const dagre = dagreModule as any;
-import { D3Graph, D3Node, GraphState, CrateNode, CrateEdge, CrateGraph } from './types';
+import { D3Graph, D3Node, GraphState, CrateNode, CrateEdge, CrateGraph, crateMapLabel, crateNoun } from './types';
 import { edgeTypeColor, groupColors, ACCENT } from './theme';
 import { escapeHtml } from './html';
 
@@ -167,6 +167,9 @@ export class CrateMapVisualization {
   // ----- Public interface -----
 
   public update(filteredGraph: D3Graph): void {
+    // A layer switch reuses this visualization with another projectLanguage
+    this.renderLegend();
+
     if (!filteredGraph || filteredGraph.nodes.length === 0) {
       this.clear();
       return;
@@ -1116,10 +1119,9 @@ export class CrateMapVisualization {
 
     const legend = document.createElement('div');
     legend.className = 'cm-legend';
-    const isLean = this.state.projectLanguage === 'lean';
-    const mapTitle = isLean ? 'Namespace Map' : 'Crate Map';
-    const noun = isLean ? 'namespace' : 'crate';
-    const Noun = isLean ? 'Namespace' : 'Crate';
+    const mapTitle = crateMapLabel(this.state.projectLanguage);
+    const noun = crateNoun(this.state.projectLanguage);
+    const Noun = noun.charAt(0).toUpperCase() + noun.slice(1);
     legend.innerHTML = `
       <div class="cm-legend-header" id="cm-legend-toggle">
         <strong>${mapTitle}</strong> <span class="cm-legend-arrow">${this.legendVisible ? '\u25BC' : '\u25B6'}</span>

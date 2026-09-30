@@ -64,8 +64,11 @@ export function isD3GraphFormat(data: unknown): data is D3Graph {
 /** Declaration kind (Verus: exec/proof/spec, Lean: theorem/def/axiom/...) */
 export type DeclKind = string;
 
+/** `language` of probe-leanblueprint node atoms. */
+export const BLUEPRINT_LANGUAGE = 'blueprint';
+
 /** Detected project language based on kind values in the graph */
-export type ProjectLanguage = 'verus' | 'lean' | 'mixed' | 'unknown';
+export type ProjectLanguage = 'verus' | 'lean' | 'mixed' | 'blueprint' | 'unknown';
 
 const VERUS_KINDS = new Set(['exec', 'proof', 'spec']);
 const LEAN_KINDS = new Set([
@@ -89,6 +92,8 @@ export function detectProjectLanguage(graph: D3Graph): ProjectLanguage {
     if (hasVerus && hasLean) return 'mixed';
     if (hasVerus) return 'verus';
     if (hasLean) return 'lean';
+    // The blueprint layer is its own graph (see graph-loader.ts)
+    if (langs.size === 1 && langs.has(BLUEPRINT_LANGUAGE)) return 'blueprint';
     return 'unknown';
   }
 
@@ -103,6 +108,16 @@ export function detectProjectLanguage(graph: D3Graph): ProjectLanguage {
   if (hasVerusKinds) return 'verus';
   if (hasLeanKinds) return 'lean';
   return 'unknown';
+}
+
+/** Language-aware noun for crate/namespace used in UI text. */
+export function crateNoun(lang: ProjectLanguage): string {
+  return lang === 'lean' ? 'namespace' : lang === 'blueprint' ? 'chapter' : 'crate';
+}
+
+/** Language-aware label for the crate/namespace map view. */
+export function crateMapLabel(lang: ProjectLanguage): string {
+  return lang === 'lean' ? 'Namespace Map' : lang === 'blueprint' ? 'Chapter Map' : 'Crate Map';
 }
 
 /**
@@ -123,6 +138,7 @@ export function getKindSetsForLanguage(lang: ProjectLanguage): {
 } {
   const proofKinds = lang === 'verus' ? new Set(['proof'])
     : lang === 'lean' ? new Set(['theorem'])
+    : lang === 'blueprint' ? new Set(['blueprint-theorem'])
     : new Set(['proof', 'theorem']);
   return {
     proofKinds,
@@ -172,6 +188,37 @@ export function isVerifiedStatus(status: VerificationStatus | undefined): boolea
   return status === 'verified' || status === 'transitively-verified' || status === 'trusted';
 }
 
+/** probe-leanblueprint statement axis, worst to best. */
+export type BlueprintStatementStatus = 'none' | 'blocked' | 'ready' | 'formalized';
+/** probe-leanblueprint proof axis, worst to best. */
+export type BlueprintProofStatus = 'none' | 'ready' | 'proved' | 'fully-proved';
+
+/**
+ * probe-leanblueprint fields of a node atom or of a Lean atom a blueprint
+ * node binds (probe-leanblueprint `docs/SCHEMA.md`). Fields marked "node
+ * atom" are only set on the blueprint layer.
+ */
+export interface BlueprintInfo {
+  label: string;
+  kind?: string;                  // "definition" | "theorem"
+  title?: string;                 // e.g. "Theorem 1.3"
+  chapter?: string;
+  group?: string;
+  statementStatus?: string;
+  proofStatus?: string;
+  statusSource?: string;          // "code-derived" (Verso) | "declared" (Massot)
+  mismatch?: string;              // e.g. "claims-proved-but-unverified"
+  missingDecls?: string[];
+  upstreamDecls?: string[];
+  githubIssue?: string;           // digit string, resolved against source.repo
+  nodeClass?: string;             // node atom: "bound" | "planned-only" | "decl-missing"
+  bindings?: string[];            // node atom: IDs of the Lean atoms it binds
+  statementText?: string;         // node atom: untrusted markup, render as text
+  statementFormat?: string;       // node atom: "verso" | "latex"
+  sourcePath?: string;            // node atom: repo-relative declaration site
+  sourceLines?: { start: number; end: number };
+}
+
 /** Derived border status (this node's readiness to be verified) */
 export type BorderStatus = 'verified' | 'ready' | 'blocked' | 'not_ready' | 'unknown';
 
@@ -210,6 +257,7 @@ export interface D3Node {
   // of one (Aeneas mapping join), or @[blueprint]-attributed Lean atom.
   // Preferred seeds for the large-graph seeded initial view.
   is_entry_point?: boolean;
+  blueprint?: BlueprintInfo;  // probe-leanblueprint fields (node atoms and bound Lean atoms)
   // Derived statuses computed by DAG walk (used by File Map view)
   border_status?: BorderStatus;
   fill_status?: FillStatus;
@@ -263,6 +311,13 @@ export interface D3Graph {
   links: D3Link[];
   metadata: D3GraphMetadata;
   nodeDepths?: Map<string, number>;
+  /**
+   * probe-leanblueprint node atoms as their own graph, when the input has
+   * any. Never mixed into `nodes`: the two layers must not be counted or
+   * traversed together (probe-leanblueprint `docs/SCHEMA.md`, "Which layer
+   * to read").
+   */
+  blueprintLayer?: D3Graph;
 }
 
 export interface FilterOptions {
@@ -345,6 +400,26 @@ export interface ProbeAtom {
   "translation-text"?: { "lines-start": number; "lines-end": number };
   specs?: string[];
   "rust-source"?: string | null;
+  // probe-leanblueprint extension fields
+  "blueprint-label"?: string;
+  "blueprint-kind"?: string;
+  "blueprint-title"?: string;
+  "blueprint-chapter"?: string;
+  "blueprint-group"?: string;
+  "blueprint-statement-status"?: string;
+  "blueprint-proof-status"?: string;
+  "blueprint-status-source"?: string;
+  "blueprint-status-mismatch"?: string;
+  "blueprint-missing-decls"?: string[];
+  "blueprint-upstream-decls"?: string[];
+  "blueprint-github-issue"?: string;
+  "blueprint-node-class"?: string;
+  "blueprint-statement-uses"?: string[];
+  "blueprint-proof-uses"?: string[];
+  "blueprint-statement-text"?: string;
+  "blueprint-statement-format"?: string;
+  "blueprint-source-path"?: string;
+  "blueprint-source-lines"?: { "lines-start": number; "lines-end": number };
 }
 
 /**
@@ -440,7 +515,8 @@ export function extractCrateName(
   language: ProjectLanguage = 'unknown',
 ): string {
   const nodeLang = (node as D3Node).language;
-  const useLeanExtraction = language === 'lean'
+  // Blueprint node atoms: code-path is blueprint/<chapter-slug>
+  const useLeanExtraction = language === 'lean' || language === 'blueprint'
     || (language === 'mixed' && nodeLang === 'lean');
 
   if (useLeanExtraction && node.relative_path) {

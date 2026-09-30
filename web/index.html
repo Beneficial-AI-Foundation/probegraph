@@ -22,9 +22,13 @@
         </svg>
         probegraph
       </h1>
+      <div class="view-switcher" id="layer-switcher" style="display:none" title="The graph has a probe-leanblueprint layer">
+        <button id="layer-blueprint" class="view-btn">Blueprint</button>
+        <button id="layer-code" class="view-btn">Code</button>
+      </div>
       <div class="view-switcher">
         <button id="view-callgraph" class="view-btn active">Call Graph</button>
-        <button id="view-blueprint" class="view-btn">File Map</button>
+        <button id="view-file-map" class="view-btn">File Map</button>
         <button id="view-crate-map" class="view-btn">Crate Map</button>
         <button id="view-hierarchy" class="view-btn">Hierarchy <small style="opacity:0.7">(testing)</small></button>
       </div>

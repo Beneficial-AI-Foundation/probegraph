@@ -1,5 +1,5 @@
 import {
-  D3Graph, D3Node, D3Link, LinkRole, SimplifiedNode, ProbeAtom, SourceConfig,
+  D3Graph, D3Node, D3Link, LinkRole, SimplifiedNode, ProbeAtom, SourceConfig, BlueprintInfo, BLUEPRINT_LANGUAGE,
   Schema2Envelope, Schema2Source,
   isSimplifiedFormat, isD3GraphFormat, isAtomDictFormat, isSchema2Envelope,
   VerificationStatus,
@@ -122,10 +122,134 @@ function atomRoleClassifier(atom: ProbeAtom): (dep: string) => LinkRole | undefi
   };
 }
 
+const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined);
+const strList = (v: unknown): string[] | undefined =>
+  Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : undefined;
+
+/**
+ * The probe-leanblueprint fields of an atom, or undefined when it has no
+ * `blueprint-label`. Values of the wrong type are dropped: the extract is
+ * third-party input. `bindings` is left to the caller.
+ */
+function blueprintInfo(atom: ProbeAtom): BlueprintInfo | undefined {
+  const label = str(atom["blueprint-label"]);
+  if (label === undefined) return undefined;
+  const lines = atom["blueprint-source-lines"];
+  const info: BlueprintInfo = {
+    label,
+    kind: str(atom["blueprint-kind"]),
+    title: str(atom["blueprint-title"]),
+    chapter: str(atom["blueprint-chapter"]),
+    group: str(atom["blueprint-group"]),
+    statementStatus: str(atom["blueprint-statement-status"]),
+    proofStatus: str(atom["blueprint-proof-status"]),
+    statusSource: str(atom["blueprint-status-source"]),
+    mismatch: str(atom["blueprint-status-mismatch"]),
+    missingDecls: strList(atom["blueprint-missing-decls"]),
+    upstreamDecls: strList(atom["blueprint-upstream-decls"]),
+    githubIssue: str(atom["blueprint-github-issue"]),
+    nodeClass: str(atom["blueprint-node-class"]),
+    statementText: str(atom["blueprint-statement-text"]),
+    statementFormat: str(atom["blueprint-statement-format"]),
+    sourcePath: str(atom["blueprint-source-path"]),
+    sourceLines: lines && typeof lines["lines-start"] === 'number' && typeof lines["lines-end"] === 'number'
+      ? { start: lines["lines-start"], end: lines["lines-end"] }
+      : undefined,
+  };
+  // Drop absent fields so node objects stay small
+  for (const k of Object.keys(info) as (keyof BlueprintInfo)[]) {
+    if (info[k] === undefined) delete info[k];
+  }
+  return info;
+}
+
+/**
+ * Build the blueprint layer from probe-leanblueprint node atoms. Edges come
+ * from the node-to-node uses fields: statement uses have role `type`, proof
+ * uses role `term`, a name in both `both`. A bound node atom's
+ * `dependencies` are its Lean bindings, kept in `blueprint.bindings` and
+ * never turned into edges.
+ */
+function convertBlueprintNodes(
+  nodeAtoms: Record<string, ProbeAtom>,
+  codeIds: Set<string>,
+): D3Graph {
+  const nodeIds = new Set(Object.keys(nodeAtoms));
+  const links: D3Link[] = [];
+  const depsOf = new Map<string, string[]>();
+  const dependentsOf = new Map<string, string[]>([...nodeIds].map(id => [id, []]));
+
+  for (const [id, atom] of Object.entries(nodeAtoms)) {
+    const statementUses = new Set(strList(atom["blueprint-statement-uses"]) ?? []);
+    const proofUses = new Set(strList(atom["blueprint-proof-uses"]) ?? []);
+    const targets = [...new Set([...statementUses, ...proofUses])].filter(t => nodeIds.has(t));
+    depsOf.set(id, targets);
+    for (const target of targets) {
+      const role: LinkRole = statementUses.has(target)
+        ? (proofUses.has(target) ? 'both' : 'type')
+        : 'term';
+      links.push({ source: id, target, type: 'inner', role });
+      dependentsOf.get(target)!.push(id);
+    }
+  }
+
+  const nodes: D3Node[] = Object.entries(nodeAtoms).map(([id, atom]) => {
+    const codePath = atom["code-path"] || '';
+    const parts = codePath.split('/');
+    const info = blueprintInfo(atom) ?? { label: atom["display-name"] };
+    const bindings = (strList(atom.dependencies) ?? []).filter(d => codeIds.has(d));
+    if (bindings.length > 0) info.bindings = [...new Set(bindings)];
+    return {
+      id,
+      display_name: atom["display-name"],
+      symbol: id,
+      full_path: codePath,
+      relative_path: codePath,
+      file_name: parts[parts.length - 1] || 'unknown',
+      parent_folder: parts.length >= 2 ? parts[parts.length - 2] : 'unknown',
+      crate_name: '',
+      is_libsignal: false,
+      dependencies: depsOf.get(id)!,
+      dependents: dependentsOf.get(id)!,
+      kind: atom.kind || 'blueprint-definition',
+      verification_status: atom["verification-status"] as VerificationStatus | undefined,
+      language: BLUEPRINT_LANGUAGE,
+      blueprint: info,
+    };
+  });
+
+  return {
+    nodes,
+    links,
+    metadata: {
+      total_nodes: nodes.length,
+      total_edges: links.length,
+      project_root: 'Blueprint layer',
+      generated_at: new Date().toISOString(),
+    },
+  };
+}
+
 /**
  * Convert probe atom dict format (probe-verus / probe-lean atoms.json) to D3Graph format.
+ * probe-leanblueprint node atoms (`language: "blueprint"`) are left out of
+ * the result and returned as its `blueprintLayer`.
  */
-export function convertAtomDictToD3Graph(atoms: Record<string, ProbeAtom>): D3Graph {
+export function convertAtomDictToD3Graph(input: Record<string, ProbeAtom>): D3Graph {
+  const atoms: Record<string, ProbeAtom> = {};
+  const nodeAtoms: Record<string, ProbeAtom> = {};
+  for (const [name, atom] of Object.entries(input)) {
+    if (atom.language === BLUEPRINT_LANGUAGE) nodeAtoms[name] = atom;
+    else atoms[name] = atom;
+  }
+  const graph = convertCodeAtoms(atoms);
+  if (Object.keys(nodeAtoms).length > 0) {
+    graph.blueprintLayer = convertBlueprintNodes(nodeAtoms, new Set(Object.keys(atoms)));
+  }
+  return graph;
+}
+
+function convertCodeAtoms(atoms: Record<string, ProbeAtom>): D3Graph {
   const knownIds = new Set(Object.keys(atoms));
 
   // Explicit entry points, used as the preferred seed tier for the seeded
@@ -134,7 +258,8 @@ export function convertAtomDictToD3Graph(atoms: Record<string, ProbeAtom>): D3Gr
   // - Their Lean translation targets (Aeneas mapping join): the public-API
   //   translations have in-project callers (spec theorems), so in-degree-based
   //   seeding would hide them.
-  // - Lean atoms carrying the `blueprint` attribute (@[blueprint]).
+  // - Lean atoms carrying the `blueprint` attribute (@[blueprint]) or bound
+  //   by a probe-leanblueprint node (`blueprint-label`).
   const entryPointIds = new Set<string>();
   for (const [atomName, atom] of Object.entries(atoms)) {
     if (atom["is-public-api"] === true) {
@@ -145,6 +270,7 @@ export function convertAtomDictToD3Graph(atoms: Record<string, ProbeAtom>): D3Gr
     if (Array.isArray(atom.attributes) && atom.attributes.includes('blueprint')) {
       entryPointIds.add(atomName);
     }
+    if (typeof atom["blueprint-label"] === 'string') entryPointIds.add(atomName);
   }
 
   const dependentsMap = new Map<string, string[]>();
@@ -203,6 +329,7 @@ export function convertAtomDictToD3Graph(atoms: Record<string, ProbeAtom>): D3Gr
       is_public_api: atom["is-public-api"],
       attributes: atom.attributes,
       is_entry_point: entryPointIds.has(atomName) || undefined,
+      blueprint: blueprintInfo(atom),
     };
   });
 
@@ -340,6 +467,7 @@ export function parseAndNormalizeGraph(data: unknown): D3Graph {
     const graph = parseAndNormalizeGraph(data.data);
     if (sourceConfigs.length > 0) {
       graph.metadata.source_configs = sourceConfigs;
+      if (graph.blueprintLayer) graph.blueprintLayer.metadata.source_configs = sourceConfigs;
     }
     return graph;
   }

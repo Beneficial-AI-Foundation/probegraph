@@ -1,4 +1,5 @@
-import { D3Graph, D3Node, GraphState, FilterOptions, ProjectLanguage, detectProjectLanguage, getKindSetsForLanguage, extractCrateName, isSchema2Envelope } from './types';
+import { D3Graph, D3Node, GraphState, FilterOptions, ProjectLanguage, BLUEPRINT_LANGUAGE, crateMapLabel, crateNoun, detectProjectLanguage, getKindSetsForLanguage, extractCrateName, isSchema2Envelope } from './types';
+import { blueprintBackrefHtml, blueprintNodeDetailsHtml } from './blueprint-details';
 import { applyFilters, getCallers, getCallees } from './filters';
 import {
   compileQuery, GraphQuery, NodeMatcher, filterLinksByType, linkTypeShown, roleFilteredGraph,
@@ -6,7 +7,7 @@ import {
 } from './query';
 import { computeSeedTiers, expandFromSeeds, SeedTier, SeedExpansion } from './graph-utils';
 import { CallGraphVisualization } from './graph';
-import { BlueprintVisualization } from './blueprint';
+import { FileMapVisualization } from './file-map';
 import { CrateMapVisualization, buildCrateGraph } from './crate-map';
 import { HierarchyMapVisualization } from './hierarchy-map';
 import { computeDerivedStatuses } from './status';
@@ -17,7 +18,7 @@ import {
   QueryIntent, NONE_INTENT, textIntent, focusIntent, boundaryIntent,
   isFocusIntent, inputsForIntent, intentAfterInputEdit, vscodeIntent, vscodeSetQueryIntent,
 } from './intent';
-import { ActiveView, defaultFilters, readURLState, writeURLState } from './url-state';
+import { ActiveView, Layer, defaultFilters, readURLState, writeURLState } from './url-state';
 
 import { GuidePanel } from './guide/guide-panel';
 import { buildGraphSummary } from './guide/static-analysis';
@@ -80,11 +81,13 @@ function navigateToSource(node: D3Node): void {
   const api = getVSCodeAPI();
   if (api) {
     // In VS Code: send message to extension to open the file
+    const loc = sourceLocation(node);
+    if (!loc) return;
     api.postMessage({
       type: 'navigate',
-      relativePath: node.relative_path,
-      startLine: node.start_line,
-      endLine: node.end_line,
+      relativePath: loc.path,
+      startLine: loc.start,
+      endLine: loc.end,
       displayName: node.display_name
     });
   } else {
@@ -229,28 +232,47 @@ function appendLineFragment(link: string, start?: number, end?: number): string 
  * falling back to the global githubBaseUrl / githubBranch / githubPathPrefix.
  */
 function buildGitHubLink(node: D3Node): string | null {
-  if (!node.relative_path) return null;
+  const loc = sourceLocation(node);
+  if (!loc) return null;
 
   // Try per-language source config (from Schema 2.0 envelope metadata)
-  if (node.language && state.fullGraph?.metadata.source_configs) {
-    const config = pickSourceConfig(
-      state.fullGraph.metadata.source_configs,
-      node.language,
-      node.relative_path,
-    );
+  if (loc.language && state.fullGraph?.metadata.source_configs) {
+    const config = pickSourceConfig(state.fullGraph.metadata.source_configs, loc.language, loc.path);
     if (config) {
-      const fullPath = buildFullPath(node.relative_path, config.path_prefix);
+      const fullPath = buildFullPath(loc.path, config.path_prefix);
       const link = `${config.github_url}/blob/${config.ref}/${fullPath}`;
-      return appendLineFragment(link, node.start_line, node.end_line);
+      return appendLineFragment(link, loc.start, loc.end);
     }
   }
 
   // Fallback: global settings
   if (!githubBaseUrl) return null;
   const baseUrl = githubBaseUrl.replace(/\/$/, '');
-  const fullPath = buildFullPath(node.relative_path, githubPathPrefix);
+  const fullPath = buildFullPath(loc.path, githubPathPrefix);
   const link = `${baseUrl}/blob/${githubBranch}/${fullPath}`;
-  return appendLineFragment(link, node.start_line, node.end_line);
+  return appendLineFragment(link, loc.start, loc.end);
+}
+
+interface SourceLocation {
+  path: string;
+  start?: number;
+  end?: number;
+  /** Language whose source config the path resolves against. */
+  language?: string;
+}
+
+/**
+ * Where a node's source is. A blueprint entry's relative_path is its
+ * chapter, so it points at the entry's Lean declaration site instead.
+ */
+function sourceLocation(node: D3Node): SourceLocation | null {
+  if (node.language === BLUEPRINT_LANGUAGE) {
+    const bp = node.blueprint;
+    if (!bp?.sourcePath) return null;
+    return { path: bp.sourcePath, start: bp.sourceLines?.start, end: bp.sourceLines?.end, language: 'lean' };
+  }
+  if (!node.relative_path) return null;
+  return { path: node.relative_path, start: node.start_line, end: node.end_line, language: node.language };
 }
 
 /**
@@ -267,6 +289,9 @@ function generateShareableURL(): string {
     pendingFocusUrl: pendingFocus?.url ?? null,
     entrypointsUrl: entrypointsJsonUrl,
     projectLanguage: state.projectLanguage,
+    // Before a graph loads it is unknown whether it has a blueprint layer
+    layer: !codeLayer ? urlLayer()
+      : blueprintLayer && activeLayer !== DEFAULT_LAYER ? activeLayer : null,
   });
   return url.toString();
 }
@@ -446,7 +471,15 @@ let lastSelectionKey = '';
  * restored: expanded nodes and the node shown in the details panel.
  * Returns a ?focus= URL still to be loaded (not in the focus cache).
  */
-function stateFromURL(): { focusUrl: string | null; view: ActiveView } {
+function stateFromURL(): { focusUrl: string | null; view: ActiveView; layerChanged: boolean } {
+  // The layer decides the graph and its defaults, so it is set first
+  const layer = layerFromURL();
+  const layerChanged = layer !== activeLayer;
+  if (layerChanged) {
+    inactiveLayer = currentLayerFilters();
+    showLayer(layer);
+  }
+
   const parsed = readURLState(
     new URLSearchParams(window.location.search),
     graphDefaultFilters ?? freshFilters(initialFilters),
@@ -474,13 +507,13 @@ function stateFromURL(): { focusUrl: string | null; view: ActiveView } {
       pendingFocus = { url: focusUrl, generation: intentGeneration };
     }
   }
-  return { focusUrl, view: parsed.view };
+  return { focusUrl, view: parsed.view, layerChanged };
 }
 
 /** Browser back/forward: restore from the URL without writing history. */
 function handlePopState(): void {
   if (!state.fullGraph) return;
-  const { focusUrl, view } = stateFromURL();
+  const { focusUrl, view, layerChanged } = stateFromURL();
   urlWritesSuppressed++;
   try {
     if (view !== activeView) switchView(view, { apply: false });
@@ -490,6 +523,10 @@ function handlePopState(): void {
     }
     if (!focusUrl && !isFocusIntent(state.filters.intent)) resumeDeferredEntrypoints();
     applyFiltersAndUpdate();
+    if (layerChanged) {
+      refreshGuidePanel();
+      updateNodeInfo();
+    }
     // After the apply, so the expansion is pruned against the restored
     // graph; an empty list is restored too (collapse everything)
     if (visualization instanceof HierarchyMapVisualization) {
@@ -523,14 +560,52 @@ const initialFilters: FilterOptions = defaultFilters();
 let state: GraphState = {
   fullGraph: null,
   filteredGraph: null,
-  filters: initialFilters,
+  // A copy: filters edited before a graph loads must not become the defaults
+  filters: freshFilters(initialFilters),
   selectedNode: null,
   hoveredNode: null,
   projectLanguage: 'unknown',
 };
 
 let activeView: ActiveView = 'callgraph';
-let visualization: CallGraphVisualization | BlueprintVisualization | CrateMapVisualization | HierarchyMapVisualization | null = null;
+
+// The loaded graph's layers (see D3Graph.blueprintLayer); state.fullGraph is
+// one of them. blueprintLayer is null for graphs without node atoms.
+let codeLayer: D3Graph | null = null;
+let blueprintLayer: D3Graph | null = null;
+const DEFAULT_LAYER: Layer = 'blueprint';
+let activeLayer: Layer = 'code';
+// Filters and boundary crates of the layer not shown, restored when
+// switching back to it
+interface LayerFilters {
+  filters: FilterOptions;
+  sourceCrate: string;
+  targetCrate: string;
+}
+let inactiveLayer: LayerFilters | null = null;
+
+function currentLayerFilters(): LayerFilters {
+  return { filters: state.filters, sourceCrate: selectedSourceCrate, targetCrate: selectedTargetCrate };
+}
+
+/** The layer the URL asks for; the default when absent or unavailable. */
+function layerFromURL(): Layer {
+  if (!blueprintLayer) return 'code';
+  return urlLayer() ?? DEFAULT_LAYER;
+}
+
+/** The URL's `layer=`, whether or not the graph has that layer. */
+function urlLayer(): Layer | null {
+  return readURLState(new URLSearchParams(window.location.search), freshFilters(initialFilters), null).layer;
+}
+
+function replaceURLLayer(layer: Layer): void {
+  const url = new URL(window.location.href);
+  if (layer === DEFAULT_LAYER) url.searchParams.delete('layer');
+  else url.searchParams.set('layer', layer);
+  window.history.replaceState(window.history.state, '', url.toString());
+}
+let visualization: CallGraphVisualization | FileMapVisualization | CrateMapVisualization | HierarchyMapVisualization | null = null;
 
 /** Views that aggregate the whole graph and so bypass the large-graph guards. */
 function isAggregatedView(view: ActiveView): boolean {
@@ -616,20 +691,10 @@ function refreshGuidePanel(opts: { onlyIfFiltersChanged?: boolean } = {}): void 
   }));
 }
 
-/** Language-aware label for the crate/namespace map view. */
-function crateMapLabel(lang: ProjectLanguage): string {
-  return lang === 'lean' ? 'Namespace Map' : 'Crate Map';
-}
-
-/** Language-aware noun for crate/namespace used in UI text. */
-function crateNoun(lang: ProjectLanguage): string {
-  return lang === 'lean' ? 'namespace' : 'crate';
-}
-
 /** Update all language-sensitive UI labels (button, legend, hints). */
 function updateLanguageLabels(lang: ProjectLanguage): void {
   const noun = crateNoun(lang);
-  const Noun = lang === 'lean' ? 'Namespace' : 'Crate';
+  const Noun = noun.charAt(0).toUpperCase() + noun.slice(1);
   const mapLabel = crateMapLabel(lang);
 
   const crateMapBtn = document.getElementById('view-crate-map');
@@ -653,65 +718,19 @@ function updateLanguageLabels(lang: ProjectLanguage): void {
 }
 
 /**
- * Sync input field values to state (handles browser auto-fill after refresh)
+ * Show the URL's state before a graph loads, so a deferred large graph's
+ * Load & Search sees a shared query and URL writes while deferred keep it.
+ * loadGraph() reads the URL again against the graph.
  */
-function syncInputsToState(): void {
-  // Sync text inputs that might have been auto-filled by the browser
-  const sourceInput = document.getElementById('source-input') as HTMLInputElement;
-  const sinkInput = document.getElementById('sink-input') as HTMLInputElement;
-  const excludeNameInput = document.getElementById('exclude-name-patterns') as HTMLInputElement;
-  const excludePathInput = document.getElementById('exclude-path-patterns') as HTMLInputElement;
-  const includeFilesInput = document.getElementById('include-files') as HTMLInputElement;
-  const depthInput = document.getElementById('depth-limit') as HTMLInputElement;
-  
-  if (sourceInput?.value || sinkInput?.value) {
-    state.filters.intent = textIntent(sourceInput?.value ?? '', sinkInput?.value ?? '');
-  }
-  if (excludeNameInput?.value) {
-    state.filters.excludeNamePatterns = excludeNameInput.value;
-  }
-  if (excludePathInput?.value) {
-    state.filters.excludePathPatterns = excludePathInput.value;
-  }
-  if (includeFilesInput?.value) {
-    state.filters.includeFiles = includeFilesInput.value;
-  }
-  if (depthInput?.value) {
-    const value = parseInt(depthInput.value);
-    state.filters.maxDepth = value > 0 ? value : null;
-    document.getElementById('depth-value')!.textContent = 
-      state.filters.maxDepth !== null ? state.filters.maxDepth.toString() : 'All';
-  }
-  
-  // Sync checkboxes
-  state.filters.showLibsignal = (document.getElementById('show-libsignal') as HTMLInputElement)?.checked ?? true;
-  state.filters.showNonLibsignal = (document.getElementById('show-non-libsignal') as HTMLInputElement)?.checked ?? true;
-  const innerEl = document.getElementById('show-inner-calls') as HTMLInputElement | null;
-  const preEl = document.getElementById('show-precondition-calls') as HTMLInputElement | null;
-  const postEl = document.getElementById('show-postcondition-calls') as HTMLInputElement | null;
-  const statementEl = document.getElementById('show-statement-deps') as HTMLInputElement | null;
-  const bodyEl = document.getElementById('show-body-deps') as HTMLInputElement | null;
-  if (innerEl) state.filters.showInnerCalls = innerEl.checked;
-  if (preEl) state.filters.showPreconditionCalls = preEl.checked;
-  if (postEl) state.filters.showPostconditionCalls = postEl.checked;
-  if (statementEl) state.filters.showStatementDeps = statementEl.checked;
-  if (bodyEl) state.filters.showBodyDeps = bodyEl.checked;
-  state.filters.showExecFunctions = (document.getElementById('show-exec-functions') as HTMLInputElement)?.checked ?? true;
-  state.filters.showProofFunctions = (document.getElementById('show-proof-functions') as HTMLInputElement)?.checked ?? true;
-  state.filters.showSpecFunctions = (document.getElementById('show-spec-functions') as HTMLInputElement)?.checked ?? false;
-  // Kind checkboxes that only exist when the graph contains the kind:
-  // leave the filter untouched when absent so URL-parsed values survive.
-  const axiomsEl = document.getElementById('show-axioms') as HTMLInputElement | null;
-  const typesEl = document.getElementById('show-types') as HTMLInputElement | null;
-  const projectionsEl = document.getElementById('show-projections') as HTMLInputElement | null;
-  const instancesEl = document.getElementById('show-instances') as HTMLInputElement | null;
-  if (axiomsEl) state.filters.showAxioms = axiomsEl.checked;
-  if (typesEl) state.filters.showTypes = typesEl.checked;
-  if (projectionsEl) state.filters.showProjections = projectionsEl.checked;
-  if (instancesEl) state.filters.showInstances = instancesEl.checked;
-  state.filters.showVerifiedNodes = (document.getElementById('show-verified-nodes') as HTMLInputElement)?.checked ?? true;
-  state.filters.showFailedNodes = (document.getElementById('show-failed-nodes') as HTMLInputElement)?.checked ?? true;
-  state.filters.showUnverifiedNodes = (document.getElementById('show-unverified-nodes') as HTMLInputElement)?.checked ?? true;
+function applyURLBeforeLoad(): void {
+  const parsed = readURLState(new URLSearchParams(window.location.search), freshFilters(initialFilters), null);
+  state.filters = parsed.filters;
+  selectedSourceCrate = parsed.sourceCrate;
+  selectedTargetCrate = parsed.targetCrate;
+  hierarchyExpanded = parsed.hierarchyExpanded;
+  entrypointsJsonUrl = parsed.entrypointsUrl;
+  pendingFocus = parsed.focusUrl ? { url: parsed.focusUrl, generation: intentGeneration } : null;
+  syncFilterUI();
 }
 
 /**
@@ -727,8 +746,8 @@ function init(): void {
   // Check URL for initial view
   const urlParams = new URLSearchParams(window.location.search);
   const viewParam = urlParams.get('view');
-  if (viewParam === 'blueprint') {
-    activeView = 'blueprint';
+  if (viewParam === 'file-map' || viewParam === 'blueprint') {
+    activeView = 'file-map';
   } else if (viewParam === 'crate-map') {
     activeView = 'crate-map';
   } else if (viewParam === 'hierarchy') {
@@ -741,8 +760,7 @@ function init(): void {
   // Set up UI event handlers
   setupUIHandlers();
   
-  // Sync any auto-filled input values to state
-  syncInputsToState();
+  applyURLBeforeLoad();
 
   // Update stats display
   updateStats();
@@ -767,7 +785,7 @@ function createVisualization(container: HTMLElement): void {
   // Destroy existing visualization
   if (visualization) {
     if ('destroy' in visualization) {
-      (visualization as BlueprintVisualization | CrateMapVisualization | HierarchyMapVisualization).destroy();
+      (visualization as FileMapVisualization | CrateMapVisualization | HierarchyMapVisualization).destroy();
     } else {
       visualization.clear();
       container.querySelector('svg')?.remove();
@@ -782,7 +800,7 @@ function createVisualization(container: HTMLElement): void {
 
   // Update button states
   document.getElementById('view-callgraph')?.classList.toggle('active', activeView === 'callgraph');
-  document.getElementById('view-blueprint')?.classList.toggle('active', activeView === 'blueprint');
+  document.getElementById('view-file-map')?.classList.toggle('active', activeView === 'file-map');
   document.getElementById('view-crate-map')?.classList.toggle('active', activeView === 'crate-map');
   document.getElementById('view-hierarchy')?.classList.toggle('active', activeView === 'hierarchy');
 
@@ -792,8 +810,8 @@ function createVisualization(container: HTMLElement): void {
     const viz = new HierarchyMapVisualization(container, state, handleStateChange);
     if (hierarchyExpanded.length > 0) viz.setExpanded(hierarchyExpanded);
     visualization = viz;
-  } else if (activeView === 'blueprint') {
-    visualization = new BlueprintVisualization(container, state, handleStateChange);
+  } else if (activeView === 'file-map') {
+    visualization = new FileMapVisualization(container, state, handleStateChange);
   } else {
     visualization = new CallGraphVisualization(container, state, handleStateChange);
   }
@@ -831,9 +849,11 @@ function switchView(view: ActiveView, opts: { apply?: boolean } = {}): void {
 function setupUIHandlers(): void {
   // View switcher
   document.getElementById('view-callgraph')?.addEventListener('click', () => switchView('callgraph'));
-  document.getElementById('view-blueprint')?.addEventListener('click', () => switchView('blueprint'));
+  document.getElementById('view-file-map')?.addEventListener('click', () => switchView('file-map'));
   document.getElementById('view-crate-map')?.addEventListener('click', () => switchView('crate-map'));
   document.getElementById('view-hierarchy')?.addEventListener('click', () => switchView('hierarchy'));
+  document.getElementById('layer-blueprint')?.addEventListener('click', () => switchLayer('blueprint'));
+  document.getElementById('layer-code')?.addEventListener('click', () => switchLayer('code'));
 
   // Keep the ?expanded= URL parameter in sync with the Hierarchy view
   window.addEventListener('hierarchy-expanded-changed', ((event: CustomEvent) => {
@@ -1021,6 +1041,8 @@ function setupUIHandlers(): void {
   document.getElementById('include-files')?.addEventListener('input', (e) => {
     state.filters.includeFiles = (e.target as HTMLInputElement).value;
     updateFileListSelection();  // Update file list checkmarks
+    // Deferred large graph: the URL carries the pattern into loadGraph()
+    if (!state.fullGraph) updateURLWithFilters();
     // Only auto-apply if graph is already loaded, use debounce for large graphs
     if (state.fullGraph) {
       if (isLargeGraph(state.fullGraph)) {
@@ -1044,7 +1066,7 @@ function setupUIHandlers(): void {
       if (deferredGraphUrl) {
         // Graph not loaded yet - load it first, then check for disambiguation
         console.log('Loading deferred graph...');
-        loadDeferredGraphWithDisambiguation();
+        loadDeferredGraph();
       } else if (state.fullGraph) {
         // Check for ambiguous patterns before applying
         const hasAmbiguity = checkAndShowDisambiguation();
@@ -1245,7 +1267,8 @@ async function autoLoadGraph(): Promise<void> {
 }
 
 /**
- * Load a deferred graph (for large files that weren't auto-loaded)
+ * Load a deferred graph (for large files that weren't auto-loaded), then
+ * check the Include Files pattern for ambiguity.
  * Only called when user explicitly requests it after entering a search query
  */
 async function loadDeferredGraph(): Promise<void> {
@@ -1286,96 +1309,12 @@ async function loadDeferredGraph(): Promise<void> {
     const graph = parseAndNormalizeGraph(rawData);
     
     deferredGraphUrl = null; // Clear the deferred URL
-    loadGraph(graph, 'Loaded from deferred graph');
-  } catch (error) {
-    console.error('Failed to load deferred graph:', error);
-    showError(`Failed to load graph: ${error instanceof Error ? error.message : 'Unknown error'}`);
-  } finally {
-    isDeferredLoadInProgress = false;
-  }
-}
 
-/**
- * Load a deferred graph and then check for disambiguation
- * This is used when pressing Enter in the include-files input
- */
-async function loadDeferredGraphWithDisambiguation(): Promise<void> {
-  if (!deferredGraphUrl) return;
-  
-  // Prevent multiple simultaneous loads
-  if (isDeferredLoadInProgress) {
-    console.log('Deferred graph load already in progress, skipping');
-    return;
-  }
-  
-  // Check if user has entered a search query
-  if (!hasSearchFilters()) {
-    showError('Please enter a Source, Sink, or Include Files filter first to filter the large graph.');
-    return;
-  }
-  
-  isDeferredLoadInProgress = true;
-  
-  const statsDiv = document.getElementById('stats');
-  if (statsDiv) {
-    statsDiv.innerHTML = `
-      <div style="padding: 1rem; text-align: center;">
-        <div style="margin-bottom: 0.5rem;">⏳ Loading graph...</div>
-        <div style="font-size: 0.8rem; color: var(--pg-text-muted);">This may take a few seconds...</div>
-      </div>
-    `;
-  }
-  
-  try {
-    const response = await fetch(deferredGraphUrl);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch: ${response.status}`);
-    }
-    
-    const text = await response.text();
-    const rawData = JSON.parse(text);
-    const graph = parseAndNormalizeGraph(rawData);
-    
-    deferredGraphUrl = null; // Clear the deferred URL
-    
-    // Load the graph but DON'T apply filters yet
-    state.fullGraph = {
-      nodes: graph.nodes.map(n => ({ ...n })),
-      links: graph.links.map(l => ({ ...l })),
-      metadata: { ...graph.metadata },
-    };
-
-    const earlyLang = detectProjectLanguage(state.fullGraph);
-    for (const node of state.fullGraph.nodes) {
-      if (!node.crate_name) {
-        node.crate_name = extractCrateName(node, earlyLang);
-      }
-    }
-    
-    // Populate the file list so disambiguation has data
-    populateFileList();
-    
-    console.log('Graph loaded, checking for disambiguation...');
-    
-    // Now check for disambiguation
-    const hasAmbiguity = checkAndShowDisambiguation();
-    if (!hasAmbiguity) {
-      // No ambiguity - apply filters
-      console.log('No ambiguity, applying filters');
-      loadGraph(graph, 'Loaded from deferred graph');
-    } else {
-      // Show success message but don't apply filters yet (user selecting)
-      console.log('Ambiguity found, waiting for user selection');
-      const statsDiv = document.getElementById('stats');
-      if (statsDiv) {
-        statsDiv.innerHTML = `
-          <div style="padding: 1rem; text-align: center;">
-            <div style="margin-bottom: 0.5rem;">Graph loaded (${graph.nodes.length.toLocaleString()} nodes)</div>
-            <div style="font-size: 0.8rem; color: var(--pg-text-muted);">Select files from the dropdown above...</div>
-          </div>
-        `;
-      }
-    }
+    // Include Files patterns name code files; source/sink text also matches blueprint labels
+    const includeFiles = (document.getElementById('include-files') as HTMLInputElement | null)?.value.trim();
+    loadGraph(graph, 'Loaded from deferred graph', includeFiles ? 'code' : undefined);
+    // An ambiguous pattern includes every matching file until the user picks
+    checkAndShowDisambiguation();
   } catch (error) {
     console.error('Failed to load deferred graph:', error);
     showError(`Failed to load graph: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -1531,7 +1470,7 @@ function computeSeededExpansion(
   if (seedTiersCache?.roleKey !== roleKey) {
     seedTiersCache = { roleKey, tiers: computeSeedTiers(graph) };
   }
-  const tiers: SeedTier[] = entrypointsParam
+  const tiers: SeedTier[] = entrypointsParam && activeLayer === 'code'
     ? [{ name: 'blueprint-param', seeds: entrypointsParam.seeds }, ...seedTiersCache.tiers]
     : seedTiersCache.tiers;
   const budget = { maxNodes: LARGE_GRAPH_NODE_THRESHOLD, maxLinks: LARGE_GRAPH_LINK_THRESHOLD };
@@ -1785,7 +1724,8 @@ async function loadEntryPointsSet(url: string): Promise<void> {
       throw new Error('no atoms carry blueprint-label');
     }
 
-    const graphIds = new Set(state.fullGraph?.nodes.map(n => n.id) ?? []);
+    // Seeds of the code layer, whichever layer is shown
+    const graphIds = new Set(codeLayer?.nodes.map(n => n.id) ?? []);
     const seeds = labeled.filter(id => graphIds.has(id));
     if (seeds.length === 0) {
       throw new Error(`none of its ${labeled.length} blueprint declarations match this graph`);
@@ -1925,7 +1865,7 @@ function renderKindFilters(lang: ProjectLanguage): void {
       <label class="checkbox-label">
         <input type="checkbox" id="show-exec-functions" checked />
         <span>Definitions</span>
-        <small style="color:var(--pg-text-faint);margin-left:4px">def, abbrev, ...</small>
+        ${lang === 'blueprint' ? '' : '<small style="color:var(--pg-text-faint);margin-left:4px">def, abbrev, ...</small>'}
       </label>
       <label class="checkbox-label">
         <input type="checkbox" id="show-proof-functions" checked />
@@ -2016,7 +1956,8 @@ function renderCallTypeFilters(lang: ProjectLanguage): void {
   const container = document.getElementById('call-types-container');
   if (!container) return;
 
-  const isLean = lang === 'lean';
+  // Blueprint uses edges split into statement and proof like Lean dependencies
+  const isLean = lang === 'lean' || lang === 'blueprint';
   const isVerus = lang === 'verus' || lang === 'mixed';
   const hasMappingLinks = state.fullGraph?.links.some(l => l.type === 'mapping') ?? false;
   const hasSpecLinks = state.fullGraph?.links.some(l => l.type === 'spec') ?? false;
@@ -2063,12 +2004,16 @@ function renderCallTypeFilters(lang: ProjectLanguage): void {
   }
 
   if (hasRoles) {
+    const [statementTitle, bodyTitle] = lang === 'blueprint'
+      ? ['Blueprint entries used by the statement', 'Blueprint entries used by the proof']
+      : ["Dependencies used in the declaration's type (the statement)",
+        'Dependencies used in the definition body or proof, plus those reached through auxiliary declarations'];
     html += `
-    <label class="checkbox-label" title="Dependencies used in the declaration's type (the statement)">
+    <label class="checkbox-label" title="${statementTitle}">
       <input type="checkbox" id="show-statement-deps" checked />
       <span class="inner-badge">Statement deps</span>
     </label>
-    <label class="checkbox-label" title="Dependencies used in the definition body or proof, plus those reached through auxiliary declarations">
+    <label class="checkbox-label" title="${bodyTitle}">
       <input type="checkbox" id="show-body-deps" checked />
       <span class="inner-badge">Body/proof deps</span>
     </label>`;
@@ -2128,26 +2073,37 @@ function renderCallTypeFilters(lang: ProjectLanguage): void {
 /**
  * Load a graph and update the UI
  */
-function loadGraph(graph: D3Graph, message: string): void {
-  // Deep copy the graph to prevent D3 from mutating original data
-  // D3 modifies link.source/target from string IDs to node object references
-  state.fullGraph = {
+/** A copy D3 can mutate (it replaces link endpoints with node objects). */
+function copyGraph(graph: D3Graph): D3Graph {
+  return {
     nodes: graph.nodes.map(n => ({ ...n })),
     links: graph.links.map(l => ({ ...l })),
     metadata: { ...graph.metadata },
   };
+}
 
-  // Seed tiers and the ?entrypoints= payload belong to the previous graph;
-  // bumping the generation invalidates any of its in-flight fetches
-  graphLoadGeneration++;
+/**
+ * Make `layer` state.fullGraph and rebuild everything derived from it:
+ * caches, filter panels, crate names, derived statuses, file list. Leaves
+ * state.filters at the layer's defaults (graphDefaultFilters); the caller
+ * restores or reads the filters it wants.
+ */
+function showLayer(layer: Layer): void {
+  activeLayer = blueprintLayer ? layer : 'code';
+  state.fullGraph = activeLayer === 'blueprint' ? blueprintLayer : codeLayer;
+  if (!state.fullGraph) return;
+  renderLayerSwitcher();
+
   seedTiersCache = null;
   seededViewInfo = null;
   seededRequestedDepth = null;
-  entrypointsParam = null;
-  entrypointsParamNote = null;
-  entrypointsDeferredByFocus = false;
   // Focus resolution depends on the graph (name/path fallback)
   focusCache.clear();
+  crateDependencyMap = new Map();
+  crateReverseDependencyMap = new Map();
+  state.selectedNode = null;
+  selectedSourceCrate = '';
+  selectedTargetCrate = '';
 
   // Deep copy filters - spread only does shallow copy, so Sets would be shared!
   state.filters = freshFilters(initialFilters);
@@ -2166,13 +2122,8 @@ function loadGraph(graph: D3Graph, message: string): void {
     node.crate_name = extractCrateName(node, state.projectLanguage);
   }
 
-  // Set GitHub URL from metadata if not already set via URL param
-  if (!githubBaseUrl && graph.metadata.github_url) {
-    githubBaseUrl = graph.metadata.github_url;
-  }
-  
   const isLarge = isLargeGraph(state.fullGraph);
-  
+
   // Defer heavy graph analysis for large graphs to avoid freezing the browser.
   // These will run on first filter application (or when switching to Crate Map).
   deferredComputationsDone = false;
@@ -2183,17 +2134,91 @@ function loadGraph(graph: D3Graph, message: string): void {
   // Populate the file list panel and crate dropdowns (defer for large graphs)
   if (!isLarge) {
     populateFileList();
+  } else {
+    clearFileList();
   }
+  crateDropdownKey = '';
   populateCrateDropdowns();
+
+  // The render functions above force per-language call-type values; those
+  // are this layer's defaults, which the URL or saved filters then override
+  graphDefaultFilters = freshFilters(state.filters);
+}
+
+/** Show the layer switcher only for graphs with a blueprint layer. */
+function renderLayerSwitcher(): void {
+  const container = document.getElementById('layer-switcher');
+  if (container) container.style.display = blueprintLayer ? '' : 'none';
+  document.getElementById('layer-blueprint')?.classList.toggle('active', activeLayer === 'blueprint');
+  document.getElementById('layer-code')?.classList.toggle('active', activeLayer === 'code');
+}
+
+/**
+ * User switch between the blueprint and code layers. Each layer keeps its
+ * own filters and query; the statement / body-or-proof boxes mean the same
+ * on both and carry over. One pushed history entry.
+ */
+function switchLayer(layer: Layer): void {
+  if (layer === activeLayer || !blueprintLayer) return;
+  const { showStatementDeps, showBodyDeps } = state.filters;
+  const saved = inactiveLayer;
+  inactiveLayer = currentLayerFilters();
+  showLayer(layer);
+  state.filters = saved?.filters ?? freshFilters(graphDefaultFilters!);
+  selectedSourceCrate = saved?.sourceCrate ?? '';
+  selectedTargetCrate = saved?.targetCrate ?? '';
+  populateCrateDropdowns();
+  state.filters.showStatementDeps = showStatementDeps;
+  state.filters.showBodyDeps = showBodyDeps;
+  pendingFocus = null;
+  intentGeneration++;
+  lastSelectionKey = selectionKey(state.filters.selectedNodes);
+
+  urlWritesSuppressed++;
+  try {
+    syncFilterUI();
+    applyFiltersAndUpdate();
+    if (activeView === 'crate-map' && visualization instanceof CrateMapVisualization) {
+      visualization.setBoundaryCrates(selectedSourceCrate || null, selectedTargetCrate || null);
+    }
+    refreshGuidePanel();
+    updateNodeInfo();
+  } finally {
+    urlWritesSuppressed--;
+  }
+  window.history.pushState({ pushed: true }, '', generateShareableURL());
+}
+
+/**
+ * `layer` overrides the URL's layer (and is written to it), for callers
+ * whose query names code declarations.
+ */
+function loadGraph(graph: D3Graph, message: string, layer?: Layer): void {
+  // Deep copy the graph to prevent D3 from mutating original data
+  codeLayer = copyGraph(graph);
+  blueprintLayer = graph.blueprintLayer ? copyGraph(graph.blueprintLayer) : null;
+  inactiveLayer = null;
+  if (layer && blueprintLayer) replaceURLLayer(layer);
+
+  // Seed tiers and the ?entrypoints= payload belong to the previous graph;
+  // bumping the generation invalidates any of its in-flight fetches
+  graphLoadGeneration++;
+  entrypointsParam = null;
+  entrypointsParamNote = null;
+  entrypointsDeferredByFocus = false;
+
+  // Set GitHub URL from metadata if not already set via URL param
+  if (!githubBaseUrl && graph.metadata.github_url) {
+    githubBaseUrl = graph.metadata.github_url;
+  }
+
+  showLayer(layerFromURL());
+  const isLarge = isLargeGraph(state.fullGraph!);
 
   // For large graphs we stay on the default Call Graph tab but show an
   // informative "Large Graph" message. Heavy computations (derived statuses,
   // crate graph, file list) are deferred until the user applies a filter or
   // switches to Crate Map. This keeps the initial page load fast.
-  
-  // The render functions above force per-language call-type values; those
-  // are this graph's defaults, which the URL then overrides
-  graphDefaultFilters = freshFilters(state.filters);
   const { focusUrl } = stateFromURL();
   entrypointsJsonUrl = new URLSearchParams(window.location.search).get('entrypoints');
   syncFilterUI();
@@ -2664,11 +2689,29 @@ function updateNodeInfo(): void {
     : '<li><em>None</em></li>';
 
   const githubLink = buildGitHubLink(node);
-  const lineInfo = node.start_line 
-    ? (node.end_line && node.end_line !== node.start_line 
-        ? `Lines ${node.start_line}-${node.end_line}` 
-        : `Line ${node.start_line}`)
+  const isBlueprintNode = node.language === BLUEPRINT_LANGUAGE;
+  const loc = sourceLocation(node);
+  const sourcePath = loc?.path ?? '';
+  const sourceFile = isBlueprintNode ? sourcePath.split('/').pop() ?? '' : node.file_name;
+  const startLine = loc?.start;
+  const endLine = loc?.end;
+  const lineInfo = startLine
+    ? (endLine && endLine !== startLine
+        ? `Lines ${startLine}-${endLine}`
+        : `Line ${startLine}`)
     : '';
+
+  let blueprintHtml = '';
+  if (node.blueprint && isBlueprintNode) {
+    const configs = state.fullGraph?.metadata.source_configs;
+    blueprintHtml = blueprintNodeDetailsHtml(node.blueprint, {
+      repo: configs ? pickSourceConfig(configs, 'lean', sourcePath)?.github_url : undefined,
+      codeName: id => codeLayer?.nodes.find(n => n.id === id)?.display_name,
+    });
+  } else if (node.blueprint) {
+    blueprintHtml = blueprintBackrefHtml(node.blueprint);
+  }
+  const [callersLabel, calleesLabel] = isBlueprintNode ? ['Used by', 'Uses'] : ['Callers', 'Callees'];
 
   // Get verification status badge
   const getVerificationBadge = (status: string | undefined): string => {
@@ -2758,22 +2801,24 @@ function updateNodeInfo(): void {
     <div class="node-detail">
       <h3>${escapeHtml(node.display_name)}</h3>
       <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
-        <div class="node-badge ${node.is_libsignal ? 'badge-libsignal' : 'badge-other'}">
+        ${isBlueprintNode ? '' : `<div class="node-badge ${node.is_libsignal ? 'badge-libsignal' : 'badge-other'}">
           ${node.is_libsignal ? 'Libsignal' : 'External'}
-        </div>
+        </div>`}
         ${getVerificationBadge(node.verification_status)}
         ${getKindBadge(node.kind)}
         ${getLanguageBadge(node.language)}
       </div>
     </div>
+    ${blueprintHtml}
+    ${sourcePath ? `
     <div class="node-detail">
-      <strong>File:</strong> ${escapeHtml(node.file_name)}
+      <strong>File:</strong> ${escapeHtml(sourceFile)}
       ${lineInfo ? `<span style="color: var(--pg-text-faint); margin-left: 0.5rem;">(${escapeHtml(lineInfo)})</span>` : ''}
     </div>
     <div class="node-detail">
       <strong>Path:</strong>
-      <code class="code-block">${escapeHtml(node.relative_path)}</code>
-    </div>
+      <code class="code-block">${escapeHtml(sourcePath)}</code>
+    </div>` : ''}
     <div class="node-detail">
       <button id="navigate-to-source-btn" class="github-link" style="background: none; border: none; cursor: pointer; padding: 0; text-decoration: underline; color: inherit;">
         ${isVSCodeEnvironment() ? 'Open in Editor' : (githubLink ? 'View on GitHub' : '')}
@@ -2783,11 +2828,11 @@ function updateNodeInfo(): void {
     ${specsHtml}
     ${rustSourceHtml}
     <div class="node-detail">
-      <strong>Callers (${allCallers.length}):</strong>
+      <strong>${callersLabel} (${allCallers.length}):</strong>
       <ul class="node-list">${callersHtml}</ul>
     </div>
     <div class="node-detail">
-      <strong>Callees (${allCallees.length}):</strong>
+      <strong>${calleesLabel} (${allCallees.length}):</strong>
       <ul class="node-list">${calleesHtml}</ul>
     </div>
     ${node.similar_lemmas && node.similar_lemmas.length > 0 ? `
@@ -3074,6 +3119,14 @@ function populateFileList(): void {
 
   // Update selection state based on current filter
   updateFileListSelection();
+}
+
+/** Empty the file list until populateFileList runs for the current graph. */
+function clearFileList(): void {
+  const fileListDiv = document.getElementById('file-list');
+  if (fileListDiv) fileListDiv.innerHTML = '';
+  const fileCountSpan = document.getElementById('file-count');
+  if (fileCountSpan) fileCountSpan.textContent = '0';
 }
 
 /**
@@ -3579,10 +3632,12 @@ function handleVSCodeMessage(event: MessageEvent): void {
         const normalizedGraph = parseAndNormalizeGraph(message.graph);
         console.log('[VS Code] Received graph data:', normalizedGraph.nodes?.length, 'nodes');
         
-        loadGraph(normalizedGraph, 'Loaded from VS Code extension');
-
         const initialQuery = message.initialQuery ?? {};
         const selectedId: string | undefined = message.selectedNodeId || undefined;
+        // The editor's selection and query name code declarations
+        const editorQuery = !!(selectedId || initialQuery.source || initialQuery.sink);
+        loadGraph(normalizedGraph, 'Loaded from VS Code extension', editorQuery ? 'code' : undefined);
+
         const selectedNode = selectedId
           ? state.fullGraph?.nodes.find(n => n.id === selectedId)
           : undefined;
@@ -3617,6 +3672,7 @@ function handleVSCodeMessage(event: MessageEvent): void {
       
     case 'setQuery':
       // Update the query (e.g., user clicked on a different function)
+      if (activeLayer !== 'code') switchLayer('code');
       setIntent(
         vscodeSetQueryIntent(state.filters.intent, message.source, message.sink),
         { history: 'replace' },

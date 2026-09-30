@@ -96,7 +96,7 @@ If the compound layout fails (throws), fall back to a flat layout: solve the sam
 
 Define three mapping functions from data attributes to visual properties.
 
-**Shape function** $\sigma: \text{Kind} \to \{\text{rounded-rect}, \text{ellipse}, \text{diamond}\}$, defined over language-aware kind *sets* (`getKindSetsForLanguage` in `types.ts`, applied in `appendShape` in `blueprint.ts`):
+**Shape function** $\sigma: \text{Kind} \to \{\text{rounded-rect}, \text{ellipse}, \text{diamond}\}$, defined over language-aware kind *sets* (`getKindSetsForLanguage` in `types.ts`, applied in `appendShape` in `file-map.ts`):
 
 $$
 \sigma(k) = \begin{cases}
