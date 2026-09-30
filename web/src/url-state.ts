@@ -15,6 +15,9 @@ import { exactStatusFilter, isVerificationStatus } from './status-filter';
 
 export type ActiveView = 'callgraph' | 'file-map' | 'crate-map' | 'hierarchy';
 
+/** Which graph is shown when the input has a probe-leanblueprint layer. */
+export type Layer = 'code' | 'blueprint';
+
 export interface URLViewState {
   filters: FilterOptions;
   view: ActiveView;
@@ -26,6 +29,8 @@ export interface URLViewState {
   pendingFocusUrl: string | null;
   entrypointsUrl: string | null;
   projectLanguage: ProjectLanguage;
+  /** Written as `layer=`; null when the graph has one layer or the default one is shown. */
+  layer?: Layer | null;
 }
 
 /** What the URL describes; `focusUrl` still has to be resolved to IDs. */
@@ -37,6 +42,8 @@ export interface ParsedURLState {
   hierarchyExpanded: string[];
   focusUrl: string | null;
   entrypointsUrl: string | null;
+  /** null: no `layer=` param, the graph's default layer applies. */
+  layer: Layer | null;
 }
 
 /** Every param the viewer owns. Written params are deleted first, so a value reset to its default disappears. */
@@ -48,7 +55,7 @@ const OWNED_PARAMS = [
   'libsignal', 'external', 'rust', 'lean',
   'verified', 'failed', 'unverified', 'status',
   'excludeName', 'excludePath', 'hidden', 'hide',
-  'entrypoints', 'view', 'source-crate', 'target-crate', 'expanded',
+  'entrypoints', 'view', 'source-crate', 'target-crate', 'expanded', 'layer',
 ];
 
 const DEFAULT_DEPTH = 1;
@@ -126,6 +133,7 @@ export function writeURLState(params: URLSearchParams, s: URLViewState): void {
   for (const k of OWNED_PARAMS) params.delete(k);
   const f = s.filters;
 
+  if (s.layer) params.set('layer', s.layer);
   if (s.view !== 'callgraph') params.set('view', s.view);
   if (s.sourceCrate) params.set('source-crate', s.sourceCrate);
   if (s.targetCrate) params.set('target-crate', s.targetCrate);
@@ -272,9 +280,13 @@ export function readURLState(
     : viewParam === 'crate-map' || viewParam === 'hierarchy' ? viewParam
     : 'callgraph';
 
+  const layerParam = params.get('layer');
+  const layer: Layer | null = layerParam === 'code' || layerParam === 'blueprint' ? layerParam : null;
+
   return {
     filters,
     view,
+    layer,
     sourceCrate: params.get('source-crate') ?? '',
     targetCrate: params.get('target-crate') ?? '',
     hierarchyExpanded: params.has('expanded')

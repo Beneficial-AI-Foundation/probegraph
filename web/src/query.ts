@@ -12,7 +12,7 @@
 
 import {
   D3Graph, D3Node, D3Link, FilterOptions, ProjectLanguage, VerificationStatus,
-  compileKindPredicate,
+  compileKindPredicate, BLUEPRINT_LANGUAGE,
 } from './types';
 import {
   globToRegex, asSubstringGlob, matchesQuery,
@@ -870,10 +870,12 @@ export function executeQuery(
   const passesStatus = compileStatusPredicate(displayPredicates);
   if (passesStatus) resultNodes = resultNodes.filter(passesStatus);
 
-  // Language filter (post-traversal so BFS can still reach cross-language nodes)
+  // Language filter (post-traversal so BFS can still reach cross-language nodes).
+  // The Rust / Lean boxes are code-layer filters; blueprint nodes ignore them.
   if (!displayPredicates.showRustNodes || !displayPredicates.showLeanNodes) {
     resultNodes = resultNodes.filter(n => {
       const lang = n.language || 'rust';
+      if (lang === BLUEPRINT_LANGUAGE) return true;
       if (lang === 'lean' && !displayPredicates.showLeanNodes) return false;
       if (lang !== 'lean' && !displayPredicates.showRustNodes) return false;
       return true;
@@ -937,7 +939,12 @@ export function executeQuery(
   // even when the status filter removed all its links
   const keepAllMatches = query.type === 'noTraversal' && displayPredicates.exactStatuses !== null;
   if (!keepAllMatches) {
-    const keepSet = new Set([...focusConfig.focusNodeIds, ...anchorIds]);
+    // Blueprint entries without uses edges (planned-only, decl-missing) are
+    // often isolated and still part of the plan
+    const keepSet = new Set([
+      ...focusConfig.focusNodeIds, ...anchorIds,
+      ...resultNodes.filter(n => n.language === BLUEPRINT_LANGUAGE).map(n => n.id),
+    ]);
     resultNodes = removeIsolated(resultNodes, resultLinks, keepSet);
   }
 

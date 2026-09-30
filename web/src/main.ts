@@ -1,4 +1,5 @@
-import { D3Graph, D3Node, GraphState, FilterOptions, ProjectLanguage, detectProjectLanguage, getKindSetsForLanguage, extractCrateName, isSchema2Envelope } from './types';
+import { D3Graph, D3Node, GraphState, FilterOptions, ProjectLanguage, BLUEPRINT_LANGUAGE, detectProjectLanguage, getKindSetsForLanguage, extractCrateName, isSchema2Envelope } from './types';
+import { blueprintBackrefHtml, blueprintNodeDetailsHtml } from './blueprint-details';
 import { applyFilters, getCallers, getCallees } from './filters';
 import {
   compileQuery, GraphQuery, NodeMatcher, filterLinksByType, linkTypeShown, roleFilteredGraph,
@@ -17,7 +18,7 @@ import {
   QueryIntent, NONE_INTENT, textIntent, focusIntent, boundaryIntent,
   isFocusIntent, inputsForIntent, intentAfterInputEdit, vscodeIntent, vscodeSetQueryIntent,
 } from './intent';
-import { ActiveView, defaultFilters, readURLState, writeURLState } from './url-state';
+import { ActiveView, Layer, defaultFilters, readURLState, writeURLState } from './url-state';
 
 import { GuidePanel } from './guide/guide-panel';
 import { buildGraphSummary } from './guide/static-analysis';
@@ -229,6 +230,16 @@ function appendLineFragment(link: string, start?: number, end?: number): string 
  * falling back to the global githubBaseUrl / githubBranch / githubPathPrefix.
  */
 function buildGitHubLink(node: D3Node): string | null {
+  // A blueprint entry's code-path is its chapter; link its declaration site
+  if (node.language === BLUEPRINT_LANGUAGE) {
+    const bp = node.blueprint;
+    const configs = state.fullGraph?.metadata.source_configs;
+    if (!bp?.sourcePath || !configs) return null;
+    const config = pickSourceConfig(configs, 'lean', bp.sourcePath);
+    if (!config) return null;
+    const link = `${config.github_url}/blob/${config.ref}/${buildFullPath(bp.sourcePath, config.path_prefix)}`;
+    return appendLineFragment(link, bp.sourceLines?.start, bp.sourceLines?.end);
+  }
   if (!node.relative_path) return null;
 
   // Try per-language source config (from Schema 2.0 envelope metadata)
@@ -267,6 +278,7 @@ function generateShareableURL(): string {
     pendingFocusUrl: pendingFocus?.url ?? null,
     entrypointsUrl: entrypointsJsonUrl,
     projectLanguage: state.projectLanguage,
+    layer: blueprintLayer && activeLayer !== DEFAULT_LAYER ? activeLayer : null,
   });
   return url.toString();
 }
@@ -446,7 +458,15 @@ let lastSelectionKey = '';
  * restored: expanded nodes and the node shown in the details panel.
  * Returns a ?focus= URL still to be loaded (not in the focus cache).
  */
-function stateFromURL(): { focusUrl: string | null; view: ActiveView } {
+function stateFromURL(): { focusUrl: string | null; view: ActiveView; layerChanged: boolean } {
+  // The layer decides the graph and its defaults, so it is set first
+  const layer = layerFromURL();
+  const layerChanged = layer !== activeLayer;
+  if (layerChanged) {
+    inactiveLayerFilters = state.filters;
+    showLayer(layer);
+  }
+
   const parsed = readURLState(
     new URLSearchParams(window.location.search),
     graphDefaultFilters ?? freshFilters(initialFilters),
@@ -474,13 +494,13 @@ function stateFromURL(): { focusUrl: string | null; view: ActiveView } {
       pendingFocus = { url: focusUrl, generation: intentGeneration };
     }
   }
-  return { focusUrl, view: parsed.view };
+  return { focusUrl, view: parsed.view, layerChanged };
 }
 
 /** Browser back/forward: restore from the URL without writing history. */
 function handlePopState(): void {
   if (!state.fullGraph) return;
-  const { focusUrl, view } = stateFromURL();
+  const { focusUrl, view, layerChanged } = stateFromURL();
   urlWritesSuppressed++;
   try {
     if (view !== activeView) switchView(view, { apply: false });
@@ -490,6 +510,10 @@ function handlePopState(): void {
     }
     if (!focusUrl && !isFocusIntent(state.filters.intent)) resumeDeferredEntrypoints();
     applyFiltersAndUpdate();
+    if (layerChanged) {
+      refreshGuidePanel();
+      updateNodeInfo();
+    }
     // After the apply, so the expansion is pruned against the restored
     // graph; an empty list is restored too (collapse everything)
     if (visualization instanceof HierarchyMapVisualization) {
@@ -530,6 +554,22 @@ let state: GraphState = {
 };
 
 let activeView: ActiveView = 'callgraph';
+
+// The loaded graph's layers (see D3Graph.blueprintLayer); state.fullGraph is
+// one of them. blueprintLayer is null for graphs without node atoms.
+let codeLayer: D3Graph | null = null;
+let blueprintLayer: D3Graph | null = null;
+const DEFAULT_LAYER: Layer = 'blueprint';
+let activeLayer: Layer = 'code';
+// Filters of the layer not shown, restored when switching back to it
+let inactiveLayerFilters: FilterOptions | null = null;
+
+/** The layer the URL asks for; the default when absent or unavailable. */
+function layerFromURL(): Layer {
+  if (!blueprintLayer) return 'code';
+  return readURLState(new URLSearchParams(window.location.search), freshFilters(initialFilters), null).layer
+    ?? DEFAULT_LAYER;
+}
 let visualization: CallGraphVisualization | FileMapVisualization | CrateMapVisualization | HierarchyMapVisualization | null = null;
 
 /** Views that aggregate the whole graph and so bypass the large-graph guards. */
@@ -618,18 +658,18 @@ function refreshGuidePanel(opts: { onlyIfFiltersChanged?: boolean } = {}): void 
 
 /** Language-aware label for the crate/namespace map view. */
 function crateMapLabel(lang: ProjectLanguage): string {
-  return lang === 'lean' ? 'Namespace Map' : 'Crate Map';
+  return lang === 'lean' ? 'Namespace Map' : lang === 'blueprint' ? 'Chapter Map' : 'Crate Map';
 }
 
 /** Language-aware noun for crate/namespace used in UI text. */
 function crateNoun(lang: ProjectLanguage): string {
-  return lang === 'lean' ? 'namespace' : 'crate';
+  return lang === 'lean' ? 'namespace' : lang === 'blueprint' ? 'chapter' : 'crate';
 }
 
 /** Update all language-sensitive UI labels (button, legend, hints). */
 function updateLanguageLabels(lang: ProjectLanguage): void {
   const noun = crateNoun(lang);
-  const Noun = lang === 'lean' ? 'Namespace' : 'Crate';
+  const Noun = noun.charAt(0).toUpperCase() + noun.slice(1);
   const mapLabel = crateMapLabel(lang);
 
   const crateMapBtn = document.getElementById('view-crate-map');
@@ -834,6 +874,8 @@ function setupUIHandlers(): void {
   document.getElementById('view-file-map')?.addEventListener('click', () => switchView('file-map'));
   document.getElementById('view-crate-map')?.addEventListener('click', () => switchView('crate-map'));
   document.getElementById('view-hierarchy')?.addEventListener('click', () => switchView('hierarchy'));
+  document.getElementById('layer-blueprint')?.addEventListener('click', () => switchLayer('blueprint'));
+  document.getElementById('layer-code')?.addEventListener('click', () => switchLayer('code'));
 
   // Keep the ?expanded= URL parameter in sync with the Hierarchy view
   window.addEventListener('hierarchy-expanded-changed', ((event: CustomEvent) => {
@@ -1338,12 +1380,14 @@ async function loadDeferredGraphWithDisambiguation(): Promise<void> {
     
     deferredGraphUrl = null; // Clear the deferred URL
     
-    // Load the graph but DON'T apply filters yet
-    state.fullGraph = {
-      nodes: graph.nodes.map(n => ({ ...n })),
-      links: graph.links.map(l => ({ ...l })),
-      metadata: { ...graph.metadata },
-    };
+    // Load the graph but DON'T apply filters yet. File disambiguation runs
+    // on the code layer.
+    codeLayer = copyGraph(graph);
+    blueprintLayer = graph.blueprintLayer ? copyGraph(graph.blueprintLayer) : null;
+    inactiveLayerFilters = null;
+    activeLayer = 'code';
+    state.fullGraph = codeLayer;
+    renderLayerSwitcher();
 
     const earlyLang = detectProjectLanguage(state.fullGraph);
     for (const node of state.fullGraph.nodes) {
@@ -1531,7 +1575,7 @@ function computeSeededExpansion(
   if (seedTiersCache?.roleKey !== roleKey) {
     seedTiersCache = { roleKey, tiers: computeSeedTiers(graph) };
   }
-  const tiers: SeedTier[] = entrypointsParam
+  const tiers: SeedTier[] = entrypointsParam && activeLayer === 'code'
     ? [{ name: 'blueprint-param', seeds: entrypointsParam.seeds }, ...seedTiersCache.tiers]
     : seedTiersCache.tiers;
   const budget = { maxNodes: LARGE_GRAPH_NODE_THRESHOLD, maxLinks: LARGE_GRAPH_LINK_THRESHOLD };
@@ -1785,7 +1829,8 @@ async function loadEntryPointsSet(url: string): Promise<void> {
       throw new Error('no atoms carry blueprint-label');
     }
 
-    const graphIds = new Set(state.fullGraph?.nodes.map(n => n.id) ?? []);
+    // Seeds of the code layer, whichever layer is shown
+    const graphIds = new Set(codeLayer?.nodes.map(n => n.id) ?? []);
     const seeds = labeled.filter(id => graphIds.has(id));
     if (seeds.length === 0) {
       throw new Error(`none of its ${labeled.length} blueprint declarations match this graph`);
@@ -1925,7 +1970,7 @@ function renderKindFilters(lang: ProjectLanguage): void {
       <label class="checkbox-label">
         <input type="checkbox" id="show-exec-functions" checked />
         <span>Definitions</span>
-        <small style="color:var(--pg-text-faint);margin-left:4px">def, abbrev, ...</small>
+        ${lang === 'blueprint' ? '' : '<small style="color:var(--pg-text-faint);margin-left:4px">def, abbrev, ...</small>'}
       </label>
       <label class="checkbox-label">
         <input type="checkbox" id="show-proof-functions" checked />
@@ -2016,7 +2061,8 @@ function renderCallTypeFilters(lang: ProjectLanguage): void {
   const container = document.getElementById('call-types-container');
   if (!container) return;
 
-  const isLean = lang === 'lean';
+  // Blueprint uses edges split into statement and proof like Lean dependencies
+  const isLean = lang === 'lean' || lang === 'blueprint';
   const isVerus = lang === 'verus' || lang === 'mixed';
   const hasMappingLinks = state.fullGraph?.links.some(l => l.type === 'mapping') ?? false;
   const hasSpecLinks = state.fullGraph?.links.some(l => l.type === 'spec') ?? false;
@@ -2063,12 +2109,16 @@ function renderCallTypeFilters(lang: ProjectLanguage): void {
   }
 
   if (hasRoles) {
+    const [statementTitle, bodyTitle] = lang === 'blueprint'
+      ? ['Blueprint entries used by the statement', 'Blueprint entries used by the proof']
+      : ["Dependencies used in the declaration's type (the statement)",
+        'Dependencies used in the definition body or proof, plus those reached through auxiliary declarations'];
     html += `
-    <label class="checkbox-label" title="Dependencies used in the declaration's type (the statement)">
+    <label class="checkbox-label" title="${statementTitle}">
       <input type="checkbox" id="show-statement-deps" checked />
       <span class="inner-badge">Statement deps</span>
     </label>
-    <label class="checkbox-label" title="Dependencies used in the definition body or proof, plus those reached through auxiliary declarations">
+    <label class="checkbox-label" title="${bodyTitle}">
       <input type="checkbox" id="show-body-deps" checked />
       <span class="inner-badge">Body/proof deps</span>
     </label>`;
@@ -2128,26 +2178,35 @@ function renderCallTypeFilters(lang: ProjectLanguage): void {
 /**
  * Load a graph and update the UI
  */
-function loadGraph(graph: D3Graph, message: string): void {
-  // Deep copy the graph to prevent D3 from mutating original data
-  // D3 modifies link.source/target from string IDs to node object references
-  state.fullGraph = {
+/** A copy D3 can mutate (it replaces link endpoints with node objects). */
+function copyGraph(graph: D3Graph): D3Graph {
+  return {
     nodes: graph.nodes.map(n => ({ ...n })),
     links: graph.links.map(l => ({ ...l })),
     metadata: { ...graph.metadata },
   };
+}
 
-  // Seed tiers and the ?entrypoints= payload belong to the previous graph;
-  // bumping the generation invalidates any of its in-flight fetches
-  graphLoadGeneration++;
+/**
+ * Make `layer` state.fullGraph and rebuild everything derived from it:
+ * caches, filter panels, crate names, derived statuses, file list. Leaves
+ * state.filters at the layer's defaults (graphDefaultFilters); the caller
+ * restores or reads the filters it wants.
+ */
+function showLayer(layer: Layer): void {
+  activeLayer = blueprintLayer ? layer : 'code';
+  state.fullGraph = activeLayer === 'blueprint' ? blueprintLayer : codeLayer;
+  if (!state.fullGraph) return;
+  renderLayerSwitcher();
+
   seedTiersCache = null;
   seededViewInfo = null;
   seededRequestedDepth = null;
-  entrypointsParam = null;
-  entrypointsParamNote = null;
-  entrypointsDeferredByFocus = false;
   // Focus resolution depends on the graph (name/path fallback)
   focusCache.clear();
+  crateDependencyMap = new Map();
+  crateReverseDependencyMap = new Map();
+  state.selectedNode = null;
 
   // Deep copy filters - spread only does shallow copy, so Sets would be shared!
   state.filters = freshFilters(initialFilters);
@@ -2166,13 +2225,8 @@ function loadGraph(graph: D3Graph, message: string): void {
     node.crate_name = extractCrateName(node, state.projectLanguage);
   }
 
-  // Set GitHub URL from metadata if not already set via URL param
-  if (!githubBaseUrl && graph.metadata.github_url) {
-    githubBaseUrl = graph.metadata.github_url;
-  }
-  
   const isLarge = isLargeGraph(state.fullGraph);
-  
+
   // Defer heavy graph analysis for large graphs to avoid freezing the browser.
   // These will run on first filter application (or when switching to Crate Map).
   deferredComputationsDone = false;
@@ -2186,14 +2240,74 @@ function loadGraph(graph: D3Graph, message: string): void {
   }
   populateCrateDropdowns();
 
+  // The render functions above force per-language call-type values; those
+  // are this layer's defaults, which the URL or saved filters then override
+  graphDefaultFilters = freshFilters(state.filters);
+}
+
+/** Show the layer switcher only for graphs with a blueprint layer. */
+function renderLayerSwitcher(): void {
+  const container = document.getElementById('layer-switcher');
+  if (container) container.style.display = blueprintLayer ? '' : 'none';
+  document.getElementById('layer-blueprint')?.classList.toggle('active', activeLayer === 'blueprint');
+  document.getElementById('layer-code')?.classList.toggle('active', activeLayer === 'code');
+}
+
+/**
+ * User switch between the blueprint and code layers. Each layer keeps its
+ * own filters and query; the statement / body-or-proof boxes mean the same
+ * on both and carry over. One pushed history entry.
+ */
+function switchLayer(layer: Layer): void {
+  if (layer === activeLayer || !blueprintLayer) return;
+  const { showStatementDeps, showBodyDeps } = state.filters;
+  const saved = inactiveLayerFilters;
+  inactiveLayerFilters = state.filters;
+  showLayer(layer);
+  state.filters = saved ?? freshFilters(graphDefaultFilters!);
+  state.filters.showStatementDeps = showStatementDeps;
+  state.filters.showBodyDeps = showBodyDeps;
+  pendingFocus = null;
+  intentGeneration++;
+  lastSelectionKey = selectionKey(state.filters.selectedNodes);
+
+  urlWritesSuppressed++;
+  try {
+    syncFilterUI();
+    applyFiltersAndUpdate();
+    refreshGuidePanel();
+    updateNodeInfo();
+  } finally {
+    urlWritesSuppressed--;
+  }
+  window.history.pushState({ pushed: true }, '', generateShareableURL());
+}
+
+function loadGraph(graph: D3Graph, message: string): void {
+  // Deep copy the graph to prevent D3 from mutating original data
+  codeLayer = copyGraph(graph);
+  blueprintLayer = graph.blueprintLayer ? copyGraph(graph.blueprintLayer) : null;
+  inactiveLayerFilters = null;
+
+  // Seed tiers and the ?entrypoints= payload belong to the previous graph;
+  // bumping the generation invalidates any of its in-flight fetches
+  graphLoadGeneration++;
+  entrypointsParam = null;
+  entrypointsParamNote = null;
+  entrypointsDeferredByFocus = false;
+
+  // Set GitHub URL from metadata if not already set via URL param
+  if (!githubBaseUrl && graph.metadata.github_url) {
+    githubBaseUrl = graph.metadata.github_url;
+  }
+
+  showLayer(layerFromURL());
+  const isLarge = isLargeGraph(state.fullGraph!);
+
   // For large graphs we stay on the default Call Graph tab but show an
   // informative "Large Graph" message. Heavy computations (derived statuses,
   // crate graph, file list) are deferred until the user applies a filter or
   // switches to Crate Map. This keeps the initial page load fast.
-  
-  // The render functions above force per-language call-type values; those
-  // are this graph's defaults, which the URL then overrides
-  graphDefaultFilters = freshFilters(state.filters);
   const { focusUrl } = stateFromURL();
   entrypointsJsonUrl = new URLSearchParams(window.location.search).get('entrypoints');
   syncFilterUI();
@@ -2664,11 +2778,29 @@ function updateNodeInfo(): void {
     : '<li><em>None</em></li>';
 
   const githubLink = buildGitHubLink(node);
-  const lineInfo = node.start_line 
-    ? (node.end_line && node.end_line !== node.start_line 
-        ? `Lines ${node.start_line}-${node.end_line}` 
-        : `Line ${node.start_line}`)
+  const isBlueprintNode = node.language === BLUEPRINT_LANGUAGE;
+  // A blueprint entry's code-path is its chapter; show its declaration site
+  const sourcePath = isBlueprintNode ? node.blueprint?.sourcePath ?? '' : node.relative_path;
+  const sourceFile = isBlueprintNode ? sourcePath.split('/').pop() ?? '' : node.file_name;
+  const startLine = isBlueprintNode ? node.blueprint?.sourceLines?.start : node.start_line;
+  const endLine = isBlueprintNode ? node.blueprint?.sourceLines?.end : node.end_line;
+  const lineInfo = startLine
+    ? (endLine && endLine !== startLine
+        ? `Lines ${startLine}-${endLine}`
+        : `Line ${startLine}`)
     : '';
+
+  let blueprintHtml = '';
+  if (node.blueprint && isBlueprintNode) {
+    const configs = state.fullGraph?.metadata.source_configs;
+    blueprintHtml = blueprintNodeDetailsHtml(node.blueprint, {
+      repo: configs ? pickSourceConfig(configs, 'lean', sourcePath)?.github_url : undefined,
+      codeName: id => codeLayer?.nodes.find(n => n.id === id)?.display_name,
+    });
+  } else if (node.blueprint) {
+    blueprintHtml = blueprintBackrefHtml(node.blueprint);
+  }
+  const [callersLabel, calleesLabel] = isBlueprintNode ? ['Used by', 'Uses'] : ['Callers', 'Callees'];
 
   // Get verification status badge
   const getVerificationBadge = (status: string | undefined): string => {
@@ -2758,22 +2890,24 @@ function updateNodeInfo(): void {
     <div class="node-detail">
       <h3>${escapeHtml(node.display_name)}</h3>
       <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
-        <div class="node-badge ${node.is_libsignal ? 'badge-libsignal' : 'badge-other'}">
+        ${isBlueprintNode ? '' : `<div class="node-badge ${node.is_libsignal ? 'badge-libsignal' : 'badge-other'}">
           ${node.is_libsignal ? 'Libsignal' : 'External'}
-        </div>
+        </div>`}
         ${getVerificationBadge(node.verification_status)}
         ${getKindBadge(node.kind)}
         ${getLanguageBadge(node.language)}
       </div>
     </div>
+    ${blueprintHtml}
+    ${sourcePath ? `
     <div class="node-detail">
-      <strong>File:</strong> ${escapeHtml(node.file_name)}
+      <strong>File:</strong> ${escapeHtml(sourceFile)}
       ${lineInfo ? `<span style="color: var(--pg-text-faint); margin-left: 0.5rem;">(${escapeHtml(lineInfo)})</span>` : ''}
     </div>
     <div class="node-detail">
       <strong>Path:</strong>
-      <code class="code-block">${escapeHtml(node.relative_path)}</code>
-    </div>
+      <code class="code-block">${escapeHtml(sourcePath)}</code>
+    </div>` : ''}
     <div class="node-detail">
       <button id="navigate-to-source-btn" class="github-link" style="background: none; border: none; cursor: pointer; padding: 0; text-decoration: underline; color: inherit;">
         ${isVSCodeEnvironment() ? 'Open in Editor' : (githubLink ? 'View on GitHub' : '')}
@@ -2783,11 +2917,11 @@ function updateNodeInfo(): void {
     ${specsHtml}
     ${rustSourceHtml}
     <div class="node-detail">
-      <strong>Callers (${allCallers.length}):</strong>
+      <strong>${callersLabel} (${allCallers.length}):</strong>
       <ul class="node-list">${callersHtml}</ul>
     </div>
     <div class="node-detail">
-      <strong>Callees (${allCallees.length}):</strong>
+      <strong>${calleesLabel} (${allCallees.length}):</strong>
       <ul class="node-list">${calleesHtml}</ul>
     </div>
     ${node.similar_lemmas && node.similar_lemmas.length > 0 ? `
