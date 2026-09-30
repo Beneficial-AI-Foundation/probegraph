@@ -100,7 +100,7 @@ describe('most connected chip', () => {
 
 describe('edge role note', () => {
   const all = { isCandidate: () => true, isLinkShown: () => true };
-  const note = 'the edge type filter does not apply to them';
+  const note = 'the Statement deps / Body/proof deps boxes do not change them';
   it('says rankings use the full relation while a role box is off', () => {
     expect(formatSummaryText(buildGraphSummary(fixture(), { ...all, roleFilterActive: true }))).toContain(note);
     expect(formatSummaryText(buildGraphSummary(fixture(), all))).not.toContain(note);

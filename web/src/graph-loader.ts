@@ -222,8 +222,9 @@ export function convertAtomDictToD3Graph(atoms: Record<string, ProbeAtom>): D3Gr
     }
 
     // Cross-project edges: externals that resolve after a merge
+    // probe-lean omits an external array when it is empty
     const externalRole = roleClassifier(
-      atom["type-dependencies-external"], atom["term-dependencies-external"],
+      atom["type-dependencies-external"] ?? [], atom["term-dependencies-external"] ?? [],
     );
     for (const dep of resolvedExternalDeps(atom, knownIds)) {
       if (isCrossLang(dep)) {
@@ -243,11 +244,15 @@ export function convertAtomDictToD3Graph(atoms: Record<string, ProbeAtom>): D3Gr
       });
     }
 
-    // Lean def -> spec theorem links (spec *specifies* the def)
+    // Lean def -> spec theorem links (spec *specifies* the def). A spec link
+    // takes the role of the theorem's inner link to the def, so the role
+    // boxes cannot be bypassed through it.
     if (atom.specs) {
       for (const specId of atom.specs) {
         if (knownIds.has(specId)) {
-          links.push({ source: specId, target: atomName, type: 'spec' });
+          const spec = atoms[specId];
+          const role = roleClassifier(spec["type-dependencies"], spec["term-dependencies"])(atomName);
+          links.push({ source: specId, target: atomName, type: 'spec', ...(role && { role }) });
         }
       }
     }

@@ -449,14 +449,14 @@ export function roleFilteredGraph(
   return { ...graph, links: graph.links.filter(l => linkRoleShown(l, filter)) };
 }
 
-/** Whether a link's type (and role, for inner links) passes the filter. */
+/** Whether a link's type and role pass the filter. */
 export function linkTypeShown(link: D3Link, filter: LinkTypeFilter): boolean {
   const t = link.type || 'inner';
   if (t === 'calls' || t === 'inner') return filter.showInnerCalls && linkRoleShown(link, filter);
   if (t === 'precondition') return filter.showPreconditionCalls;
   if (t === 'postcondition') return filter.showPostconditionCalls;
   if (t === 'mapping') return filter.showMappingLinks;
-  if (t === 'spec') return filter.showSpecLinks;
+  if (t === 'spec') return filter.showSpecLinks && linkRoleShown(link, filter);
   return true;
 }
 

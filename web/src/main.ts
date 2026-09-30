@@ -2064,7 +2064,7 @@ function renderCallTypeFilters(lang: ProjectLanguage): void {
       <input type="checkbox" id="show-statement-deps" checked />
       <span class="inner-badge">Statement deps</span>
     </label>
-    <label class="checkbox-label" title="Dependencies used in the definition body or proof">
+    <label class="checkbox-label" title="Dependencies used in the definition body or proof, plus those reached through auxiliary declarations">
       <input type="checkbox" id="show-body-deps" checked />
       <span class="inner-badge">Body/proof deps</span>
     </label>`;

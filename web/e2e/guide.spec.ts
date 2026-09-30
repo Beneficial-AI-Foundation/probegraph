@@ -164,8 +164,8 @@ test.describe('Guide on the Lean graph', () => {
     await page.locator('#show-body-deps').uncheck();
     expect(param(page, 'body')).toBe('0');
     await expect.poll(async () => (await roles()).some(r => r === 'inner:term')).toBe(false);
-    expect((await roles()).every(r => ['inner:type', 'inner:both', 'spec:-'].includes(r))).toBe(true);
-    await expect(page.locator('#guide-summary')).toContainText('the edge type filter does not apply');
+    expect((await roles()).every(r => ['inner:type', 'inner:both', 'spec:type', 'spec:both'].includes(r))).toBe(true);
+    await expect(page.locator('#guide-summary')).toContainText('boxes do not change them');
 
     await page.reload();
     await expect(page.locator('#stats')).toContainText('Total Nodes', { timeout: 30000 });

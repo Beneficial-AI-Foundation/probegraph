@@ -227,8 +227,8 @@ export type LinkType = 'inner' | 'precondition' | 'postcondition' | 'mapping' | 
 
 /**
  * Which part of the caller a Lean dependency comes from: its statement
- * (probe-lean `type-dependencies`), its body or proof (`term-dependencies`),
- * or both.
+ * (probe-lean `type-dependencies`), its body or proof (`term-dependencies`,
+ * which also holds names reached through auxiliary declarations), or both.
  */
 export type LinkRole = 'type' | 'term' | 'both';
 
@@ -236,7 +236,7 @@ export interface D3Link {
   source: string | D3Node;
   target: string | D3Node;
   type: LinkType | string;  // 'inner' | 'precondition' | 'postcondition' (or legacy 'calls')
-  role?: LinkRole;  // Only on Lean `inner` links with type/term split data
+  role?: LinkRole;  // Only on Lean `inner` and `spec` links with type/term split data
 }
 
 /** Per-language GitHub source config derived from Schema 2.0 envelope inputs. */

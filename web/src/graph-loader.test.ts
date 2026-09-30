@@ -222,7 +222,9 @@ describe('convertAtomDictToD3Graph statement / body-or-proof roles', () => {
         "type-dependencies-external": ['probe:other.Type', 'probe:other.both'],
         "term-dependencies-external": ['probe:other.thm', 'probe:other.both'],
       }),
+      // probe-lean omits an external array when it is empty
       'probe:only-term': atom({ "term-dependencies-external": ['probe:other.thm'] }),
+      'probe:only-type': atom({ "type-dependencies-external": ['probe:other.Type'] }),
       'probe:other.Type': atom({}),
       'probe:other.thm': atom({}),
       'probe:other.both': atom({}),
@@ -230,19 +232,31 @@ describe('convertAtomDictToD3Graph statement / body-or-proof roles', () => {
     expect(roleOf(g, 'probe:a', 'probe:other.Type')).toEqual(['type']);
     expect(roleOf(g, 'probe:a', 'probe:other.thm')).toEqual(['term']);
     expect(roleOf(g, 'probe:a', 'probe:other.both')).toEqual(['both']);
-    expect(roleOf(g, 'probe:only-term', 'probe:other.thm')).toEqual([undefined]);
+    expect(roleOf(g, 'probe:only-term', 'probe:other.thm')).toEqual(['term']);
+    expect(roleOf(g, 'probe:only-type', 'probe:other.Type')).toEqual(['type']);
   });
 
-  it('gives spec links no role and keeps them apart from a parallel inner link', () => {
+  it('gives a spec link the role of the parallel inner link', () => {
     const g = convertAtomDictToD3Graph({
       'probe:thm': atom({
         dependencies: ['probe:def'],
         "type-dependencies": ['probe:def'],
         "term-dependencies": [],
       }),
-      'probe:def': atom({ kind: 'def', specs: ['probe:thm'] }),
+      // @[primary_spec] fallback: the spec comes from the proof
+      'probe:fallback': atom({
+        dependencies: ['probe:def'],
+        "type-dependencies": [],
+        "term-dependencies": ['probe:def'],
+      }),
+      'probe:nosplit': atom({ dependencies: ['probe:def'] }),
+      'probe:def': atom({ kind: 'def', specs: ['probe:thm', 'probe:fallback', 'probe:nosplit'] }),
     });
-    const links = g.links.filter(l => l.source === 'probe:thm' && l.target === 'probe:def');
-    expect(links.map(l => [l.type, l.role]).sort()).toEqual([['inner', 'type'], ['spec', undefined]]);
+    const links = (s: string) => g.links
+      .filter(l => l.source === s && l.target === 'probe:def')
+      .map(l => [l.type, l.role]).sort();
+    expect(links('probe:thm')).toEqual([['inner', 'type'], ['spec', 'type']]);
+    expect(links('probe:fallback')).toEqual([['inner', 'term'], ['spec', 'term']]);
+    expect(links('probe:nosplit')).toEqual([['inner', undefined], ['spec', undefined]]);
   });
 });

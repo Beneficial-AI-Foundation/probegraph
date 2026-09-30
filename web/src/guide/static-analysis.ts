@@ -314,7 +314,7 @@ export function formatSummaryText(summary: GraphSummary): string {
   if (summary.topConnected.length > 0) {
     lines.push('');
     if (summary.roleFilterActive) {
-      lines.push('Caller counts include statement and body/proof dependencies; the edge type filter does not apply to them.');
+      lines.push('Caller counts include statement and body/proof dependencies; the Statement deps / Body/proof deps boxes do not change them.');
     }
     lines.push(`Most connected functions: ${summary.topConnected.map(n => `${n.displayName} (${n.dependentCount} callers)`).join(', ')}.`);
   }

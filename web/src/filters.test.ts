@@ -1150,8 +1150,25 @@ describe('Statement / body-or-proof edge filter', () => {
       metadata: { total_nodes: 2, total_edges: 2, project_root: '/test', generated_at: '2024-01-01' },
     };
     expect(pairs(applyFilters(g, createFilters()))).toEqual(['thm>def:inner:term', 'thm>def:spec:-']);
-    // The spec link is governed by its own toggle, not the role boxes
+    // A spec link without a role is governed only by its own toggle
     const bodyOff = applyFilters(g, createFilters({ showBodyDeps: false }));
     expect(pairs(bodyOff)).toEqual(['thm>def:spec:-']);
+  });
+
+  it('a spec link beside a rejected inner link does not carry traversal', () => {
+    // a -type-> b -term-> c, plus the spec link a -spec-> b the loader tags type
+    const g: D3Graph = {
+      ...bridge,
+      links: [role('a', 'b', 'type'), role('a', 'b', 'type', 'spec'), role('b', 'c', 'term')],
+    };
+    const callees = createFilters({ showStatementDeps: false, showSpecLinks: false, intent: textIntent('n_a', '') });
+    expect(ids(applyFilters(g, callees))).toEqual([]);
+    const paths = createFilters({ showStatementDeps: false, intent: textIntent('n_a', 'n_c') });
+    expect(ids(applyFilters(g, paths))).toEqual([]);
+    const seeded = expandFromSeeds(
+      roleFilteredGraph(g, { showStatementDeps: false, showBodyDeps: true }), ['a'], 2,
+      { maxNodes: 100, maxLinks: 100 },
+    );
+    expect(seeded.ok && [...seeded.nodeIds]).toEqual(['a']);
   });
 });

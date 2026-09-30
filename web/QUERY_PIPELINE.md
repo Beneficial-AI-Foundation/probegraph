@@ -181,14 +181,14 @@ Five link types (`LinkTypeFilter` in `query.ts`):
 
 Requires/Ensures edges typically target spec functions. Enable **both** the call-type toggle and "Show Spec Functions" to see them.
 
-Lean `inner` links carry a `role` when probe-lean emits the `type-dependencies` / `term-dependencies` split: `type` (statement), `term` (definition body or proof) or `both`. Two more toggles select them:
+Lean `inner` links carry a `role` when probe-lean emits the `type-dependencies` / `term-dependencies` split: `type` (statement), `term` (definition body or proof, plus names probe-lean reaches through auxiliary declarations, including ones in the type) or `both`. A `spec` link takes the role of the theorem's inner link to the definition, usually `type` or `both`. Two more toggles select them:
 
 | Toggle | Default | Passes roles |
 |--------|---------|--------------|
 | `showStatementDeps` | true | `type`, `both` |
 | `showBodyDeps` | true | `term`, `both` |
 
-They combine with `showInnerCalls` by AND. Links without a role (`spec`, `mapping`, graphs without split data) always pass them. Unlike the other link toggles, they restrict **traversal**: `selectNodes` drops the links they reject (`TraversalPredicates.linkFilter`), and the seeded view expands over `roleFilteredGraph`. With A -term→ B -type→ C and body/proof off, a query from A does not reach C. The checkboxes only appear when the graph has role data.
+They combine by AND with `showInnerCalls` for inner links and with `showSpecLinks` for spec links. Links without a role (`mapping`, graphs without split data) always pass them. Unlike the other link toggles, they restrict **traversal**: `selectNodes` drops the links they reject (`TraversalPredicates.linkFilter`), and the seeded view expands over `roleFilteredGraph`. With A -term→ B -type→ C and body/proof off, a query from A does not reach C. The checkboxes only appear when the graph has role data.
 
 ### 3.9 Display Predicates
 
@@ -271,7 +271,7 @@ Three passes over links:
 
 1. **Endpoint filter** — keep only links where both source and target are in the result node set.
 2. **Depth filter** — when a depth limit is active, keep only BFS-tree edges (no shortcut edges). Uses `calleeDepths` / `callerDepths` from the traversal result.
-3. **Link type filter** — apply `showInnerCalls`, `showPreconditionCalls`, `showPostconditionCalls`, `showMappingLinks`, `showSpecLinks`, and for inner links the role toggles.
+3. **Link type filter** — apply `showInnerCalls`, `showPreconditionCalls`, `showPostconditionCalls`, `showMappingLinks`, `showSpecLinks`, and for inner and spec links the role toggles.
 
 For `crateBoundary` queries, only links whose `(source, target)` pair is in `boundaryLinkPairs` survive step 1.
 
