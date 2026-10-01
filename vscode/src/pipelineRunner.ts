@@ -196,7 +196,7 @@ export async function runPipeline(options?: PipelineOptions): Promise<void> {
     const outputChannel = vscode.window.createOutputChannel('Call Graph Pipeline');
     outputChannel.show(true);
     outputChannel.appendLine(`Running: ${command} ${args.join(' ')}`);
-    outputChannel.appendLine(`Working directory: ${workspaceRoot}`);
+    outputChannel.appendLine(`Working directory: ${cwd}`);
     outputChannel.appendLine('---');
     
     return new Promise((resolve) => {
@@ -204,7 +204,6 @@ export async function runPipeline(options?: PipelineOptions): Promise<void> {
         
         currentProcess = cp.spawn(command, args, {
             cwd,
-            shell: true,
             env: { ...process.env, RUST_LOG: 'info' }
         });
         
