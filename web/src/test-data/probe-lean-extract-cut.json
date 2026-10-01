@@ -1,0 +1,1677 @@
+{
+  "tool": {
+    "version": "0.14.0",
+    "name": "probe-lean",
+    "command": "extract"
+  },
+  "timestamp": "2026-09-30T11:36:52Z",
+  "source": {
+    "repo": "https://github.com/Beneficial-AI-Foundation/secure-messaging.git",
+    "package-version": "061a94e",
+    "package": "SecureMessaging",
+    "language": "lean",
+    "commit": "061a94e67c2369c1612ca243a15e3ea1f2aef1ff"
+  },
+  "schema-version": "3.0",
+  "schema": "probe-lean/extract",
+  "data": {
+    "probe:Parser.Attr.stateTrun": {
+      "verification-status": "transitively-verified",
+      "type-dependencies-external": [
+        "probe:Lean.ParserDescr"
+      ],
+      "type-dependencies": [],
+      "term-dependencies-external": [
+        "probe:Bool.false",
+        "probe:Lean.Name.mkStr1",
+        "probe:Lean.Name.mkStr3",
+        "probe:Lean.Parser.Tactic.simpPost",
+        "probe:Lean.Parser.Tactic.simpPre",
+        "probe:Lean.ParserDescr.binary",
+        "probe:Lean.ParserDescr.cat",
+        "probe:Lean.ParserDescr.node",
+        "probe:Lean.ParserDescr.nonReservedSymbol",
+        "probe:Lean.ParserDescr.unary",
+        "probe:Lean.ParserDescr.unicodeSymbol",
+        "probe:Nat",
+        "probe:OfNat.ofNat",
+        "probe:instOfNatNat"
+      ],
+      "term-dependencies": [],
+      "rust-source": null,
+      "language": "lean",
+      "kind": "def",
+      "is-relevant": true,
+      "is-primary-spec": false,
+      "is-lean-generated": false,
+      "is-in-package": true,
+      "is-ignored": false,
+      "is-hidden": false,
+      "is-aeneas-generated": false,
+      "display-name": "stateTrun",
+      "dependencies": [],
+      "codomain-last-arg-is-bool": false,
+      "codomain-is-prop": false,
+      "codomain-head": "Lean.ParserDescr",
+      "code-text": {
+        "lines-start": 25,
+        "lines-end": 28
+      },
+      "code-path": "ToVCVio/Control/SimpAttr.lean",
+      "code-module": "ToVCVio.Control.SimpAttr"
+    },
+    "probe:Parser.Attr.stateTrun_proc": {
+      "verification-status": "transitively-verified",
+      "type-dependencies-external": [
+        "probe:Lean.ParserDescr"
+      ],
+      "type-dependencies": [],
+      "term-dependencies-external": [
+        "probe:Bool.false",
+        "probe:Lean.Name.mkStr1",
+        "probe:Lean.Name.mkStr3",
+        "probe:Lean.Parser.Tactic.simpPost",
+        "probe:Lean.Parser.Tactic.simpPre",
+        "probe:Lean.ParserDescr.binary",
+        "probe:Lean.ParserDescr.node",
+        "probe:Lean.ParserDescr.nonReservedSymbol",
+        "probe:Lean.ParserDescr.unary",
+        "probe:Nat",
+        "probe:OfNat.ofNat",
+        "probe:instOfNatNat"
+      ],
+      "term-dependencies": [],
+      "rust-source": null,
+      "language": "lean",
+      "kind": "def",
+      "is-relevant": true,
+      "is-primary-spec": false,
+      "is-lean-generated": false,
+      "is-in-package": true,
+      "is-ignored": false,
+      "is-hidden": false,
+      "is-aeneas-generated": false,
+      "display-name": "stateTrun_proc",
+      "dependencies": [],
+      "codomain-last-arg-is-bool": false,
+      "codomain-is-prop": false,
+      "codomain-head": "Lean.ParserDescr",
+      "code-text": {
+        "lines-start": 25,
+        "lines-end": 28
+      },
+      "code-path": "ToVCVio/Control/SimpAttr.lean",
+      "code-module": "ToVCVio.Control.SimpAttr"
+    },
+    "probe:kemCKA.InitKey": {
+      "verification-status": "transitively-verified",
+      "type-dependencies": [],
+      "term-dependencies-external": [
+        "probe:Prod"
+      ],
+      "term-dependencies": [],
+      "specs": [
+        "probe:kemCKA.correctness",
+        "probe:kemCKA.correctnessImpl_preserves",
+        "probe:kemCKA.oracleRecvA_preserves_reachableInv",
+        "probe:kemCKA.oracleRecvB_preserves_reachableInv",
+        "probe:kemCKA.oracleSendA_preserves_reachableInv",
+        "probe:kemCKA.oracleSendA_rleak_fst_eq_oracleSendA",
+        "probe:kemCKA.oracleSendB_preserves_reachableInv",
+        "probe:kemCKA.oracleSendB_rleak_fst_eq_oracleSendB",
+        "probe:kemCKA.security",
+        "probe:kemCKA.securityExpFixedBit_eq_ckaSecurityFixedBranch",
+        "probe:kemCKA.security_exists"
+      ],
+      "rust-source": null,
+      "language": "lean",
+      "kind": "abbrev",
+      "is-relevant": true,
+      "is-primary-spec": false,
+      "is-lean-generated": false,
+      "is-in-package": true,
+      "is-ignored": false,
+      "is-hidden": false,
+      "is-aeneas-generated": false,
+      "display-name": "InitKey",
+      "dependencies": [],
+      "codomain-last-arg-is-bool": false,
+      "codomain-is-prop": false,
+      "code-text": {
+        "lines-start": 79,
+        "lines-end": 80
+      },
+      "code-path": "SecureMessaging/CKA/FromKEM/Construction.lean",
+      "code-module": "SecureMessaging.CKA.FromKEM.Construction"
+    },
+    "probe:kemCKA.Message": {
+      "verification-status": "transitively-verified",
+      "type-dependencies": [],
+      "term-dependencies-external": [
+        "probe:Prod"
+      ],
+      "term-dependencies": [],
+      "specs": [
+        "probe:kemCKA.allowCorrPCS_false_of_two_le_deltaPCS_of_tA_pred",
+        "probe:kemCKA.allowCorrPCS_false_of_two_le_deltaPCS_of_tB_pred",
+        "probe:kemCKA.allowCorr_A_eq_false_iff",
+        "probe:kemCKA.allowCorr_B_eq_false_iff",
+        "probe:kemCKA.allowCorr_receiverA_false_after_challB",
+        "probe:kemCKA.allowCorr_receiverB_false_after_challA",
+        "probe:kemCKA.challA_run_support_counters",
+        "probe:kemCKA.challA_sampled_keygen_rel",
+        "probe:kemCKA.challA_sampled_reduction_cont_probOutput_true_eq",
+        "probe:kemCKA.challA_sampled_reduction_cont_run'_relTriple",
+        "probe:kemCKA.challA_sampled_reduction_query_rel",
+        "probe:kemCKA.challA_sampled_reduction_random_cont_probOutput_true_eq",
+        "probe:kemCKA.challA_sampled_reduction_random_cont_run'_relTriple",
+        "probe:kemCKA.challB_run_support_counters",
+        "probe:kemCKA.challB_sampled_keygen_rel",
+        "probe:kemCKA.challB_sampled_reduction_cont_probOutput_true_eq",
+        "probe:kemCKA.challB_sampled_reduction_cont_run'_relTriple",
+        "probe:kemCKA.challB_sampled_reduction_query_rel",
+        "probe:kemCKA.challB_sampled_reduction_random_cont_probOutput_true_eq",
+        "probe:kemCKA.challB_sampled_reduction_random_cont_run'_relTriple",
+        "probe:kemCKA.ckaSecurityFixedBranchWithInjectedChallengeKey_eq_split",
+        "probe:kemCKA.correctness",
+        "probe:kemCKA.correctnessImpl_preserves",
+        "probe:kemCKA.coupleRelA_step_chall",
+        "probe:kemCKA.coupleRelA_step_inj",
+        "probe:kemCKA.coupleRelB_step_chall",
+        "probe:kemCKA.coupleRelB_step_inj",
+        "probe:kemCKA.injResumeKilled_pausedA_probOutput_true_eq",
+        "probe:kemCKA.injResumeKilled_pausedB_probOutput_true_eq",
+        "probe:kemCKA.injectPrefix_run_support_effInject",
+        "probe:kemCKA.injectResume_pausedA_combine",
+        "probe:kemCKA.injectResume_pausedB_combine",
+        "probe:kemCKA.keygen_commute_after_install_tail",
+        "probe:kemCKA.lastAction_of_willChallengeA",
+        "probe:kemCKA.lastAction_of_willChallengeB",
+        "probe:kemCKA.oracleRecvA_preserves_reachableInv",
+        "probe:kemCKA.oracleRecvB_preserves_reachableInv",
+        "probe:kemCKA.oracleSendAWithChallengeKeyPair_run_eq_of_not_inject",
+        "probe:kemCKA.oracleSendAWithChallengeKeyPair_run_sendReady",
+        "probe:kemCKA.oracleSendAWithChallengePk_run_eq_of_not_inject",
+        "probe:kemCKA.oracleSendAWithChallengePk_run_sendReady",
+        "probe:kemCKA.oracleSendA_preserves_reachableInv",
+        "probe:kemCKA.oracleSendA_rleak_fst_eq_oracleSendA",
+        "probe:kemCKA.oracleSendBWithChallengeKeyPair_run_eq_of_not_inject",
+        "probe:kemCKA.oracleSendBWithChallengeKeyPair_run_sendReady",
+        "probe:kemCKA.oracleSendBWithChallengePk_run_eq_of_not_inject",
+        "probe:kemCKA.oracleSendBWithChallengePk_run_sendReady",
+        "probe:kemCKA.oracleSendB_preserves_reachableInv",
+        "probe:kemCKA.oracleSendB_rleak_fst_eq_oracleSendB",
+        "probe:kemCKA.oracleUnif_preserves_reachableInv",
+        "probe:kemCKA.pausedA_killed_probOutput_true_eq",
+        "probe:kemCKA.pausedB_killed_probOutput_true_eq",
+        "probe:kemCKA.postChallengeImpl_corruptA_run",
+        "probe:kemCKA.postChallengeImpl_corruptB_run",
+        "probe:kemCKA.postChallengeImpl_recvA_bToA_of_valid",
+        "probe:kemCKA.postChallengeImpl_recvB_aToB_of_valid",
+        "probe:kemCKA.postRel_aToB_after_challA",
+        "probe:kemCKA.postRel_aToB_after_challA_of_mem_support",
+        "probe:kemCKA.postRel_aToB_recvB",
+        "probe:kemCKA.postRel_aToB_recvB_noPending",
+        "probe:kemCKA.postRel_bToA_after_challB",
+        "probe:kemCKA.postRel_bToA_after_challB_of_mem_support",
+        "probe:kemCKA.postRel_bToA_recvA",
+        "probe:kemCKA.postRel_bToA_recvA_noPending",
+        "probe:kemCKA.postRel_unif_step",
+        "probe:kemCKA.preInvA_preserved_recvA",
+        "probe:kemCKA.preInvA_preserved_recvB",
+        "probe:kemCKA.preInvA_preserved_sendA",
+        "probe:kemCKA.preInvA_preserved_sendA_rleak",
+        "probe:kemCKA.preInvA_preserved_sendB_of_not_inject",
+        "probe:kemCKA.preInvA_preserved_sendB_rleak",
+        "probe:kemCKA.preInvB_preserved_recvA",
+        "probe:kemCKA.preInvB_preserved_recvB",
+        "probe:kemCKA.preInvB_preserved_sendA_of_not_inject",
+        "probe:kemCKA.preInvB_preserved_sendA_rleak",
+        "probe:kemCKA.preInvB_preserved_sendB",
+        "probe:kemCKA.preInvB_preserved_sendB_rleak",
+        "probe:kemCKA.prefixImpl_run_counters_mono",
+        "probe:kemCKA.reachableInv_after_recvA",
+        "probe:kemCKA.reachableInv_after_recvB",
+        "probe:kemCKA.reachableInv_after_sendA",
+        "probe:kemCKA.reachableInv_after_sendB",
+        "probe:kemCKA.reachableInv_init",
+        "probe:kemCKA.reductionBranchImpl_challA_preAToB_run_of_will",
+        "probe:kemCKA.reductionBranchImpl_challB_preBToA_run_of_will",
+        "probe:kemCKA.reductionBranchImpl_pre_challA_run_of_will",
+        "probe:kemCKA.reductionBranchImpl_pre_challB_run_of_will",
+        "probe:kemCKA.reductionBranch_challA_cont_eq_finishChallengeStepRaw",
+        "probe:kemCKA.reductionBranch_challB_cont_eq_finishChallengeStepRaw",
+        "probe:kemCKA.security",
+        "probe:kemCKA.securityExpFixedBit_eq_ckaSecurityFixedBranch",
+        "probe:kemCKA.securityImplWithChallengeKeyPair_run_eq_securityImpl_of_step",
+        "probe:kemCKA.securityImpl_OSendA_run_sendReady",
+        "probe:kemCKA.securityImpl_OSendB_run_sendReady",
+        "probe:kemCKA.securityImpl_challA_preAToB_random_run",
+        "probe:kemCKA.securityImpl_challA_preAToB_real_run",
+        "probe:kemCKA.securityImpl_challA_run_of_not_will",
+        "probe:kemCKA.securityImpl_challB_preBToA_random_run",
+        "probe:kemCKA.securityImpl_challB_preBToA_real_run",
+        "probe:kemCKA.securityImpl_challB_run_of_not_will",
+        "probe:kemCKA.securityImpl_corruptA_run",
+        "probe:kemCKA.securityImpl_corruptB_run",
+        "probe:kemCKA.securityImpl_recvA_eq_project_postChallengeImpl_bToA",
+        "probe:kemCKA.securityImpl_recvA_of_decaps_eq",
+        "probe:kemCKA.securityImpl_recvB_eq_project_postChallengeImpl_aToB",
+        "probe:kemCKA.securityImpl_recvB_of_decaps_eq",
+        "probe:kemCKA.securityImpl_run_counters_mono",
+        "probe:kemCKA.security_exists",
+        "probe:kemCKA.send_rleak_fst_eq_send",
+        "probe:kemCKA.simulateQ_run_eq_injectPrefix_bind",
+        "probe:kemCKA.wck_run_counters_mono"
+      ],
+      "rust-source": null,
+      "language": "lean",
+      "kind": "abbrev",
+      "is-relevant": true,
+      "is-primary-spec": false,
+      "is-lean-generated": false,
+      "is-in-package": true,
+      "is-ignored": false,
+      "is-hidden": false,
+      "is-aeneas-generated": false,
+      "display-name": "Message",
+      "dependencies": [],
+      "codomain-last-arg-is-bool": false,
+      "codomain-is-prop": false,
+      "code-text": {
+        "lines-start": 72,
+        "lines-end": 77
+      },
+      "code-path": "SecureMessaging/CKA/FromKEM/Construction.lean",
+      "code-module": "SecureMessaging.CKA.FromKEM.Construction"
+    },
+    "probe:kemCKA.State": {
+      "verification-status": "transitively-verified",
+      "type-dependencies": [],
+      "term-dependencies": [],
+      "specs": [
+        "probe:kemCKA.allowCorrPCS_false_of_two_le_deltaPCS_of_tA_pred",
+        "probe:kemCKA.allowCorrPCS_false_of_two_le_deltaPCS_of_tB_pred",
+        "probe:kemCKA.allowCorr_A_eq_false_iff",
+        "probe:kemCKA.allowCorr_B_eq_false_iff",
+        "probe:kemCKA.allowCorr_receiverA_false_after_challB",
+        "probe:kemCKA.allowCorr_receiverB_false_after_challA",
+        "probe:kemCKA.challA_run_support_counters",
+        "probe:kemCKA.challA_sampled_keygen_rel",
+        "probe:kemCKA.challA_sampled_reduction_cont_probOutput_true_eq",
+        "probe:kemCKA.challA_sampled_reduction_cont_run'_relTriple",
+        "probe:kemCKA.challA_sampled_reduction_query_rel",
+        "probe:kemCKA.challA_sampled_reduction_random_cont_probOutput_true_eq",
+        "probe:kemCKA.challA_sampled_reduction_random_cont_run'_relTriple",
+        "probe:kemCKA.challB_run_support_counters",
+        "probe:kemCKA.challB_sampled_keygen_rel",
+        "probe:kemCKA.challB_sampled_reduction_cont_probOutput_true_eq",
+        "probe:kemCKA.challB_sampled_reduction_cont_run'_relTriple",
+        "probe:kemCKA.challB_sampled_reduction_query_rel",
+        "probe:kemCKA.challB_sampled_reduction_random_cont_probOutput_true_eq",
+        "probe:kemCKA.challB_sampled_reduction_random_cont_run'_relTriple",
+        "probe:kemCKA.ckaSecurityFixedBranchWithInjectedChallengeKey_eq_split",
+        "probe:kemCKA.correctness",
+        "probe:kemCKA.correctnessImpl_preserves",
+        "probe:kemCKA.coupleRelA_step_chall",
+        "probe:kemCKA.coupleRelA_step_inj",
+        "probe:kemCKA.coupleRelB_step_chall",
+        "probe:kemCKA.coupleRelB_step_inj",
+        "probe:kemCKA.injResumeKilled_pausedA_probOutput_true_eq",
+        "probe:kemCKA.injResumeKilled_pausedB_probOutput_true_eq",
+        "probe:kemCKA.lastAction_of_willChallengeA",
+        "probe:kemCKA.lastAction_of_willChallengeB",
+        "probe:kemCKA.oracleRecvA_preserves_reachableInv",
+        "probe:kemCKA.oracleRecvB_preserves_reachableInv",
+        "probe:kemCKA.oracleSendAWithChallengeKeyPair_run_eq_of_not_inject",
+        "probe:kemCKA.oracleSendAWithChallengeKeyPair_run_sendReady",
+        "probe:kemCKA.oracleSendAWithChallengePk_run_eq_of_not_inject",
+        "probe:kemCKA.oracleSendAWithChallengePk_run_sendReady",
+        "probe:kemCKA.oracleSendA_preserves_reachableInv",
+        "probe:kemCKA.oracleSendA_rleak_fst_eq_oracleSendA",
+        "probe:kemCKA.oracleSendBWithChallengeKeyPair_run_eq_of_not_inject",
+        "probe:kemCKA.oracleSendBWithChallengeKeyPair_run_sendReady",
+        "probe:kemCKA.oracleSendBWithChallengePk_run_eq_of_not_inject",
+        "probe:kemCKA.oracleSendBWithChallengePk_run_sendReady",
+        "probe:kemCKA.oracleSendB_preserves_reachableInv",
+        "probe:kemCKA.oracleSendB_rleak_fst_eq_oracleSendB",
+        "probe:kemCKA.oracleUnif_preserves_reachableInv",
+        "probe:kemCKA.postChallengeImpl_corruptA_run",
+        "probe:kemCKA.postChallengeImpl_corruptB_run",
+        "probe:kemCKA.postChallengeImpl_recvA_bToA_of_valid",
+        "probe:kemCKA.postChallengeImpl_recvB_aToB_of_valid",
+        "probe:kemCKA.postRel_aToB_after_challA",
+        "probe:kemCKA.postRel_aToB_after_challA_of_mem_support",
+        "probe:kemCKA.postRel_aToB_recvB",
+        "probe:kemCKA.postRel_aToB_recvB_noPending",
+        "probe:kemCKA.postRel_bToA_after_challB",
+        "probe:kemCKA.postRel_bToA_after_challB_of_mem_support",
+        "probe:kemCKA.postRel_bToA_recvA",
+        "probe:kemCKA.postRel_bToA_recvA_noPending",
+        "probe:kemCKA.postRel_unif_step",
+        "probe:kemCKA.preInvA_preserved_recvA",
+        "probe:kemCKA.preInvA_preserved_recvB",
+        "probe:kemCKA.preInvA_preserved_sendA",
+        "probe:kemCKA.preInvA_preserved_sendA_rleak",
+        "probe:kemCKA.preInvA_preserved_sendB_of_not_inject",
+        "probe:kemCKA.preInvA_preserved_sendB_rleak",
+        "probe:kemCKA.preInvB_preserved_recvA",
+        "probe:kemCKA.preInvB_preserved_recvB",
+        "probe:kemCKA.preInvB_preserved_sendA_of_not_inject",
+        "probe:kemCKA.preInvB_preserved_sendA_rleak",
+        "probe:kemCKA.preInvB_preserved_sendB",
+        "probe:kemCKA.preInvB_preserved_sendB_rleak",
+        "probe:kemCKA.prefixImpl_run_counters_mono",
+        "probe:kemCKA.reachableInv_after_recvA",
+        "probe:kemCKA.reachableInv_after_recvB",
+        "probe:kemCKA.reachableInv_after_sendA",
+        "probe:kemCKA.reachableInv_after_sendB",
+        "probe:kemCKA.reachableInv_init",
+        "probe:kemCKA.reductionBranchImpl_challA_preAToB_run_of_will",
+        "probe:kemCKA.reductionBranchImpl_challB_preBToA_run_of_will",
+        "probe:kemCKA.reductionBranchImpl_pre_challA_run_of_will",
+        "probe:kemCKA.reductionBranchImpl_pre_challB_run_of_will",
+        "probe:kemCKA.reductionBranch_challA_cont_eq_finishChallengeStepRaw",
+        "probe:kemCKA.reductionBranch_challB_cont_eq_finishChallengeStepRaw",
+        "probe:kemCKA.security",
+        "probe:kemCKA.securityExpFixedBit_eq_ckaSecurityFixedBranch",
+        "probe:kemCKA.securityImplWithChallengeKeyPair_run_eq_securityImpl_of_step",
+        "probe:kemCKA.securityImpl_OSendA_run_sendReady",
+        "probe:kemCKA.securityImpl_OSendB_run_sendReady",
+        "probe:kemCKA.securityImpl_challA_preAToB_random_run",
+        "probe:kemCKA.securityImpl_challA_preAToB_real_run",
+        "probe:kemCKA.securityImpl_challA_run_of_not_will",
+        "probe:kemCKA.securityImpl_challB_preBToA_random_run",
+        "probe:kemCKA.securityImpl_challB_preBToA_real_run",
+        "probe:kemCKA.securityImpl_challB_run_of_not_will",
+        "probe:kemCKA.securityImpl_corruptA_run",
+        "probe:kemCKA.securityImpl_corruptB_run",
+        "probe:kemCKA.securityImpl_recvA_eq_project_postChallengeImpl_bToA",
+        "probe:kemCKA.securityImpl_recvA_of_decaps_eq",
+        "probe:kemCKA.securityImpl_recvB_eq_project_postChallengeImpl_aToB",
+        "probe:kemCKA.securityImpl_recvB_of_decaps_eq",
+        "probe:kemCKA.securityImpl_run_counters_mono",
+        "probe:kemCKA.security_exists",
+        "probe:kemCKA.send_recv_agree",
+        "probe:kemCKA.send_rleak_fst_eq_send",
+        "probe:kemCKA.simulateQ_run_eq_injectPrefix_bind",
+        "probe:kemCKA.wck_run_counters_mono"
+      ],
+      "rust-source": null,
+      "language": "lean",
+      "kind": "inductive",
+      "is-relevant": true,
+      "is-primary-spec": false,
+      "is-lean-generated": false,
+      "is-in-package": true,
+      "is-ignored": false,
+      "is-hidden": false,
+      "is-aeneas-generated": false,
+      "display-name": "State",
+      "dependencies": [],
+      "codomain-last-arg-is-bool": false,
+      "codomain-is-prop": false,
+      "code-text": {
+        "lines-start": 59,
+        "lines-end": 70
+      },
+      "code-path": "SecureMessaging/CKA/FromKEM/Construction.lean",
+      "code-module": "SecureMessaging.CKA.FromKEM.Construction"
+    },
+    "probe:kemCKA.initA": {
+      "verification-status": "transitively-verified",
+      "type-dependencies": [
+        "probe:kemCKA.InitKey",
+        "probe:kemCKA.State"
+      ],
+      "term-dependencies-external": [
+        "probe:Prod.fst"
+      ],
+      "term-dependencies": [
+        "probe:kemCKA.InitKey",
+        "probe:kemCKA.State.sendReady"
+      ],
+      "rust-source": null,
+      "language": "lean",
+      "kind": "def",
+      "is-relevant": true,
+      "is-primary-spec": false,
+      "is-lean-generated": false,
+      "is-in-package": true,
+      "is-ignored": false,
+      "is-hidden": false,
+      "is-aeneas-generated": false,
+      "display-name": "initA",
+      "dependencies": [
+        "probe:kemCKA.InitKey",
+        "probe:kemCKA.State"
+      ],
+      "codomain-last-arg-is-bool": false,
+      "codomain-is-prop": false,
+      "codomain-head": "kemCKA.State",
+      "code-text": {
+        "lines-start": 82,
+        "lines-end": 85
+      },
+      "code-path": "SecureMessaging/CKA/FromKEM/Construction.lean",
+      "code-module": "SecureMessaging.CKA.FromKEM.Construction"
+    },
+    "probe:oppUniKemCKA.StA": {
+      "verification-status": "transitively-verified",
+      "type-dependencies-external": [
+        "probe:KEMScheme",
+        "probe:Monad"
+      ],
+      "type-dependencies": [
+        "probe:KEMScheme.OnOffStructure"
+      ],
+      "term-dependencies-external": [
+        "probe:KEMScheme",
+        "probe:Monad"
+      ],
+      "term-dependencies": [
+        "probe:KEMScheme.OnOffStructure",
+        "probe:KEMScheme.OnOffStructure.C₀",
+        "probe:oppUniKemCKA.StateA"
+      ],
+      "specs": [
+        "probe:oppUniKemCKA.Reduction.Internal.correctnessExp_eq_final_map",
+        "probe:oppUniKemCKA.Reduction.Internal.correctness_failure_le_of_tracked_bad",
+        "probe:oppUniKemCKA.Reduction.Internal.currentFailurePotential_congr",
+        "probe:oppUniKemCKA.Reduction.Internal.currentFailurePotential_le_one",
+        "probe:oppUniKemCKA.Reduction.Internal.currentFailurePotential_recvA_advance",
+        "probe:oppUniKemCKA.Reduction.Internal.currentFailurePotential_recvB_advance",
+        "probe:oppUniKemCKA.Reduction.Internal.currentKEMFailure_congr",
+        "probe:oppUniKemCKA.Reduction.Internal.currentKEMFailure_eq_false_implies_current",
+        "probe:oppUniKemCKA.Reduction.Internal.currentKEMFailure_recvA_advance_false",
+        "probe:oppUniKemCKA.Reduction.Internal.currentKEMFailure_recvB_advance_false",
+        "probe:oppUniKemCKA.Reduction.Internal.installAKeypair_currentKEMFailure_false",
+        "probe:oppUniKemCKA.Reduction.Internal.installBOn_score",
+        "probe:oppUniKemCKA.Reduction.Internal.keygen_failurePotential_le",
+        "probe:oppUniKemCKA.Reduction.Internal.newOff_source_shape",
+        "probe:oppUniKemCKA.Reduction.Internal.off_failurePotential_le",
+        "probe:oppUniKemCKA.Reduction.Internal.online_source_shape",
+        "probe:oppUniKemCKA.Reduction.Internal.oracleRecvA_preserves_currentFailure",
+        "probe:oppUniKemCKA.Reduction.Internal.oracleRecvA_preserves_failurePotential",
+        "probe:oppUniKemCKA.Reduction.Internal.oracleRecvB_preserves_currentFailure",
+        "probe:oppUniKemCKA.Reduction.Internal.oracleRecvB_preserves_failurePotential",
+        "probe:oppUniKemCKA.Reduction.Internal.recvA_kem_source_shape",
+        "probe:oppUniKemCKA.Reduction.Internal.sendBOffOnState_score",
+        "probe:oppUniKemCKA.Reduction.Internal.sendBOffState_score",
+        "probe:oppUniKemCKA.Reduction.Internal.sendBOnState_score",
+        "probe:oppUniKemCKA.Reduction.Internal.trackedCorrectnessImpl_preserves",
+        "probe:oppUniKemCKA.Reduction.Internal.trackedCorrectnessImpl_project",
+        "probe:oppUniKemCKA.Reduction.Internal.trackedFailureScore_le_one",
+        "probe:oppUniKemCKA.Reduction.Internal.tracked_bad_probability_le_score",
+        "probe:oppUniKemCKA.Reduction.Internal.tracked_initial_inv",
+        "probe:oppUniKemCKA.Reduction.Internal.tracked_nonSend_score_le",
+        "probe:oppUniKemCKA.Reduction.Internal.tracked_nonSend_score_support_eq",
+        "probe:oppUniKemCKA.Reduction.Internal.tracked_run_project",
+        "probe:oppUniKemCKA.Reduction.Internal.tracked_score_step_le",
+        "probe:oppUniKemCKA.Reduction.Internal.tracked_sendA_score_le",
+        "probe:oppUniKemCKA.Reduction.Internal.tracked_sendB_score_le",
+        "probe:oppUniKemCKA.Reduction.Internal.tracked_step_score_le_of_bad",
+        "probe:oppUniKemCKA.TranscriptConsistent.chunksA",
+        "probe:oppUniKemCKA.TranscriptConsistent.chunksB",
+        "probe:oppUniKemCKA.TranscriptConsistent.correct",
+        "probe:oppUniKemCKA.TranscriptConsistent.decodedCt0",
+        "probe:oppUniKemCKA.TranscriptConsistent.decodedEk",
+        "probe:oppUniKemCKA.TranscriptConsistent.epochPosA",
+        "probe:oppUniKemCKA.TranscriptConsistent.epochPosB",
+        "probe:oppUniKemCKA.TranscriptConsistent.epochs",
+        "probe:oppUniKemCKA.TranscriptConsistent.futureKeypair",
+        "probe:oppUniKemCKA.TranscriptConsistent.futureOff",
+        "probe:oppUniKemCKA.TranscriptConsistent.futureOn",
+        "probe:oppUniKemCKA.TranscriptConsistent.keyA",
+        "probe:oppUniKemCKA.TranscriptConsistent.keyB",
+        "probe:oppUniKemCKA.TranscriptConsistent.keypairA",
+        "probe:oppUniKemCKA.TranscriptConsistent.keypairAShape",
+        "probe:oppUniKemCKA.TranscriptConsistent.knownPrefixA",
+        "probe:oppUniKemCKA.TranscriptConsistent.knownPrefixB",
+        "probe:oppUniKemCKA.TranscriptConsistent.knownPrefixBThroughCurrent",
+        "probe:oppUniKemCKA.TranscriptConsistent.msgA",
+        "probe:oppUniKemCKA.TranscriptConsistent.msgAEpoch",
+        "probe:oppUniKemCKA.TranscriptConsistent.msgB",
+        "probe:oppUniKemCKA.TranscriptConsistent.msgBEpoch",
+        "probe:oppUniKemCKA.TranscriptConsistent.offB",
+        "probe:oppUniKemCKA.TranscriptConsistent.offBShape",
+        "probe:oppUniKemCKA.TranscriptConsistent.onB",
+        "probe:oppUniKemCKA.TranscriptConsistent.pastComplete",
+        "probe:oppUniKemCKA.TranscriptConsistent.tcurA",
+        "probe:oppUniKemCKA.TranscriptConsistent.tcurB",
+        "probe:oppUniKemCKA.correctness",
+        "probe:oppUniKemCKA.correctness_failure_le",
+        "probe:oppUniKemCKA.correctness_failure_le_reduction",
+        "probe:oppUniKemCKA.correctness_of_perfectKEM",
+        "probe:oppUniKemCKA.correctness_true_ge",
+        "probe:oppUniKemCKA.correctness_true_ge_reduction",
+        "probe:oppUniKemCKA.oracleRecvA_preserves_reachableInv",
+        "probe:oppUniKemCKA.oracleRecvB_preserves_reachableInv",
+        "probe:oppUniKemCKA.oracleSendA_preserves_reachableInv",
+        "probe:oppUniKemCKA.oracleSendB_preserves_reachableInv",
+        "probe:oppUniKemCKA.oracleUnif_preserves_reachableInv",
+        "probe:oppUniKemCKA.reachableInv_after_recvA_ackOnly",
+        "probe:oppUniKemCKA.reachableInv_after_recvA_advance",
+        "probe:oppUniKemCKA.reachableInv_after_recvA_same",
+        "probe:oppUniKemCKA.reachableInv_after_recvA_stale",
+        "probe:oppUniKemCKA.reachableInv_after_recvB_current",
+        "probe:oppUniKemCKA.reachableInv_after_recvB_next",
+        "probe:oppUniKemCKA.reachableInv_after_recvB_stale",
+        "probe:oppUniKemCKA.reachableInv_after_sendA_existing",
+        "probe:oppUniKemCKA.reachableInv_after_sendA_new",
+        "probe:oppUniKemCKA.reachableInv_after_sendB_newOff",
+        "probe:oppUniKemCKA.reachableInv_after_sendB_newOffOn",
+        "probe:oppUniKemCKA.reachableInv_after_sendB_newOn",
+        "probe:oppUniKemCKA.reachableInv_after_sendB_same",
+        "probe:oppUniKemCKA.reachableInv_init",
+        "probe:oppUniKemCKA.recvAAckStep_ct0",
+        "probe:oppUniKemCKA.recvAAckStep_dkA",
+        "probe:oppUniKemCKA.recvAAckStep_ekA",
+        "probe:oppUniKemCKA.recvAAckStep_lch",
+        "probe:oppUniKemCKA.recvAAckStep_t"
+      ],
+      "rust-source": null,
+      "language": "lean",
+      "kind": "abbrev",
+      "is-relevant": true,
+      "is-primary-spec": false,
+      "is-lean-generated": false,
+      "is-in-package": true,
+      "is-ignored": false,
+      "is-hidden": false,
+      "is-aeneas-generated": false,
+      "display-name": "StA",
+      "dependencies": [
+        "probe:oppUniKemCKA.StateA"
+      ],
+      "codomain-last-arg-is-bool": false,
+      "codomain-is-prop": false,
+      "code-text": {
+        "lines-start": 168,
+        "lines-end": 172
+      },
+      "code-path": "SecureMessaging/SCKA/OppUniKEM/Construction.lean",
+      "code-module": "SecureMessaging.SCKA.OppUniKEM.Construction"
+    },
+    "probe:oppUniKemCKA.StB": {
+      "verification-status": "transitively-verified",
+      "type-dependencies-external": [
+        "probe:KEMScheme",
+        "probe:Monad"
+      ],
+      "type-dependencies": [
+        "probe:KEMScheme.OnOffStructure"
+      ],
+      "term-dependencies-external": [
+        "probe:KEMScheme",
+        "probe:Monad"
+      ],
+      "term-dependencies": [
+        "probe:KEMScheme.OnOffStructure",
+        "probe:KEMScheme.OnOffStructure.C₀",
+        "probe:KEMScheme.OnOffStructure.C₁",
+        "probe:KEMScheme.OnOffStructure.St",
+        "probe:oppUniKemCKA.StateB"
+      ],
+      "specs": [
+        "probe:oppUniKemCKA.ChunksBConsistent.decodedEk",
+        "probe:oppUniKemCKA.ChunksBConsistent.recvBAckStep",
+        "probe:oppUniKemCKA.Reduction.Internal.correctnessExp_eq_final_map",
+        "probe:oppUniKemCKA.Reduction.Internal.correctness_failure_le_of_tracked_bad",
+        "probe:oppUniKemCKA.Reduction.Internal.currentFailurePotential_congr",
+        "probe:oppUniKemCKA.Reduction.Internal.currentFailurePotential_le_one",
+        "probe:oppUniKemCKA.Reduction.Internal.currentFailurePotential_recvA_advance",
+        "probe:oppUniKemCKA.Reduction.Internal.currentFailurePotential_recvB_advance",
+        "probe:oppUniKemCKA.Reduction.Internal.currentKEMFailure_congr",
+        "probe:oppUniKemCKA.Reduction.Internal.currentKEMFailure_eq_false_implies_current",
+        "probe:oppUniKemCKA.Reduction.Internal.currentKEMFailure_recvA_advance_false",
+        "probe:oppUniKemCKA.Reduction.Internal.currentKEMFailure_recvB_advance_false",
+        "probe:oppUniKemCKA.Reduction.Internal.installAKeypair_currentKEMFailure_false",
+        "probe:oppUniKemCKA.Reduction.Internal.installBOn_score",
+        "probe:oppUniKemCKA.Reduction.Internal.keygen_failurePotential_le",
+        "probe:oppUniKemCKA.Reduction.Internal.newOff_source_shape",
+        "probe:oppUniKemCKA.Reduction.Internal.off_failurePotential_le",
+        "probe:oppUniKemCKA.Reduction.Internal.online_source_shape",
+        "probe:oppUniKemCKA.Reduction.Internal.oracleRecvA_preserves_currentFailure",
+        "probe:oppUniKemCKA.Reduction.Internal.oracleRecvA_preserves_failurePotential",
+        "probe:oppUniKemCKA.Reduction.Internal.oracleRecvB_preserves_currentFailure",
+        "probe:oppUniKemCKA.Reduction.Internal.oracleRecvB_preserves_failurePotential",
+        "probe:oppUniKemCKA.Reduction.Internal.recvB_kem_source_shape",
+        "probe:oppUniKemCKA.Reduction.Internal.sendBOffOnState_score",
+        "probe:oppUniKemCKA.Reduction.Internal.sendBOffState_score",
+        "probe:oppUniKemCKA.Reduction.Internal.sendBOnState_score",
+        "probe:oppUniKemCKA.Reduction.Internal.trackedCorrectnessImpl_preserves",
+        "probe:oppUniKemCKA.Reduction.Internal.trackedCorrectnessImpl_project",
+        "probe:oppUniKemCKA.Reduction.Internal.trackedFailureScore_le_one",
+        "probe:oppUniKemCKA.Reduction.Internal.tracked_bad_probability_le_score",
+        "probe:oppUniKemCKA.Reduction.Internal.tracked_initial_inv",
+        "probe:oppUniKemCKA.Reduction.Internal.tracked_nonSend_score_le",
+        "probe:oppUniKemCKA.Reduction.Internal.tracked_nonSend_score_support_eq",
+        "probe:oppUniKemCKA.Reduction.Internal.tracked_run_project",
+        "probe:oppUniKemCKA.Reduction.Internal.tracked_score_step_le",
+        "probe:oppUniKemCKA.Reduction.Internal.tracked_sendA_score_le",
+        "probe:oppUniKemCKA.Reduction.Internal.tracked_sendB_score_le",
+        "probe:oppUniKemCKA.Reduction.Internal.tracked_step_score_le_of_bad",
+        "probe:oppUniKemCKA.TranscriptConsistent.chunksA",
+        "probe:oppUniKemCKA.TranscriptConsistent.chunksB",
+        "probe:oppUniKemCKA.TranscriptConsistent.correct",
+        "probe:oppUniKemCKA.TranscriptConsistent.decodedCt0",
+        "probe:oppUniKemCKA.TranscriptConsistent.decodedEk",
+        "probe:oppUniKemCKA.TranscriptConsistent.epochPosA",
+        "probe:oppUniKemCKA.TranscriptConsistent.epochPosB",
+        "probe:oppUniKemCKA.TranscriptConsistent.epochs",
+        "probe:oppUniKemCKA.TranscriptConsistent.futureKeypair",
+        "probe:oppUniKemCKA.TranscriptConsistent.futureOff",
+        "probe:oppUniKemCKA.TranscriptConsistent.futureOn",
+        "probe:oppUniKemCKA.TranscriptConsistent.keyA",
+        "probe:oppUniKemCKA.TranscriptConsistent.keyB",
+        "probe:oppUniKemCKA.TranscriptConsistent.keypairA",
+        "probe:oppUniKemCKA.TranscriptConsistent.keypairAShape",
+        "probe:oppUniKemCKA.TranscriptConsistent.knownPrefixA",
+        "probe:oppUniKemCKA.TranscriptConsistent.knownPrefixB",
+        "probe:oppUniKemCKA.TranscriptConsistent.knownPrefixBThroughCurrent",
+        "probe:oppUniKemCKA.TranscriptConsistent.msgA",
+        "probe:oppUniKemCKA.TranscriptConsistent.msgAEpoch",
+        "probe:oppUniKemCKA.TranscriptConsistent.msgB",
+        "probe:oppUniKemCKA.TranscriptConsistent.msgBEpoch",
+        "probe:oppUniKemCKA.TranscriptConsistent.offB",
+        "probe:oppUniKemCKA.TranscriptConsistent.offBShape",
+        "probe:oppUniKemCKA.TranscriptConsistent.onB",
+        "probe:oppUniKemCKA.TranscriptConsistent.pastComplete",
+        "probe:oppUniKemCKA.TranscriptConsistent.tcurA",
+        "probe:oppUniKemCKA.TranscriptConsistent.tcurB",
+        "probe:oppUniKemCKA.chunksB_recvBEkStep",
+        "probe:oppUniKemCKA.correctness",
+        "probe:oppUniKemCKA.correctness_failure_le",
+        "probe:oppUniKemCKA.correctness_failure_le_reduction",
+        "probe:oppUniKemCKA.correctness_of_perfectKEM",
+        "probe:oppUniKemCKA.correctness_true_ge",
+        "probe:oppUniKemCKA.correctness_true_ge_reduction",
+        "probe:oppUniKemCKA.oracleRecvA_preserves_reachableInv",
+        "probe:oppUniKemCKA.oracleRecvB_preserves_reachableInv",
+        "probe:oppUniKemCKA.oracleSendA_preserves_reachableInv",
+        "probe:oppUniKemCKA.oracleSendB_preserves_reachableInv",
+        "probe:oppUniKemCKA.oracleUnif_preserves_reachableInv",
+        "probe:oppUniKemCKA.reachableInv_after_recvA_ackOnly",
+        "probe:oppUniKemCKA.reachableInv_after_recvA_advance",
+        "probe:oppUniKemCKA.reachableInv_after_recvA_same",
+        "probe:oppUniKemCKA.reachableInv_after_recvA_stale",
+        "probe:oppUniKemCKA.reachableInv_after_recvB_current",
+        "probe:oppUniKemCKA.reachableInv_after_recvB_next",
+        "probe:oppUniKemCKA.reachableInv_after_recvB_stale",
+        "probe:oppUniKemCKA.reachableInv_after_sendA_existing",
+        "probe:oppUniKemCKA.reachableInv_after_sendA_new",
+        "probe:oppUniKemCKA.reachableInv_after_sendB_newOff",
+        "probe:oppUniKemCKA.reachableInv_after_sendB_newOffOn",
+        "probe:oppUniKemCKA.reachableInv_after_sendB_newOn",
+        "probe:oppUniKemCKA.reachableInv_after_sendB_same",
+        "probe:oppUniKemCKA.reachableInv_init",
+        "probe:oppUniKemCKA.recvBAckStep_ct0",
+        "probe:oppUniKemCKA.recvBAckStep_ct1",
+        "probe:oppUniKemCKA.recvBAckStep_ekA",
+        "probe:oppUniKemCKA.recvBAckStep_lch",
+        "probe:oppUniKemCKA.recvBAckStep_stCt",
+        "probe:oppUniKemCKA.recvBAckStep_t",
+        "probe:oppUniKemCKA.recvBEkStep_ct0",
+        "probe:oppUniKemCKA.recvBEkStep_ct1",
+        "probe:oppUniKemCKA.recvBEkStep_stCt",
+        "probe:oppUniKemCKA.recvBEkStep_t",
+        "probe:oppUniKemCKA.recvB_current_eq",
+        "probe:oppUniKemCKA.recvB_next_eq"
+      ],
+      "rust-source": null,
+      "language": "lean",
+      "kind": "abbrev",
+      "is-relevant": true,
+      "is-primary-spec": false,
+      "is-lean-generated": false,
+      "is-in-package": true,
+      "is-ignored": false,
+      "is-hidden": false,
+      "is-aeneas-generated": false,
+      "display-name": "StB",
+      "dependencies": [
+        "probe:oppUniKemCKA.StateB"
+      ],
+      "codomain-last-arg-is-bool": false,
+      "codomain-is-prop": false,
+      "code-text": {
+        "lines-start": 174,
+        "lines-end": 178
+      },
+      "code-path": "SecureMessaging/SCKA/OppUniKEM/Construction.lean",
+      "code-module": "SecureMessaging.SCKA.OppUniKEM.Construction"
+    },
+    "probe:oppUniKemCKA.StateA": {
+      "verification-status": "transitively-verified",
+      "type-dependencies": [],
+      "term-dependencies": [],
+      "rust-source": null,
+      "language": "lean",
+      "kind": "structure",
+      "is-relevant": true,
+      "is-primary-spec": false,
+      "is-lean-generated": false,
+      "is-in-package": true,
+      "is-ignored": false,
+      "is-hidden": false,
+      "is-aeneas-generated": false,
+      "display-name": "StateA",
+      "dependencies": [],
+      "codomain-last-arg-is-bool": false,
+      "codomain-is-prop": false,
+      "code-text": {
+        "lines-start": 128,
+        "lines-end": 143
+      },
+      "code-path": "SecureMessaging/SCKA/OppUniKEM/Construction.lean",
+      "code-module": "SecureMessaging.SCKA.OppUniKEM.Construction"
+    },
+    "probe:oppUniKemCKA.StateA.ack": {
+      "verification-status": "transitively-verified",
+      "type-dependencies": [
+        "probe:oppUniKemCKA.Ack",
+        "probe:oppUniKemCKA.StateA"
+      ],
+      "term-dependencies": [
+        "probe:oppUniKemCKA.StateA"
+      ],
+      "specs": [
+        "probe:oppUniKemCKA.reachableInv_after_sendA_existing",
+        "probe:oppUniKemCKA.reachableInv_after_sendA_new"
+      ],
+      "rust-source": null,
+      "language": "lean",
+      "kind": "projection",
+      "is-relevant": true,
+      "is-primary-spec": false,
+      "is-lean-generated": true,
+      "is-in-package": true,
+      "is-ignored": false,
+      "is-hidden": true,
+      "is-aeneas-generated": false,
+      "display-name": "ack",
+      "dependencies": [
+        "probe:oppUniKemCKA.StateA"
+      ],
+      "codomain-last-arg-is-bool": false,
+      "codomain-is-prop": false,
+      "codomain-head": "oppUniKemCKA.Ack",
+      "code-text": {
+        "lines-start": 143,
+        "lines-end": 143
+      },
+      "code-path": "SecureMessaging/SCKA/OppUniKEM/Construction.lean",
+      "code-module": "SecureMessaging.SCKA.OppUniKEM.Construction"
+    },
+    "probe:oppUniKemCKA.StateA.ct0": {
+      "verification-status": "transitively-verified",
+      "type-dependencies-external": [
+        "probe:Option"
+      ],
+      "type-dependencies": [
+        "probe:oppUniKemCKA.StateA"
+      ],
+      "term-dependencies": [
+        "probe:oppUniKemCKA.StateA"
+      ],
+      "specs": [
+        "probe:oppUniKemCKA.TranscriptConsistent.decodedCt0",
+        "probe:oppUniKemCKA.reachableInv_after_recvA_same",
+        "probe:oppUniKemCKA.reachableInv_after_sendA_existing",
+        "probe:oppUniKemCKA.reachableInv_after_sendA_new",
+        "probe:oppUniKemCKA.recvAAckStep_ct0"
+      ],
+      "rust-source": null,
+      "language": "lean",
+      "kind": "projection",
+      "is-relevant": true,
+      "is-primary-spec": false,
+      "is-lean-generated": true,
+      "is-in-package": true,
+      "is-ignored": false,
+      "is-hidden": true,
+      "is-aeneas-generated": false,
+      "display-name": "ct0",
+      "dependencies": [
+        "probe:oppUniKemCKA.StateA"
+      ],
+      "codomain-last-arg-is-bool": false,
+      "codomain-is-prop": false,
+      "codomain-head": "Option",
+      "code-text": {
+        "lines-start": 135,
+        "lines-end": 135
+      },
+      "code-path": "SecureMessaging/SCKA/OppUniKEM/Construction.lean",
+      "code-module": "SecureMessaging.SCKA.OppUniKEM.Construction"
+    },
+    "probe:oppUniKemCKA.StateA.dkA": {
+      "verification-status": "transitively-verified",
+      "type-dependencies-external": [
+        "probe:Option"
+      ],
+      "type-dependencies": [
+        "probe:oppUniKemCKA.StateA"
+      ],
+      "term-dependencies": [
+        "probe:oppUniKemCKA.StateA"
+      ],
+      "specs": [
+        "probe:oppUniKemCKA.Reduction.Internal.currentFailurePotential_congr",
+        "probe:oppUniKemCKA.Reduction.Internal.currentFailurePotential_recvA_advance",
+        "probe:oppUniKemCKA.Reduction.Internal.currentFailurePotential_recvB_advance",
+        "probe:oppUniKemCKA.Reduction.Internal.currentKEMFailure_congr",
+        "probe:oppUniKemCKA.Reduction.Internal.installAKeypair_currentKEMFailure_false",
+        "probe:oppUniKemCKA.Reduction.Internal.installBOn_score",
+        "probe:oppUniKemCKA.Reduction.Internal.keygen_failurePotential_le",
+        "probe:oppUniKemCKA.Reduction.Internal.newOff_source_shape",
+        "probe:oppUniKemCKA.Reduction.Internal.online_source_shape",
+        "probe:oppUniKemCKA.Reduction.Internal.recvA_kem_source_shape",
+        "probe:oppUniKemCKA.Reduction.Internal.sendBOffOnState_score",
+        "probe:oppUniKemCKA.Reduction.Internal.sendBOnState_score",
+        "probe:oppUniKemCKA.TranscriptConsistent.keypairA",
+        "probe:oppUniKemCKA.TranscriptConsistent.keypairAShape",
+        "probe:oppUniKemCKA.reachableInv_after_recvA_same",
+        "probe:oppUniKemCKA.reachableInv_after_sendA_existing",
+        "probe:oppUniKemCKA.reachableInv_after_sendA_new",
+        "probe:oppUniKemCKA.recvAAckStep_dkA"
+      ],
+      "rust-source": null,
+      "language": "lean",
+      "kind": "projection",
+      "is-relevant": true,
+      "is-primary-spec": false,
+      "is-lean-generated": true,
+      "is-in-package": true,
+      "is-ignored": false,
+      "is-hidden": true,
+      "is-aeneas-generated": false,
+      "display-name": "dkA",
+      "dependencies": [
+        "probe:oppUniKemCKA.StateA"
+      ],
+      "codomain-last-arg-is-bool": false,
+      "codomain-is-prop": false,
+      "codomain-head": "Option",
+      "code-text": {
+        "lines-start": 131,
+        "lines-end": 131
+      },
+      "code-path": "SecureMessaging/SCKA/OppUniKEM/Construction.lean",
+      "code-module": "SecureMessaging.SCKA.OppUniKEM.Construction"
+    },
+    "probe:oppUniKemCKA.StateA.ekA": {
+      "verification-status": "transitively-verified",
+      "type-dependencies-external": [
+        "probe:Option"
+      ],
+      "type-dependencies": [
+        "probe:oppUniKemCKA.StateA"
+      ],
+      "term-dependencies": [
+        "probe:oppUniKemCKA.StateA"
+      ],
+      "specs": [
+        "probe:oppUniKemCKA.Reduction.Internal.currentFailurePotential_congr",
+        "probe:oppUniKemCKA.Reduction.Internal.currentFailurePotential_recvA_advance",
+        "probe:oppUniKemCKA.Reduction.Internal.currentFailurePotential_recvB_advance",
+        "probe:oppUniKemCKA.Reduction.Internal.newOff_source_shape",
+        "probe:oppUniKemCKA.Reduction.Internal.online_source_shape",
+        "probe:oppUniKemCKA.Reduction.Internal.recvA_kem_source_shape",
+        "probe:oppUniKemCKA.TranscriptConsistent.keypairA",
+        "probe:oppUniKemCKA.TranscriptConsistent.keypairAShape",
+        "probe:oppUniKemCKA.reachableInv_after_recvA_same",
+        "probe:oppUniKemCKA.reachableInv_after_sendA_existing",
+        "probe:oppUniKemCKA.reachableInv_after_sendA_new",
+        "probe:oppUniKemCKA.recvAAckStep_ekA"
+      ],
+      "rust-source": null,
+      "language": "lean",
+      "kind": "projection",
+      "is-relevant": true,
+      "is-primary-spec": false,
+      "is-lean-generated": true,
+      "is-in-package": true,
+      "is-ignored": false,
+      "is-hidden": true,
+      "is-aeneas-generated": false,
+      "display-name": "ekA",
+      "dependencies": [
+        "probe:oppUniKemCKA.StateA"
+      ],
+      "codomain-last-arg-is-bool": false,
+      "codomain-is-prop": false,
+      "codomain-head": "Option",
+      "code-text": {
+        "lines-start": 133,
+        "lines-end": 133
+      },
+      "code-path": "SecureMessaging/SCKA/OppUniKEM/Construction.lean",
+      "code-module": "SecureMessaging.SCKA.OppUniKEM.Construction"
+    },
+    "probe:oppUniKemCKA.StateA.ich": {
+      "verification-status": "transitively-verified",
+      "type-dependencies-external": [
+        "probe:Nat"
+      ],
+      "type-dependencies": [
+        "probe:oppUniKemCKA.StateA"
+      ],
+      "term-dependencies": [
+        "probe:oppUniKemCKA.StateA"
+      ],
+      "specs": [
+        "probe:oppUniKemCKA.reachableInv_after_recvA_advance",
+        "probe:oppUniKemCKA.reachableInv_after_sendA_existing"
+      ],
+      "rust-source": null,
+      "language": "lean",
+      "kind": "projection",
+      "is-relevant": true,
+      "is-primary-spec": false,
+      "is-lean-generated": true,
+      "is-in-package": true,
+      "is-ignored": false,
+      "is-hidden": true,
+      "is-aeneas-generated": false,
+      "display-name": "ich",
+      "dependencies": [
+        "probe:oppUniKemCKA.StateA"
+      ],
+      "codomain-last-arg-is-bool": false,
+      "codomain-is-prop": false,
+      "codomain-head": "Nat",
+      "code-text": {
+        "lines-start": 139,
+        "lines-end": 139
+      },
+      "code-path": "SecureMessaging/SCKA/OppUniKEM/Construction.lean",
+      "code-module": "SecureMessaging.SCKA.OppUniKEM.Construction"
+    },
+    "probe:oppUniKemCKA.StateA.lch": {
+      "verification-status": "transitively-verified",
+      "type-dependencies-external": [
+        "probe:Finset",
+        "probe:Nat",
+        "probe:Prod"
+      ],
+      "type-dependencies": [
+        "probe:oppUniKemCKA.StateA"
+      ],
+      "term-dependencies": [
+        "probe:oppUniKemCKA.StateA"
+      ],
+      "specs": [
+        "probe:oppUniKemCKA.reachableInv_after_sendA_existing",
+        "probe:oppUniKemCKA.reachableInv_after_sendA_new",
+        "probe:oppUniKemCKA.recvAAckStep_lch"
+      ],
+      "rust-source": null,
+      "language": "lean",
+      "kind": "projection",
+      "is-relevant": true,
+      "is-primary-spec": false,
+      "is-lean-generated": true,
+      "is-in-package": true,
+      "is-ignored": false,
+      "is-hidden": true,
+      "is-aeneas-generated": false,
+      "display-name": "lch",
+      "dependencies": [
+        "probe:oppUniKemCKA.StateA"
+      ],
+      "codomain-last-arg-is-bool": false,
+      "codomain-is-prop": false,
+      "codomain-head": "Finset",
+      "code-text": {
+        "lines-start": 141,
+        "lines-end": 141
+      },
+      "code-path": "SecureMessaging/SCKA/OppUniKEM/Construction.lean",
+      "code-module": "SecureMessaging.SCKA.OppUniKEM.Construction"
+    },
+    "probe:oppUniKemCKA.StateA.t": {
+      "verification-status": "transitively-verified",
+      "type-dependencies-external": [
+        "probe:Nat"
+      ],
+      "type-dependencies": [
+        "probe:oppUniKemCKA.StateA"
+      ],
+      "term-dependencies": [
+        "probe:oppUniKemCKA.StateA"
+      ],
+      "specs": [
+        "probe:oppUniKemCKA.Reduction.Internal.currentFailurePotential_congr",
+        "probe:oppUniKemCKA.Reduction.Internal.currentFailurePotential_recvA_advance",
+        "probe:oppUniKemCKA.Reduction.Internal.currentFailurePotential_recvB_advance",
+        "probe:oppUniKemCKA.Reduction.Internal.currentKEMFailure_congr",
+        "probe:oppUniKemCKA.Reduction.Internal.currentKEMFailure_recvA_advance_false",
+        "probe:oppUniKemCKA.Reduction.Internal.currentKEMFailure_recvB_advance_false",
+        "probe:oppUniKemCKA.Reduction.Internal.installBOn_score",
+        "probe:oppUniKemCKA.Reduction.Internal.newOff_source_shape",
+        "probe:oppUniKemCKA.Reduction.Internal.online_source_shape",
+        "probe:oppUniKemCKA.Reduction.Internal.recvA_kem_source_shape",
+        "probe:oppUniKemCKA.Reduction.Internal.sendBOffOnState_score",
+        "probe:oppUniKemCKA.Reduction.Internal.sendBOnState_score",
+        "probe:oppUniKemCKA.TranscriptConsistent.decodedCt0",
+        "probe:oppUniKemCKA.TranscriptConsistent.epochPosA",
+        "probe:oppUniKemCKA.TranscriptConsistent.epochs",
+        "probe:oppUniKemCKA.TranscriptConsistent.futureKeypair",
+        "probe:oppUniKemCKA.TranscriptConsistent.keyA",
+        "probe:oppUniKemCKA.TranscriptConsistent.keypairA",
+        "probe:oppUniKemCKA.TranscriptConsistent.knownPrefixA",
+        "probe:oppUniKemCKA.TranscriptConsistent.knownPrefixBThroughCurrent",
+        "probe:oppUniKemCKA.TranscriptConsistent.msgAEpoch",
+        "probe:oppUniKemCKA.TranscriptConsistent.pastComplete",
+        "probe:oppUniKemCKA.TranscriptConsistent.tcurA",
+        "probe:oppUniKemCKA.reachableInv_after_recvA_ackOnly",
+        "probe:oppUniKemCKA.reachableInv_after_recvA_advance",
+        "probe:oppUniKemCKA.reachableInv_after_recvA_same",
+        "probe:oppUniKemCKA.reachableInv_after_recvA_stale",
+        "probe:oppUniKemCKA.reachableInv_after_recvB_next",
+        "probe:oppUniKemCKA.reachableInv_after_sendA_existing",
+        "probe:oppUniKemCKA.reachableInv_after_sendA_new",
+        "probe:oppUniKemCKA.recvAAckStep_t"
+      ],
+      "rust-source": null,
+      "language": "lean",
+      "kind": "projection",
+      "is-relevant": true,
+      "is-primary-spec": false,
+      "is-lean-generated": true,
+      "is-in-package": true,
+      "is-ignored": false,
+      "is-hidden": true,
+      "is-aeneas-generated": false,
+      "display-name": "t",
+      "dependencies": [
+        "probe:oppUniKemCKA.StateA"
+      ],
+      "codomain-last-arg-is-bool": false,
+      "codomain-is-prop": false,
+      "codomain-head": "Nat",
+      "code-text": {
+        "lines-start": 137,
+        "lines-end": 137
+      },
+      "code-path": "SecureMessaging/SCKA/OppUniKEM/Construction.lean",
+      "code-module": "SecureMessaging.SCKA.OppUniKEM.Construction"
+    },
+    "probe:oppUniKemCKA.StateB": {
+      "verification-status": "transitively-verified",
+      "type-dependencies": [],
+      "term-dependencies": [],
+      "rust-source": null,
+      "language": "lean",
+      "kind": "structure",
+      "is-relevant": true,
+      "is-primary-spec": false,
+      "is-lean-generated": false,
+      "is-in-package": true,
+      "is-ignored": false,
+      "is-hidden": false,
+      "is-aeneas-generated": false,
+      "display-name": "StateB",
+      "dependencies": [],
+      "codomain-last-arg-is-bool": false,
+      "codomain-is-prop": false,
+      "code-text": {
+        "lines-start": 145,
+        "lines-end": 162
+      },
+      "code-path": "SecureMessaging/SCKA/OppUniKEM/Construction.lean",
+      "code-module": "SecureMessaging.SCKA.OppUniKEM.Construction"
+    },
+    "probe:oppUniKemCKA.StateB.ack": {
+      "verification-status": "transitively-verified",
+      "type-dependencies": [
+        "probe:oppUniKemCKA.Ack",
+        "probe:oppUniKemCKA.StateB"
+      ],
+      "term-dependencies": [
+        "probe:oppUniKemCKA.StateB"
+      ],
+      "specs": [
+        "probe:oppUniKemCKA.reachableInv_after_sendB_newOff",
+        "probe:oppUniKemCKA.reachableInv_after_sendB_newOffOn",
+        "probe:oppUniKemCKA.reachableInv_after_sendB_newOn",
+        "probe:oppUniKemCKA.reachableInv_after_sendB_same"
+      ],
+      "rust-source": null,
+      "language": "lean",
+      "kind": "projection",
+      "is-relevant": true,
+      "is-primary-spec": false,
+      "is-lean-generated": true,
+      "is-in-package": true,
+      "is-ignored": false,
+      "is-hidden": true,
+      "is-aeneas-generated": false,
+      "display-name": "ack",
+      "dependencies": [
+        "probe:oppUniKemCKA.StateB"
+      ],
+      "codomain-last-arg-is-bool": false,
+      "codomain-is-prop": false,
+      "codomain-head": "oppUniKemCKA.Ack",
+      "code-text": {
+        "lines-start": 162,
+        "lines-end": 162
+      },
+      "code-path": "SecureMessaging/SCKA/OppUniKEM/Construction.lean",
+      "code-module": "SecureMessaging.SCKA.OppUniKEM.Construction"
+    },
+    "probe:oppUniKemCKA.StateB.ct0": {
+      "verification-status": "transitively-verified",
+      "type-dependencies-external": [
+        "probe:Option"
+      ],
+      "type-dependencies": [
+        "probe:oppUniKemCKA.StateB"
+      ],
+      "term-dependencies": [
+        "probe:oppUniKemCKA.StateB"
+      ],
+      "specs": [
+        "probe:oppUniKemCKA.Reduction.Internal.currentFailurePotential_congr",
+        "probe:oppUniKemCKA.Reduction.Internal.currentFailurePotential_recvA_advance",
+        "probe:oppUniKemCKA.Reduction.Internal.currentFailurePotential_recvB_advance",
+        "probe:oppUniKemCKA.Reduction.Internal.currentKEMFailure_congr",
+        "probe:oppUniKemCKA.Reduction.Internal.currentKEMFailure_recvB_advance_false",
+        "probe:oppUniKemCKA.Reduction.Internal.installBOn_score",
+        "probe:oppUniKemCKA.Reduction.Internal.newOff_source_shape",
+        "probe:oppUniKemCKA.Reduction.Internal.off_failurePotential_le",
+        "probe:oppUniKemCKA.Reduction.Internal.online_source_shape",
+        "probe:oppUniKemCKA.Reduction.Internal.recvB_kem_source_shape",
+        "probe:oppUniKemCKA.Reduction.Internal.sendBOnState_score",
+        "probe:oppUniKemCKA.TranscriptConsistent.offB",
+        "probe:oppUniKemCKA.TranscriptConsistent.offBShape",
+        "probe:oppUniKemCKA.reachableInv_after_sendB_newOff",
+        "probe:oppUniKemCKA.reachableInv_after_sendB_newOffOn",
+        "probe:oppUniKemCKA.reachableInv_after_sendB_newOn",
+        "probe:oppUniKemCKA.reachableInv_after_sendB_same",
+        "probe:oppUniKemCKA.recvBAckStep_ct0",
+        "probe:oppUniKemCKA.recvBEkStep_ct0"
+      ],
+      "rust-source": null,
+      "language": "lean",
+      "kind": "projection",
+      "is-relevant": true,
+      "is-primary-spec": false,
+      "is-lean-generated": true,
+      "is-in-package": true,
+      "is-ignored": false,
+      "is-hidden": true,
+      "is-aeneas-generated": false,
+      "display-name": "ct0",
+      "dependencies": [
+        "probe:oppUniKemCKA.StateB"
+      ],
+      "codomain-last-arg-is-bool": false,
+      "codomain-is-prop": false,
+      "codomain-head": "Option",
+      "code-text": {
+        "lines-start": 150,
+        "lines-end": 150
+      },
+      "code-path": "SecureMessaging/SCKA/OppUniKEM/Construction.lean",
+      "code-module": "SecureMessaging.SCKA.OppUniKEM.Construction"
+    },
+    "probe:oppUniKemCKA.StateB.ct1": {
+      "verification-status": "transitively-verified",
+      "type-dependencies-external": [
+        "probe:Option"
+      ],
+      "type-dependencies": [
+        "probe:oppUniKemCKA.StateB"
+      ],
+      "term-dependencies": [
+        "probe:oppUniKemCKA.StateB"
+      ],
+      "specs": [
+        "probe:oppUniKemCKA.Reduction.Internal.currentFailurePotential_congr",
+        "probe:oppUniKemCKA.Reduction.Internal.currentFailurePotential_recvA_advance",
+        "probe:oppUniKemCKA.Reduction.Internal.currentFailurePotential_recvB_advance",
+        "probe:oppUniKemCKA.Reduction.Internal.currentKEMFailure_congr",
+        "probe:oppUniKemCKA.Reduction.Internal.online_source_shape",
+        "probe:oppUniKemCKA.Reduction.Internal.recvB_kem_source_shape",
+        "probe:oppUniKemCKA.Reduction.Internal.sendBOffState_score",
+        "probe:oppUniKemCKA.TranscriptConsistent.onB",
+        "probe:oppUniKemCKA.reachableInv_after_sendB_newOff",
+        "probe:oppUniKemCKA.reachableInv_after_sendB_same",
+        "probe:oppUniKemCKA.recvBAckStep_ct1",
+        "probe:oppUniKemCKA.recvBEkStep_ct1"
+      ],
+      "rust-source": null,
+      "language": "lean",
+      "kind": "projection",
+      "is-relevant": true,
+      "is-primary-spec": false,
+      "is-lean-generated": true,
+      "is-in-package": true,
+      "is-ignored": false,
+      "is-hidden": true,
+      "is-aeneas-generated": false,
+      "display-name": "ct1",
+      "dependencies": [
+        "probe:oppUniKemCKA.StateB"
+      ],
+      "codomain-last-arg-is-bool": false,
+      "codomain-is-prop": false,
+      "codomain-head": "Option",
+      "code-text": {
+        "lines-start": 152,
+        "lines-end": 152
+      },
+      "code-path": "SecureMessaging/SCKA/OppUniKEM/Construction.lean",
+      "code-module": "SecureMessaging.SCKA.OppUniKEM.Construction"
+    },
+    "probe:oppUniKemCKA.StateB.ekA": {
+      "verification-status": "transitively-verified",
+      "type-dependencies-external": [
+        "probe:Option"
+      ],
+      "type-dependencies": [
+        "probe:oppUniKemCKA.StateB"
+      ],
+      "term-dependencies": [
+        "probe:oppUniKemCKA.StateB"
+      ],
+      "specs": [
+        "probe:oppUniKemCKA.ChunksBConsistent.decodedEk",
+        "probe:oppUniKemCKA.Reduction.Internal.newOff_source_shape",
+        "probe:oppUniKemCKA.Reduction.Internal.online_source_shape",
+        "probe:oppUniKemCKA.TranscriptConsistent.decodedEk",
+        "probe:oppUniKemCKA.reachableInv_after_sendB_newOff",
+        "probe:oppUniKemCKA.reachableInv_after_sendB_newOffOn",
+        "probe:oppUniKemCKA.reachableInv_after_sendB_newOn",
+        "probe:oppUniKemCKA.reachableInv_after_sendB_same",
+        "probe:oppUniKemCKA.recvBAckStep_ekA"
+      ],
+      "rust-source": null,
+      "language": "lean",
+      "kind": "projection",
+      "is-relevant": true,
+      "is-primary-spec": false,
+      "is-lean-generated": true,
+      "is-in-package": true,
+      "is-ignored": false,
+      "is-hidden": true,
+      "is-aeneas-generated": false,
+      "display-name": "ekA",
+      "dependencies": [
+        "probe:oppUniKemCKA.StateB"
+      ],
+      "codomain-last-arg-is-bool": false,
+      "codomain-is-prop": false,
+      "codomain-head": "Option",
+      "code-text": {
+        "lines-start": 148,
+        "lines-end": 148
+      },
+      "code-path": "SecureMessaging/SCKA/OppUniKEM/Construction.lean",
+      "code-module": "SecureMessaging.SCKA.OppUniKEM.Construction"
+    },
+    "probe:oppUniKemCKA.StateB.ich": {
+      "verification-status": "transitively-verified",
+      "type-dependencies-external": [
+        "probe:Nat"
+      ],
+      "type-dependencies": [
+        "probe:oppUniKemCKA.StateB"
+      ],
+      "term-dependencies": [
+        "probe:oppUniKemCKA.StateB"
+      ],
+      "rust-source": null,
+      "language": "lean",
+      "kind": "projection",
+      "is-relevant": true,
+      "is-primary-spec": false,
+      "is-lean-generated": true,
+      "is-in-package": true,
+      "is-ignored": false,
+      "is-hidden": true,
+      "is-aeneas-generated": false,
+      "display-name": "ich",
+      "dependencies": [
+        "probe:oppUniKemCKA.StateB"
+      ],
+      "codomain-last-arg-is-bool": false,
+      "codomain-is-prop": false,
+      "codomain-head": "Nat",
+      "code-text": {
+        "lines-start": 158,
+        "lines-end": 158
+      },
+      "code-path": "SecureMessaging/SCKA/OppUniKEM/Construction.lean",
+      "code-module": "SecureMessaging.SCKA.OppUniKEM.Construction"
+    },
+    "probe:oppUniKemCKA.StateB.lch": {
+      "verification-status": "transitively-verified",
+      "type-dependencies-external": [
+        "probe:Finset",
+        "probe:Nat",
+        "probe:Prod"
+      ],
+      "type-dependencies": [
+        "probe:oppUniKemCKA.StateB"
+      ],
+      "term-dependencies": [
+        "probe:oppUniKemCKA.StateB"
+      ],
+      "specs": [
+        "probe:oppUniKemCKA.reachableInv_after_sendB_newOff",
+        "probe:oppUniKemCKA.reachableInv_after_sendB_newOffOn",
+        "probe:oppUniKemCKA.reachableInv_after_sendB_newOn",
+        "probe:oppUniKemCKA.reachableInv_after_sendB_same",
+        "probe:oppUniKemCKA.recvBAckStep_lch"
+      ],
+      "rust-source": null,
+      "language": "lean",
+      "kind": "projection",
+      "is-relevant": true,
+      "is-primary-spec": false,
+      "is-lean-generated": true,
+      "is-in-package": true,
+      "is-ignored": false,
+      "is-hidden": true,
+      "is-aeneas-generated": false,
+      "display-name": "lch",
+      "dependencies": [
+        "probe:oppUniKemCKA.StateB"
+      ],
+      "codomain-last-arg-is-bool": false,
+      "codomain-is-prop": false,
+      "codomain-head": "Finset",
+      "code-text": {
+        "lines-start": 160,
+        "lines-end": 160
+      },
+      "code-path": "SecureMessaging/SCKA/OppUniKEM/Construction.lean",
+      "code-module": "SecureMessaging.SCKA.OppUniKEM.Construction"
+    },
+    "probe:oppUniKemCKA.StateB.stCt": {
+      "verification-status": "transitively-verified",
+      "type-dependencies-external": [
+        "probe:Option"
+      ],
+      "type-dependencies": [
+        "probe:oppUniKemCKA.StateB"
+      ],
+      "term-dependencies": [
+        "probe:oppUniKemCKA.StateB"
+      ],
+      "specs": [
+        "probe:oppUniKemCKA.Reduction.Internal.currentFailurePotential_congr",
+        "probe:oppUniKemCKA.Reduction.Internal.currentFailurePotential_recvA_advance",
+        "probe:oppUniKemCKA.Reduction.Internal.currentFailurePotential_recvB_advance",
+        "probe:oppUniKemCKA.Reduction.Internal.installBOn_score",
+        "probe:oppUniKemCKA.Reduction.Internal.online_source_shape",
+        "probe:oppUniKemCKA.Reduction.Internal.recvB_kem_source_shape",
+        "probe:oppUniKemCKA.TranscriptConsistent.offB",
+        "probe:oppUniKemCKA.TranscriptConsistent.offBShape",
+        "probe:oppUniKemCKA.reachableInv_after_sendB_newOn",
+        "probe:oppUniKemCKA.reachableInv_after_sendB_same",
+        "probe:oppUniKemCKA.recvBAckStep_stCt",
+        "probe:oppUniKemCKA.recvBEkStep_stCt"
+      ],
+      "rust-source": null,
+      "language": "lean",
+      "kind": "projection",
+      "is-relevant": true,
+      "is-primary-spec": false,
+      "is-lean-generated": true,
+      "is-in-package": true,
+      "is-ignored": false,
+      "is-hidden": true,
+      "is-aeneas-generated": false,
+      "display-name": "stCt",
+      "dependencies": [
+        "probe:oppUniKemCKA.StateB"
+      ],
+      "codomain-last-arg-is-bool": false,
+      "codomain-is-prop": false,
+      "codomain-head": "Option",
+      "code-text": {
+        "lines-start": 154,
+        "lines-end": 154
+      },
+      "code-path": "SecureMessaging/SCKA/OppUniKEM/Construction.lean",
+      "code-module": "SecureMessaging.SCKA.OppUniKEM.Construction"
+    },
+    "probe:oppUniKemCKA.StateB.t": {
+      "verification-status": "transitively-verified",
+      "type-dependencies-external": [
+        "probe:Nat"
+      ],
+      "type-dependencies": [
+        "probe:oppUniKemCKA.StateB"
+      ],
+      "term-dependencies": [
+        "probe:oppUniKemCKA.StateB"
+      ],
+      "specs": [
+        "probe:oppUniKemCKA.ChunksBConsistent.decodedEk",
+        "probe:oppUniKemCKA.Reduction.Internal.currentFailurePotential_congr",
+        "probe:oppUniKemCKA.Reduction.Internal.currentFailurePotential_recvA_advance",
+        "probe:oppUniKemCKA.Reduction.Internal.currentFailurePotential_recvB_advance",
+        "probe:oppUniKemCKA.Reduction.Internal.currentKEMFailure_congr",
+        "probe:oppUniKemCKA.Reduction.Internal.currentKEMFailure_recvA_advance_false",
+        "probe:oppUniKemCKA.Reduction.Internal.currentKEMFailure_recvB_advance_false",
+        "probe:oppUniKemCKA.Reduction.Internal.installBOn_score",
+        "probe:oppUniKemCKA.Reduction.Internal.newOff_source_shape",
+        "probe:oppUniKemCKA.Reduction.Internal.online_source_shape",
+        "probe:oppUniKemCKA.Reduction.Internal.recvB_kem_source_shape",
+        "probe:oppUniKemCKA.Reduction.Internal.sendBOffOnState_score",
+        "probe:oppUniKemCKA.Reduction.Internal.sendBOnState_score",
+        "probe:oppUniKemCKA.TranscriptConsistent.decodedEk",
+        "probe:oppUniKemCKA.TranscriptConsistent.epochPosB",
+        "probe:oppUniKemCKA.TranscriptConsistent.epochs",
+        "probe:oppUniKemCKA.TranscriptConsistent.futureOff",
+        "probe:oppUniKemCKA.TranscriptConsistent.futureOn",
+        "probe:oppUniKemCKA.TranscriptConsistent.knownPrefixB",
+        "probe:oppUniKemCKA.TranscriptConsistent.knownPrefixBThroughCurrent",
+        "probe:oppUniKemCKA.TranscriptConsistent.msgBEpoch",
+        "probe:oppUniKemCKA.TranscriptConsistent.offB",
+        "probe:oppUniKemCKA.TranscriptConsistent.onB",
+        "probe:oppUniKemCKA.TranscriptConsistent.tcurB",
+        "probe:oppUniKemCKA.chunksB_recvBEkStep",
+        "probe:oppUniKemCKA.reachableInv_after_recvA_advance",
+        "probe:oppUniKemCKA.reachableInv_after_recvB_current",
+        "probe:oppUniKemCKA.reachableInv_after_recvB_next",
+        "probe:oppUniKemCKA.reachableInv_after_recvB_stale",
+        "probe:oppUniKemCKA.reachableInv_after_sendB_newOff",
+        "probe:oppUniKemCKA.reachableInv_after_sendB_newOffOn",
+        "probe:oppUniKemCKA.reachableInv_after_sendB_newOn",
+        "probe:oppUniKemCKA.reachableInv_after_sendB_same",
+        "probe:oppUniKemCKA.recvBAckStep_t",
+        "probe:oppUniKemCKA.recvBEkStep_t",
+        "probe:oppUniKemCKA.recvB_current_eq",
+        "probe:oppUniKemCKA.recvB_next_eq"
+      ],
+      "rust-source": null,
+      "language": "lean",
+      "kind": "projection",
+      "is-relevant": true,
+      "is-primary-spec": false,
+      "is-lean-generated": true,
+      "is-in-package": true,
+      "is-ignored": false,
+      "is-hidden": true,
+      "is-aeneas-generated": false,
+      "display-name": "t",
+      "dependencies": [
+        "probe:oppUniKemCKA.StateB"
+      ],
+      "codomain-last-arg-is-bool": false,
+      "codomain-is-prop": false,
+      "codomain-head": "Nat",
+      "code-text": {
+        "lines-start": 156,
+        "lines-end": 156
+      },
+      "code-path": "SecureMessaging/SCKA/OppUniKEM/Construction.lean",
+      "code-module": "SecureMessaging.SCKA.OppUniKEM.Construction"
+    },
+    "probe:oppUniKemCKA.initA": {
+      "verification-status": "transitively-verified",
+      "type-dependencies-external": [
+        "probe:KEMScheme",
+        "probe:Monad",
+        "probe:Unit"
+      ],
+      "type-dependencies": [
+        "probe:KEMScheme.OnOffStructure",
+        "probe:oppUniKemCKA.StA"
+      ],
+      "term-dependencies-external": [
+        "probe:Applicative.toPure",
+        "probe:Bool.false",
+        "probe:EmptyCollection.emptyCollection",
+        "probe:Finset",
+        "probe:Finset.instEmptyCollection",
+        "probe:KEMScheme",
+        "probe:Monad",
+        "probe:Monad.toApplicative",
+        "probe:Nat",
+        "probe:OfNat.ofNat",
+        "probe:Option.none",
+        "probe:Prod",
+        "probe:Pure.pure",
+        "probe:Unit",
+        "probe:instOfNatNat"
+      ],
+      "term-dependencies": [
+        "probe:KEMScheme.OnOffStructure",
+        "probe:KEMScheme.OnOffStructure.C₀",
+        "probe:oppUniKemCKA.StA"
+      ],
+      "rust-source": null,
+      "language": "lean",
+      "kind": "def",
+      "is-relevant": true,
+      "is-primary-spec": false,
+      "is-lean-generated": false,
+      "is-in-package": true,
+      "is-ignored": false,
+      "is-hidden": false,
+      "is-aeneas-generated": false,
+      "display-name": "initA",
+      "dependencies": [
+        "probe:oppUniKemCKA.StA"
+      ],
+      "codomain-last-arg-is-bool": false,
+      "codomain-is-prop": false,
+      "code-text": {
+        "lines-start": 185,
+        "lines-end": 191
+      },
+      "code-path": "SecureMessaging/SCKA/OppUniKEM/Construction.lean",
+      "code-module": "SecureMessaging.SCKA.OppUniKEM.Construction",
+      "attributes": [
+        "nolint"
+      ]
+    },
+    "probe:oppUniKemCKA.initB": {
+      "verification-status": "transitively-verified",
+      "type-dependencies-external": [
+        "probe:KEMScheme",
+        "probe:Monad",
+        "probe:Unit"
+      ],
+      "type-dependencies": [
+        "probe:KEMScheme.OnOffStructure",
+        "probe:oppUniKemCKA.StB"
+      ],
+      "term-dependencies-external": [
+        "probe:Applicative.toPure",
+        "probe:Bool.false",
+        "probe:EmptyCollection.emptyCollection",
+        "probe:Finset",
+        "probe:Finset.instEmptyCollection",
+        "probe:KEMScheme",
+        "probe:Monad",
+        "probe:Monad.toApplicative",
+        "probe:Nat",
+        "probe:OfNat.ofNat",
+        "probe:Option.none",
+        "probe:Prod",
+        "probe:Pure.pure",
+        "probe:Unit",
+        "probe:instOfNatNat"
+      ],
+      "term-dependencies": [
+        "probe:KEMScheme.OnOffStructure",
+        "probe:KEMScheme.OnOffStructure.C₀",
+        "probe:KEMScheme.OnOffStructure.C₁",
+        "probe:KEMScheme.OnOffStructure.St",
+        "probe:oppUniKemCKA.StB"
+      ],
+      "rust-source": null,
+      "language": "lean",
+      "kind": "def",
+      "is-relevant": true,
+      "is-primary-spec": false,
+      "is-lean-generated": false,
+      "is-in-package": true,
+      "is-ignored": false,
+      "is-hidden": false,
+      "is-aeneas-generated": false,
+      "display-name": "initB",
+      "dependencies": [
+        "probe:oppUniKemCKA.StB"
+      ],
+      "codomain-last-arg-is-bool": false,
+      "codomain-is-prop": false,
+      "code-text": {
+        "lines-start": 194,
+        "lines-end": 200
+      },
+      "code-path": "SecureMessaging/SCKA/OppUniKEM/Construction.lean",
+      "code-module": "SecureMessaging.SCKA.OppUniKEM.Construction",
+      "attributes": [
+        "nolint"
+      ]
+    },
+    "probe:oppUniKemCKA.initKeyGen": {
+      "verification-status": "transitively-verified",
+      "type-dependencies-external": [
+        "probe:Monad",
+        "probe:Unit"
+      ],
+      "type-dependencies": [],
+      "term-dependencies-external": [
+        "probe:Applicative.toPure",
+        "probe:Monad",
+        "probe:Monad.toApplicative",
+        "probe:Pure.pure",
+        "probe:Unit",
+        "probe:Unit.unit"
+      ],
+      "term-dependencies": [],
+      "rust-source": null,
+      "language": "lean",
+      "kind": "def",
+      "is-relevant": true,
+      "is-primary-spec": false,
+      "is-lean-generated": false,
+      "is-in-package": true,
+      "is-ignored": false,
+      "is-hidden": false,
+      "is-aeneas-generated": false,
+      "display-name": "initKeyGen",
+      "dependencies": [],
+      "codomain-last-arg-is-bool": false,
+      "codomain-is-prop": false,
+      "code-text": {
+        "lines-start": 180,
+        "lines-end": 182
+      },
+      "code-path": "SecureMessaging/SCKA/OppUniKEM/Construction.lean",
+      "code-module": "SecureMessaging.SCKA.OppUniKEM.Construction"
+    }
+  }
+}

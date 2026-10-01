@@ -1,0 +1,483 @@
+{
+  "schema": "probe/merged-atoms",
+  "schema-version": "2.0",
+  "tool": {
+    "name": "probe",
+    "version": "0.1.0",
+    "command": "merge"
+  },
+  "inputs": [
+    {
+      "schema": "probe-lean/extract",
+      "source": {
+        "repo": "https://github.com/Beneficial-AI-Foundation/secure-messaging.git",
+        "commit": "4a1299c1bd8cb9ab2819a31691df4df8ba9e314a",
+        "language": "lean",
+        "package": "SecureMessaging",
+        "package-version": "4a1299c"
+      }
+    },
+    {
+      "schema": "probe-rust/extract",
+      "source": {
+        "repo": "https://github.com/signalapp/libsignal.git",
+        "commit": "9ec8359fbccf6321df83e17d66097a243b4423d9",
+        "language": "rust",
+        "package": "libsignal-protocol",
+        "package-version": "0.1.0"
+      }
+    }
+  ],
+  "timestamp": "2026-06-02T16:21:01Z",
+  "data": {
+    "probe:AEADScheme": {
+      "display-name": "AEADScheme",
+      "dependencies": [],
+      "code-module": "SecureMessaging.AEAD.Defs",
+      "code-path": "SecureMessaging/AEAD/Defs.lean",
+      "code-text": {
+        "lines-start": 78,
+        "lines-end": 88
+      },
+      "kind": "structure",
+      "language": "lean",
+      "is-extraction-artifact": false,
+      "is-hidden": false,
+      "is-ignored": false,
+      "is-in-package": true,
+      "is-relevant": true,
+      "rust-source": null,
+      "specs": [
+        "probe:AEADScheme.guessAdvantage_eq_distAdvantage_div_two",
+        "probe:game0_eq_real",
+        "probe:game3_eq_rand"
+      ],
+      "term-dependencies": [],
+      "type-dependencies": [],
+      "verification-status": "transitively-verified"
+    },
+    "probe:AEADScheme.Correct": {
+      "display-name": "Correct",
+      "dependencies": [
+        "probe:AEADScheme"
+      ],
+      "code-module": "SecureMessaging.AEAD.Defs",
+      "code-path": "SecureMessaging/AEAD/Defs.lean",
+      "code-text": {
+        "lines-start": 94,
+        "lines-end": 97
+      },
+      "kind": "def",
+      "language": "lean",
+      "is-extraction-artifact": false,
+      "is-hidden": false,
+      "is-ignored": false,
+      "is-in-package": true,
+      "is-relevant": true,
+      "primary-spec": "probe:etmAEAD_correct",
+      "rust-source": null,
+      "specs": [
+        "probe:etmAEAD_correct"
+      ],
+      "term-dependencies": [
+        "probe:AEADScheme",
+        "probe:AEADScheme.decrypt",
+        "probe:AEADScheme.encrypt"
+      ],
+      "type-dependencies": [
+        "probe:AEADScheme"
+      ],
+      "verification-status": "transitively-verified"
+    },
+    "probe:AEADScheme.OneTime_CCA_Adversary": {
+      "display-name": "OneTime_CCA_Adversary",
+      "dependencies": [],
+      "code-module": "SecureMessaging.AEAD.Defs",
+      "code-path": "SecureMessaging/AEAD/Defs.lean",
+      "code-text": {
+        "lines-start": 136,
+        "lines-end": 140
+      },
+      "kind": "abbrev",
+      "language": "lean",
+      "is-extraction-artifact": false,
+      "is-hidden": false,
+      "is-ignored": false,
+      "is-in-package": true,
+      "is-relevant": true,
+      "rust-source": null,
+      "specs": [
+        "probe:AEADScheme.guessAdvantage_eq_distAdvantage_div_two",
+        "probe:etmAEAD_security",
+        "probe:game0_eq_real",
+        "probe:game0_game1_le_prf",
+        "probe:game1_game2_le_auth",
+        "probe:game2_game3_le_enc",
+        "probe:game3_eq_rand"
+      ],
+      "term-dependencies": [
+        "probe:AEADScheme.aeadOneTimeCCASpec"
+      ],
+      "type-dependencies": [],
+      "verification-status": "transitively-verified"
+    },
+    "probe:libsignal-protocol/0.1.0/identity_key/&IdentityKey#impl<&IdentityKey>#[IdentityKey]verify_alternate_identity()": {
+      "display-name": "IdentityKey::verify_alternate_identity",
+      "dependencies": [
+        "probe:libsignal-protocol/0.1.0/identity_key/&IdentityKey#impl<Box<[u8]>>#[IdentityKey]serialize()"
+      ],
+      "code-module": "identity_key",
+      "code-path": "src/identity_key.rs",
+      "code-text": {
+        "lines-start": 57,
+        "lines-end": 66
+      },
+      "kind": "exec",
+      "language": "rust",
+      "is-disabled": false,
+      "is-public": true,
+      "rust-qualified-name": "libsignal_protocol::identity_key::IdentityKey::verify_alternate_identity"
+    },
+    "probe:libsignal-protocol/0.1.0/identity_key/&IdentityKey#impl<Box<[u8]>>#[IdentityKey]serialize()": {
+      "display-name": "IdentityKey::serialize",
+      "dependencies": [],
+      "code-module": "identity_key",
+      "code-path": "src/identity_key.rs",
+      "code-text": {
+        "lines-start": 43,
+        "lines-end": 45
+      },
+      "kind": "exec",
+      "language": "rust",
+      "is-disabled": false,
+      "is-public": true,
+      "rust-qualified-name": "libsignal_protocol::identity_key::IdentityKey::serialize"
+    },
+    "probe:libsignal-protocol/0.1.0/identity_key/&IdentityKey#impl<PublicKey>#[IdentityKey]public_key()": {
+      "display-name": "IdentityKey::public_key",
+      "dependencies": [],
+      "code-module": "identity_key",
+      "code-path": "src/identity_key.rs",
+      "code-text": {
+        "lines-start": 37,
+        "lines-end": 39
+      },
+      "kind": "exec",
+      "language": "rust",
+      "is-disabled": false,
+      "is-public": true,
+      "rust-qualified-name": "libsignal_protocol::identity_key::IdentityKey::public_key"
+    },
+    "probe:libsignal-protocol/0.1.0/identity_key/&IdentityKeyPair#impl<&IdentityKey>#[IdentityKeyPair]sign_alternate_identity()": {
+      "display-name": "IdentityKeyPair::sign_alternate_identity",
+      "dependencies": [
+        "probe:libsignal-protocol/0.1.0/identity_key/&IdentityKey#impl<Box<[u8]>>#[IdentityKey]serialize()"
+      ],
+      "code-module": "identity_key",
+      "code-path": "src/identity_key.rs",
+      "code-text": {
+        "lines-start": 135,
+        "lines-end": 148
+      },
+      "kind": "exec",
+      "language": "rust",
+      "is-disabled": false,
+      "is-public": true,
+      "rust-qualified-name": "libsignal_protocol::identity_key::IdentityKeyPair::sign_alternate_identity"
+    },
+    "probe:libsignal-protocol/0.1.0/identity_key/&IdentityKeyPair#impl<Box<[u8]>>#[IdentityKeyPair]serialize()": {
+      "display-name": "IdentityKeyPair::serialize",
+      "dependencies": [
+        "probe:libsignal-protocol/0.1.0/identity_key/&IdentityKey#impl<Box<[u8]>>#[IdentityKey]serialize()"
+      ],
+      "code-module": "identity_key",
+      "code-path": "src/identity_key.rs",
+      "code-text": {
+        "lines-start": 124,
+        "lines-end": 132
+      },
+      "kind": "exec",
+      "language": "rust",
+      "is-disabled": false,
+      "is-public": true,
+      "rust-qualified-name": "libsignal_protocol::identity_key::IdentityKeyPair::serialize"
+    },
+    "probe:libsignal-protocol/0.1.0/identity_key/&IdentityKeyPair#impl<IdentityKey>#[IdentityKeyPair]identity_key()": {
+      "display-name": "IdentityKeyPair::identity_key",
+      "dependencies": [],
+      "code-module": "identity_key",
+      "code-path": "src/identity_key.rs",
+      "code-text": {
+        "lines-start": 107,
+        "lines-end": 109
+      },
+      "kind": "exec",
+      "language": "rust",
+      "is-disabled": false,
+      "is-public": true,
+      "rust-qualified-name": "libsignal_protocol::identity_key::IdentityKeyPair::identity_key"
+    },
+    "probe:libsignal-protocol/0.1.0/identity_key/&IdentityKeyPair#impl<PrivateKey>#[IdentityKeyPair]private_key()": {
+      "display-name": "IdentityKeyPair::private_key",
+      "dependencies": [],
+      "code-module": "identity_key",
+      "code-path": "src/identity_key.rs",
+      "code-text": {
+        "lines-start": 119,
+        "lines-end": 121
+      },
+      "kind": "exec",
+      "language": "rust",
+      "is-disabled": false,
+      "is-public": true,
+      "rust-qualified-name": "libsignal_protocol::identity_key::IdentityKeyPair::private_key"
+    },
+    "probe:libsignal-protocol/0.1.0/identity_key/&IdentityKeyPair#impl<PublicKey>#[IdentityKeyPair]public_key()": {
+      "display-name": "IdentityKeyPair::public_key",
+      "dependencies": [
+        "probe:libsignal-protocol/0.1.0/identity_key/&IdentityKey#impl<PublicKey>#[IdentityKey]public_key()"
+      ],
+      "code-module": "identity_key",
+      "code-path": "src/identity_key.rs",
+      "code-text": {
+        "lines-start": 113,
+        "lines-end": 115
+      },
+      "kind": "exec",
+      "language": "rust",
+      "is-disabled": false,
+      "is-public": true,
+      "rust-qualified-name": "libsignal_protocol::identity_key::IdentityKeyPair::public_key"
+    },
+    "probe:libsignal-protocol/0.1.0/identity_key/impl<&R>#[IdentityKeyPair]generate()": {
+      "display-name": "IdentityKeyPair::generate",
+      "dependencies": [],
+      "code-module": "identity_key",
+      "code-path": "src/identity_key.rs",
+      "code-text": {
+        "lines-start": 96,
+        "lines-end": 103
+      },
+      "kind": "exec",
+      "language": "rust",
+      "is-disabled": false,
+      "is-public": true,
+      "rust-qualified-name": "libsignal_protocol::identity_key::IdentityKeyPair::generate"
+    },
+    "probe:libsignal-protocol/0.1.0/identity_key/impl<&[u8]>#[IdentityKeyPair][`TryFrom<&[u8]>`]try_from()": {
+      "display-name": "IdentityKeyPair::try_from",
+      "dependencies": [
+        "probe:libsignal-protocol/0.1.0/identity_key/impl<&[u8]>#[IdentityKey][`TryFrom<&[u8]>`]try_from()"
+      ],
+      "code-module": "identity_key",
+      "code-path": "src/identity_key.rs",
+      "code-text": {
+        "lines-start": 154,
+        "lines-end": 161
+      },
+      "kind": "exec",
+      "language": "rust",
+      "is-disabled": false,
+      "is-public": false,
+      "rust-qualified-name": "libsignal_protocol::identity_key::IdentityKeyPair::try_from"
+    },
+    "probe:libsignal-protocol/0.1.0/identity_key/impl<&[u8]>#[IdentityKey][`TryFrom<&[u8]>`]try_from()": {
+      "display-name": "IdentityKey::try_from",
+      "dependencies": [
+        "probe:libsignal-protocol/0.1.0/identity_key/impl<&[u8]>#[IdentityKey]decode()"
+      ],
+      "code-module": "identity_key",
+      "code-path": "src/identity_key.rs",
+      "code-text": {
+        "lines-start": 72,
+        "lines-end": 74
+      },
+      "kind": "exec",
+      "language": "rust",
+      "is-disabled": false,
+      "is-public": false,
+      "rust-qualified-name": "libsignal_protocol::identity_key::IdentityKey::try_from"
+    },
+    "probe:libsignal-protocol/0.1.0/identity_key/impl<&[u8]>#[IdentityKey]decode()": {
+      "display-name": "IdentityKey::decode",
+      "dependencies": [],
+      "code-module": "identity_key",
+      "code-path": "src/identity_key.rs",
+      "code-text": {
+        "lines-start": 48,
+        "lines-end": 51
+      },
+      "kind": "exec",
+      "language": "rust",
+      "is-disabled": false,
+      "is-public": true,
+      "rust-qualified-name": "libsignal_protocol::identity_key::IdentityKey::decode"
+    },
+    "probe:libsignal-protocol/0.1.0/identity_key/impl<IdentityKeyPair>#[KeyPair][`From<IdentityKeyPair>`]from()": {
+      "display-name": "KeyPair::from",
+      "dependencies": [],
+      "code-module": "identity_key",
+      "code-path": "src/identity_key.rs",
+      "code-text": {
+        "lines-start": 183,
+        "lines-end": 185
+      },
+      "kind": "exec",
+      "language": "rust",
+      "is-disabled": false,
+      "is-public": false,
+      "rust-qualified-name": "libsignal_protocol::identity_key::KeyPair::from"
+    },
+    "probe:libsignal-protocol/0.1.0/identity_key/impl<KeyPair>#[IdentityKeyPair][`From<KeyPair>`]from()": {
+      "display-name": "IdentityKeyPair::from",
+      "dependencies": [],
+      "code-module": "identity_key",
+      "code-path": "src/identity_key.rs",
+      "code-text": {
+        "lines-start": 174,
+        "lines-end": 179
+      },
+      "kind": "exec",
+      "language": "rust",
+      "is-disabled": false,
+      "is-public": false,
+      "rust-qualified-name": "libsignal_protocol::identity_key::IdentityKeyPair::from"
+    },
+    "probe:libsignal-protocol/0.1.0/identity_key/impl<PrivateKey>#[IdentityKeyPair][`TryFrom<PrivateKey>`]try_from()": {
+      "display-name": "IdentityKeyPair::try_from",
+      "dependencies": [
+        "probe:libsignal-protocol/0.1.0/identity_key/impl<PrivateKey>#[IdentityKeyPair]new()",
+        "probe:libsignal-protocol/0.1.0/identity_key/impl<PublicKey>#[IdentityKey]new()"
+      ],
+      "code-module": "identity_key",
+      "code-path": "src/identity_key.rs",
+      "code-text": {
+        "lines-start": 167,
+        "lines-end": 170
+      },
+      "kind": "exec",
+      "language": "rust",
+      "is-disabled": false,
+      "is-public": false,
+      "rust-qualified-name": "libsignal_protocol::identity_key::IdentityKeyPair::try_from"
+    },
+    "probe:libsignal-protocol/0.1.0/identity_key/impl<PrivateKey>#[IdentityKeyPair]new()": {
+      "display-name": "IdentityKeyPair::new",
+      "dependencies": [],
+      "code-module": "identity_key",
+      "code-path": "src/identity_key.rs",
+      "code-text": {
+        "lines-start": 88,
+        "lines-end": 93
+      },
+      "kind": "exec",
+      "language": "rust",
+      "is-disabled": false,
+      "is-public": true,
+      "rust-qualified-name": "libsignal_protocol::identity_key::IdentityKeyPair::new"
+    },
+    "probe:libsignal-protocol/0.1.0/identity_key/impl<PublicKey>#[IdentityKey]new()": {
+      "display-name": "IdentityKey::new",
+      "dependencies": [],
+      "code-module": "identity_key",
+      "code-path": "src/identity_key.rs",
+      "code-text": {
+        "lines-start": 31,
+        "lines-end": 33
+      },
+      "kind": "exec",
+      "language": "rust",
+      "is-disabled": false,
+      "is-public": true,
+      "rust-qualified-name": "libsignal_protocol::identity_key::IdentityKey::new"
+    },
+    "probe:libsignal-protocol/0.1.0/identity_key/tests/test_alternate_identity_signing()": {
+      "display-name": "test_alternate_identity_signing",
+      "dependencies": [
+        "probe:libsignal-protocol/0.1.0/identity_key/&IdentityKey#impl<&IdentityKey>#[IdentityKey]verify_alternate_identity()",
+        "probe:libsignal-protocol/0.1.0/identity_key/&IdentityKeyPair#impl<&IdentityKey>#[IdentityKeyPair]sign_alternate_identity()",
+        "probe:libsignal-protocol/0.1.0/identity_key/&IdentityKeyPair#impl<IdentityKey>#[IdentityKeyPair]identity_key()",
+        "probe:libsignal-protocol/0.1.0/identity_key/impl<&R>#[IdentityKeyPair]generate()"
+      ],
+      "code-module": "identity_key/tests",
+      "code-path": "src/identity_key.rs",
+      "code-text": {
+        "lines-start": 225,
+        "lines-end": 265
+      },
+      "kind": "exec",
+      "language": "rust",
+      "is-disabled": false,
+      "is-public": false,
+      "rust-qualified-name": "libsignal_protocol::identity_key::tests::test_alternate_identity_signing"
+    },
+    "probe:libsignal-protocol/0.1.0/identity_key/tests/test_identity_key_from()": {
+      "display-name": "test_identity_key_from",
+      "dependencies": [
+        "probe:libsignal-protocol/0.1.0/identity_key/&IdentityKey#impl<Box<[u8]>>#[IdentityKey]serialize()"
+      ],
+      "code-module": "identity_key/tests",
+      "code-path": "src/identity_key.rs",
+      "code-text": {
+        "lines-start": 196,
+        "lines-end": 201
+      },
+      "kind": "exec",
+      "language": "rust",
+      "is-disabled": false,
+      "is-public": false,
+      "rust-qualified-name": "libsignal_protocol::identity_key::tests::test_identity_key_from"
+    },
+    "probe:libsignal-protocol/0.1.0/identity_key/tests/test_serialize_identity_key_pair()": {
+      "display-name": "test_serialize_identity_key_pair",
+      "dependencies": [
+        "probe:libsignal-protocol/0.1.0/identity_key/&IdentityKeyPair#impl<Box<[u8]>>#[IdentityKeyPair]serialize()",
+        "probe:libsignal-protocol/0.1.0/identity_key/&IdentityKeyPair#impl<IdentityKey>#[IdentityKeyPair]identity_key()",
+        "probe:libsignal-protocol/0.1.0/identity_key/&IdentityKeyPair#impl<PrivateKey>#[IdentityKeyPair]private_key()",
+        "probe:libsignal-protocol/0.1.0/identity_key/impl<&R>#[IdentityKeyPair]generate()",
+        "probe:libsignal-protocol/0.1.0/identity_key/impl<&[u8]>#[IdentityKeyPair][`TryFrom<&[u8]>`]try_from()"
+      ],
+      "code-module": "identity_key/tests",
+      "code-path": "src/identity_key.rs",
+      "code-text": {
+        "lines-start": 204,
+        "lines-end": 222
+      },
+      "kind": "exec",
+      "language": "rust",
+      "is-disabled": false,
+      "is-public": false,
+      "rust-qualified-name": "libsignal_protocol::identity_key::tests::test_serialize_identity_key_pair"
+    },
+    "probe:libsignal-protocol/0.1.0/state/session/impl<&SessionState>#[SessionStructure][`From<&SessionState>`]from()": {
+      "display-name": "SessionStructure::from",
+      "dependencies": [],
+      "code-module": "state/session",
+      "code-path": "src/state/session.rs",
+      "code-text": {
+        "lines-start": 637,
+        "lines-end": 639
+      },
+      "kind": "exec",
+      "language": "rust",
+      "is-disabled": false,
+      "is-public": false,
+      "rust-qualified-name": "libsignal_protocol::state::session::SessionStructure::from"
+    },
+    "probe:libsignal-protocol/0.1.0/state/session/impl<SessionState>#[SessionStructure][`From<SessionState>`]from()": {
+      "display-name": "SessionStructure::from",
+      "dependencies": [],
+      "code-module": "state/session",
+      "code-path": "src/state/session.rs",
+      "code-text": {
+        "lines-start": 631,
+        "lines-end": 633
+      },
+      "kind": "exec",
+      "language": "rust",
+      "is-disabled": false,
+      "is-public": false,
+      "rust-qualified-name": "libsignal_protocol::state::session::SessionStructure::from"
+    }
+  }
+}
