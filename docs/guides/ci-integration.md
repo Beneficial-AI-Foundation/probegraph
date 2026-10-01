@@ -101,10 +101,11 @@ jobs:
     uses: Beneficial-AI-Foundation/probegraph/.github/workflows/generate-lean-callgraph.yml@main
 ```
 
-The workflow runs
+The workflow builds the project with `lake build`, then runs
 [probe-lean](https://github.com/Beneficial-AI-Foundation/probe-lean)
-`pipeline`, which builds the project with `lake build`, extracts declarations
-and dependencies, and maps `sorry` warnings to declarations. Each declaration
+`extract` on the build output, which extracts declarations and dependencies
+and maps `sorry` warnings to declarations. Both steps are skipped when
+`pre_built_atoms` is set. Each declaration
 gets a verification status (`verified`, `transitively-verified`, `trusted`,
 `failed` or `unverified`), colored as for Verus projects. probe-lean's Lean
 toolchain is aligned to your project's `lean-toolchain` file; older Lean

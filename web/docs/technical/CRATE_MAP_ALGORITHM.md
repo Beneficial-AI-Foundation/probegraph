@@ -99,8 +99,9 @@ matches by file name, same-named files in other crates match too.
 
 ## Mode B. Expanded edge
 
-Clicking a crate edge $(c_s, c_t)$ expands it; clicking it again, pressing
-Esc, or clicking the background returns to Mode A. If a later filter change
+Clicking a crate edge $(c_s, c_t)$ expands it; pressing Esc or clicking the
+background returns to Mode A. The crate edge is not drawn in Mode B, so the
+toggle in `expandEdge` for a second click on it is unreachable. If a later filter change
 removes the edge, the view falls back to Mode A.
 
 The function subgraph is $E_B = \text{calls}(c_s, c_t)$ and $V_B$ its

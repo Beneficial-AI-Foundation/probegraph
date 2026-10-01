@@ -43,7 +43,7 @@ see [web/ARCHITECTURE.md](../../web/ARCHITECTURE.md#input-formats).
   **Chapter Map**. Click one crate then another to show
   the calls between them inside the Crate Map; its **View in Call Graph**
   button then sets a boundary query, which keeps the calls whose caller is in
-  the source crate (the UI labels say the opposite, see
+  the source crate (the captions inside the Crate Map say the opposite, see
   [#60](https://github.com/Beneficial-AI-Foundation/probegraph/issues/60)).
   Double-click a crate to open its files in the Call Graph.
 - **Hierarchy (testing)** — one box per crate to start. Click a collapsed
@@ -61,7 +61,7 @@ Below the filters, **Reset Filters** restores the defaults, **Clear
 Selection** drops clicked nodes, and **Copy Link** copies a shareable URL
 (see Sharing). **Reset View** works in the Call Graph only: it fits the graph
 to the window, or, when the graph can't fit at the minimum zoom, centres on
-the selected node or the query's node. The Call Graph does this on its own
+the selected node or, for an exact-node or focus query, the query's node. The Call Graph does this on its own
 whenever the set of rendered nodes changes.
 
 ## Blueprint and Code layers
@@ -95,8 +95,8 @@ view the viewer instead seeds an initial view from the best available tier:
 3. nodes with no callers,
 4. failing that, definition-kind nodes with no callers.
 
-Seeds are expanded to the deepest depth that fits the render budget and a
-banner reports "Showing N of M nodes (entry points, depth d)". The Depth
+Seeds are expanded to the Depth slider's value (default 1, at most 10), or
+less if that exceeds the render budget, and a banner reports "Showing N of M nodes (entry points, depth d)". The Depth
 slider re-expands from the seeds. `?focus=` takes precedence over
 `?entrypoints=`; clearing the focus set resumes the entrypoints seeding.
 
@@ -122,14 +122,23 @@ Matching rules:
 
 **Depth** limits hops from the source/sink; 0 means unlimited.
 
-**Declaration Kind** adapts to the graph's language. Verus graphs get
+**Declaration Kind** and **Edge Types** adapt to the graph's language. A
+graph is Verus when a node has `language: "verus"`, Lean when one has
+`language: "lean"`, and mixed when both do; only a graph with no `language`
+fields at all is classified by its `kind` values. Graphs whose code nodes are
+tagged `language: "rust"` are therefore neither: on their own they get the
+Lean-style Definitions / Theorems boxes and no Requires / Ensures, and merged
+with Lean they count as Lean.
+
+Verus graphs get
 Exec / Proof / Spec, with Spec **off by default**. Lean graphs get
 Definitions / Theorems, plus checkboxes that appear only when the graph
 contains them: Axioms (on by default — they are the trusted base),
 Types (`structure`/`inductive`/`class`), Projections, and Instances (all off
-by default). Mixed graphs additionally get the Verus Spec toggle.
+by default). Mixed graphs with spec functions additionally get the Verus
+Spec toggle.
 
-**Edge Types** adapts to the graph. Verus and mixed graphs always get Body
+**Edge Types**: Verus and mixed graphs always get Body
 Calls (on) and Requires and Ensures clause edges (off), whether or not the
 graph has edges of each kind.
 Lean graphs from probe-lean with the type/term split get **Statement deps**
@@ -138,8 +147,8 @@ Lean graphs from probe-lean with the type/term split get **Statement deps**
 they are the entries' statement and proof uses. These two boxes restrict
 traversal, not only display: with Body/proof off, a query does not reach a
 node through a body/proof edge. An edge in both roles shows while either box
-is on. Mapping (cross-language Rust↔Lean) and Specifications (Lean def →
-spec theorem) edges, both on, appear only when the graph has them. Mapping
+is on. Mapping (cross-language Rust↔Lean) and Specifications (Lean spec
+theorem → definition) edges, both on, appear only when the graph has them. Mapping
 edges follow only their own box; Specifications edges that carry a role also
 follow the role boxes. Graphs with none of these hide the section.
 

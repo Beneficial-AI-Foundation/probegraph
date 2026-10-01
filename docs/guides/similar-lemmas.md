@@ -18,7 +18,7 @@ index.
 
 ```bash
 uv sync --extra enrich
-uv run maturin develop --release -m external/verus_lemma_finder/rust/Cargo.toml
+(cd external/verus_lemma_finder && uv tool run maturin develop --release)
 ```
 
 `uv sync` installs the Python package but not its compiled Rust extension;

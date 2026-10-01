@@ -88,7 +88,8 @@ taller. The SVG `viewBox` is fitted to the layout plus 100.
 
 ## Expansion state
 
-Clicking a group box expands it; clicking a container's border collapses it
+Clicking a group box expands it; clicking an expanded container anywhere
+outside its children (the legend says "border") collapses it
 and every group below it; Esc collapses everything. Each change is written to
 `?expanded=` as a comma-separated id list (only while the Hierarchy view is
 active) and restored from it on load. The user-facing description is in the

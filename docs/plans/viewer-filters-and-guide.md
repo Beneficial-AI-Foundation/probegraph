@@ -2,9 +2,24 @@
 
 Status (2026-10-01): Phases 0 to 2, 5a and 5c merged (#42, #43, #46, #48,
 #49, #51, #56, #57). Open: 5b (blueprint-layer filters and the code-layer
-"Blueprint-bound only" filter), Phase 3 (blocked on probe-lean #114) and
-most of Phase 4. Planned 2026-09-29 and revised after two Codex reviews
-that day; see "Review decisions" at the end.
+"Blueprint-bound only" filter; `FilterOptions` has none of those fields),
+Phase 3 (blocked on probe-lean #114, still open) and Phase 4 except for two
+items: `removeIsolated` already keeps the intent's anchor IDs
+(`src/query.ts`, `keepSet`; #46), and the Guide re-renders when kind or edge
+filters change (#48). The ranked lists, SCC-based dependent counts, layers
+strip and BFS truncation are not started; `src/guide/` still has the five
+chips and `main.ts` truncates by connectivity, keeping anchors first (#48).
+Planned 2026-09-29 and revised after two Codex reviews that day; see "Review
+decisions" at the end.
+
+Where the merged work departs from the text below:
+
+- `spec` links take the role of the theorem's link to the definition and
+  obey the role boxes (#51), instead of getting no role (Phase 2).
+- The "verified" chip selects `transitively-verified`, or `verified` on
+  graphs without it (#48), instead of `verified` only (Phase 1.6).
+- Phase 5 describes the code before 5a: the File Map rename to `file-map`
+  (`src/file-map.ts`) and the blueprint layer both shipped in #56.
 
 Goal: make large graphs navigable without drawing them whole. Two new
 filters shrink the graph; the Guide tab becomes a set of ranked answers
@@ -159,7 +174,9 @@ Plan:
     `mapping` links get no role. They are governed by their own call-type
     toggles, not by the role boxes, so with "Body/proof deps" off a `spec`
     link can still connect two nodes. That is intended: it is a different
-    relation, shown only when its own toggle is on.
+    relation, shown only when its own toggle is on. (Superseded in #51:
+    `spec` links take the role of the theorem's link to the definition, so
+    the boxes cannot be bypassed through them.)
   - Resolved external dependencies: classify from the `*-external`
     type/term variants when present; otherwise no role.
   - Absent type/term arrays mean "no split data" (no role); present but
@@ -418,7 +435,7 @@ all graph strings in node details (Phase 0), an explicit query-intent state
 instead of field resets, real history (`pushState` + `popstate`) and URL
 codec fixes, a generation token on `loadFocusSet`, anchors kept by
 `removeIsolated`, budget-aware BFS truncation, `spec` links outside the
-role filter, ranking direction and SCC weighting spelled out, chip status
+role filter (reversed in #51), ranking direction and SCC weighting spelled out, chip status
 selection matching the separate counts, layer-local filters and caches for
 blueprint atoms.
 

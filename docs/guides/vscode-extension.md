@@ -82,8 +82,9 @@ query; after an exact-node or other query it becomes empty.
   ```
 
   For a blueprint entry, `relativePath` is the entry's Lean declaration file
-  (`blueprint.sourcePath`), not its chapter. `startLine` and `endLine` may be
-  undefined when the graph has no line numbers.
+  (`blueprint.sourcePath`), not its chapter. `startLine` and `endLine` are
+  1-based (subtract 1 for `vscode.Position`) and may be undefined when the
+  graph has no line numbers.
 - **`requestRefresh`** — the webview wants fresh graph data.
 
 ## Extension side

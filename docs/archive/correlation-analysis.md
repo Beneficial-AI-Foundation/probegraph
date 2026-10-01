@@ -112,7 +112,7 @@ Note this is the analysis's own ratio, distinct from two similarly named CSV
 columns: `proof_overhead` (transitive / direct proof effort, from
 `enrich_csv_with_proof_metrics`) and `proof_overhead_direct`
 (`body_length - halstead_length`, from `merge_rca_metrics`; see
-`METRICS_PIPELINE.md`).
+[metrics-reference.md](../guides/metrics-reference.md)).
 
 ### Results
 

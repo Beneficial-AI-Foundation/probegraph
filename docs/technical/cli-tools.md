@@ -2,11 +2,13 @@
 
 Three `metrics-cli` binaries that turn a Rust/Verus project into a SCIP index
 or atoms JSON. All of them need the
-[`scip`](https://github.com/sourcegraph/scip/releases) CLI on `PATH`; the
-call graph they build is described in
+[`scip`](https://github.com/sourcegraph/scip/releases) CLI on `PATH`, except
+`detect_unused_specs` when given an existing SCIP JSON; the call graph they
+build is described in
 [scip-core-architecture.md](scip-core-architecture.md).
 
-Output names come from the last component of the project path. With a path of
+`generate_index_scip_json` and `detect_unused_specs` name their outputs after
+the last component of the project path. With a path of
 `.` (or `..`) there is no such component, so the names fall back to
 `output_*` / `project_*` as noted below
 ([#63](https://github.com/Beneficial-AI-Foundation/probegraph/issues/63)).
@@ -72,7 +74,8 @@ cargo run -p metrics-cli --bin generate_atoms_with_lines -- <project_dir> <outpu
 ```
 
 Indexes with `rust-analyzer scip` (not `verus-analyzer`), run inside
-`<project_dir>`, which must contain a `Cargo.toml`. It leaves `index.scip` in
+`<project_dir>`, which must contain a `Cargo.toml`. It exits early unless
+`rust-analyzer` is on `PATH`. It leaves `index.scip` in
 `<project_dir>` and deletes the intermediate `index.scip.json` on success. No
 workflow or script calls it.
 
@@ -80,7 +83,9 @@ workflow or script calls it.
 
 `write_atoms <scip_json> <output_json>` and `detect_unused_specs` write the
 body format, which `compute_metrics` and the rest of the
-[metrics pipeline](../guides/metrics-pipeline.md) consume:
+[metrics pipeline](../guides/metrics-pipeline.md) consume. The examples are
+for a crate whose name has no digit; for curve25519-dalek the identifiers
+keep the version (see below).
 
 ```json
 { "identifier": "scalar::Scalar::sub", "statement_type": "function",
@@ -96,7 +101,7 @@ body format, which `compute_metrics` and the rest of the
 { "display-name": "sub", "visible": true,
   "dependencies": { "scalar::UnpackedScalar::sub": { "visible": true } },
   "code-path": "src/scalar.rs", "code-function": "scalar::Scalar::sub",
-  "code-text": { "lines-start": 679, "lines-end": 734 } }
+  "code-text": { "lines-start": 679, "lines-end": 11 } }
 ```
 
 `visible` is always `true`. `lines-start` is the 1-based line of the

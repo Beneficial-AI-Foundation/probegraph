@@ -2,13 +2,15 @@
 
 Computes code, specification and proof complexity metrics for the functions of
 a Verus project and joins them into one CSV. What each metric means is in the
-[metrics reference](metrics-reference.md); this page covers how to produce
-them.
+[metrics reference](https://github.com/Beneficial-AI-Foundation/probegraph/blob/main/docs/guides/metrics-reference.md);
+this page covers how to produce them. Some matching steps assume
+curve25519-dalek's crate name and repo layout; see
+[Limitations](#limitations).
 
 ## Inputs
 
 - **SCIP JSON** of the Verus source: see
-  [Generating a SCIP index manually](../../README.md#generating-a-scip-index-manually).
+  [Generating a SCIP index manually](https://github.com/Beneficial-AI-Foundation/probegraph/blob/main/README.md#generating-a-scip-index-manually).
 - **RCA JSONs**: run
   [rust-code-analysis](https://github.com/mozilla/rust-code-analysis) on the
   *vanilla* (non-Verus) source of the same crate:
@@ -67,8 +69,9 @@ cargo run -p metrics-cli --bin compute_proof_metrics -- out/step2_with_specs.jso
 ```
 
 Adds a `proof_metrics` object: `direct_proof_halstead` (the function's own
-`proof { }` blocks), `transitive_proof_halstead` (including every lemma called,
-transitively), `direct_lemmas`, `transitive_lemmas` and `proof_depth`. The
+`proof { }` blocks), `transitive_proof_halstead` (adding the proofs of the
+`lemma_*`-named functions called from those blocks, transitively),
+`direct_lemmas`, `transitive_lemmas` and `proof_depth`. The
 results currently vary between runs
 ([#58](https://github.com/Beneficial-AI-Foundation/probegraph/issues/58)).
 
@@ -78,7 +81,8 @@ results currently vary between runs
 cargo run -p metrics-cli --bin enrich_csv_with_metrics -- functions_to_track.csv rca_jsons/ out/step4_with_code.csv
 ```
 
-Matches each tracked function against the RCA output by name and module.
+Matches each tracked function against the RCA output by name and module
+path. Only functions in files under a `src/` directory are loaded from RCA.
 Append `--debug` to print the match keys tried.
 
 ### Step 5: join spec and proof metrics
@@ -101,8 +105,12 @@ columns `function,module,link,has_spec,has_proof`:
 - `add_trivial_proof_column <categories_json> <input_csv> <output_csv>` uses the
   output of `categorize_verified_functions` (below).
 
-`trivial_proof` is `yes` when `has_proof` is `yes` and the function has no
-proof block, `no` when it has one, and empty otherwise.
+Both write `trivial_proof` only for rows where `has_proof` is `yes`, and
+`no` when the function has a proof block. They differ on `yes`:
+`add_trivial_proof_from_source` writes it whenever there is no proof block,
+while `add_trivial_proof_column` writes it only for `trivially_verified`
+functions (an `ensures` clause and no `assume(false)`) and leaves the rest
+empty.
 
 ## FINAL.csv columns
 
@@ -117,12 +125,30 @@ proof block, `no` when it has one, and empty otherwise.
 
 ## Empty values
 
-A cell is empty when the function was not matched or the value is zero; steps
-4 and 5 print their match rates. Unmatched functions are expected in step 4:
-RCA skips `build.rs`, macro-generated functions (`add_assign`, ...) and trait
-declarations without a body, and Verus-only modules are absent from the
-vanilla source. `verify_rca_coverage <rca_json_dir> <vanilla_source_dir>
-<atoms_json>` reports which functions are missing where.
+A cell is empty when the function was not matched. The step 5 columns are
+also empty when the value is zero; the RCA columns from step 4 print `0`.
+`has_proof` and `trivial_proof` are empty for functions missing from the
+proof-difficulty CSV. Steps 4 and 5 print their match rates.
+
+Unmatched functions are expected in step 4: files outside `src/` (such as
+`build.rs`) are not loaded, RCA skips macro-generated functions
+(`add_assign`, ...) and trait declarations without a body, and Verus-only
+modules are absent from the vanilla source. `verify_rca_coverage
+<rca_json_dir> <vanilla_source_dir> <atoms_json>` reports which functions are
+missing where.
+
+## Limitations
+
+- Step 4 strips a leading `curve25519_dalek` from each module path before
+  matching. For any other crate the `crate::...` prefix stays, so tracked
+  functions don't match the RCA keys, which start after `src/`.
+- `add_trivial_proof_from_source` finds the file by splitting each `link` on
+  `curve25519-dalek/`, so `<source_repo>` must be the curve25519-dalek crate
+  directory and rows linking anywhere else get an empty `trivial_proof`.
+- Step 5 tries a function's bare name before its module path, and keeps one
+  atom per name. Two tracked functions with the same name in different
+  modules (two `helper`s) get the same atom's metrics, and the match rate does
+  not show it. Proof-difficulty rows are keyed by function name alone.
 
 ## Other binaries
 

@@ -77,4 +77,6 @@ also has a `parse_error` field, but nothing sets it, so it never appears.
    was truncated
    ([#58](https://github.com/Beneficial-AI-Foundation/probegraph/issues/58)).
 
-`assert(...) by { ... }` blocks and loop invariants are not extracted.
+`assert(...) by { ... }` blocks and loop invariants are not extraction roots
+of their own: they are counted only when they sit inside a block captured in
+step 1, such as a `proof fn` body.

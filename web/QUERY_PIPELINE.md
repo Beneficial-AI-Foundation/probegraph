@@ -20,7 +20,7 @@ FilterOptions (UI state)
          │  CompiledQuery { query, traversalPredicates, displayPredicates, ... }
          ▼
   ┌────────────┐
-  │  Executor  │  executeQuery(compiled, fullGraph, nodeOptions) → D3Graph
+  │  Executor  │  executeQuery(compiled, fullGraph) → D3Graph
   └──────┬─────┘
          │  7 pipeline steps (see §4)
          ▼
