@@ -5,7 +5,8 @@ call graphs (from SCIP), Lean atom graphs (from probe-lean), and merged
 cross-language graphs with Rust↔Lean mapping links.
 
 - Live demo: https://beneficial-ai-foundation.github.io/probegraph/
-- Local: `cd web && npm install && npm run dev`, then open http://localhost:3000
+- Local: `cd web && npm install && npm run dev`, then open
+  http://localhost:3000/probegraph/
 
 ## Loading a graph
 
@@ -17,17 +18,16 @@ The viewer tries these sources in order:
    committed one is the demo graph shown on GitHub Pages.
 4. The **Load Graph JSON** button — pick a local file.
 
-Files larger than 10 MiB are not parsed immediately (a `HEAD` request checks
-the size first): the viewer shows a "Large Graph Detected" prompt and loads
-only when you set a Source, Sink, or Include Files filter and press
-**Load & Search**. This gate is about `JSON.parse` freezing the browser;
+Fetched files larger than 10 MiB are not parsed immediately (a `HEAD`
+request checks the size first): the viewer shows a "Large Graph Detected"
+prompt and loads only when you set a Source, Sink, or Include Files filter
+and press **Load & Search**. The exception is the local `./graph.json` when
+`?view=` is `crate-map` or `hierarchy`: it loads anyway, since those views
+aggregate the graph. This gate is about `JSON.parse` freezing the browser;
 rendering is bounded separately by the seeded view (below).
 
-Four input formats are accepted: probe atom dicts (`atoms.json` from
-probe-verus / probe-lean), schema envelopes wrapping such a dict (the
-`schema-version` + `data` form, including multi-input merged envelopes),
-the viewer's native `{nodes, links, metadata}` D3 format, and a legacy
-flat array format. See `web/ARCHITECTURE.md` for the schemas.
+The viewer accepts probe atom dicts, schema envelopes and its own D3 format;
+see [web/ARCHITECTURE.md](../../web/ARCHITECTURE.md#input-formats).
 
 ## Views
 
@@ -39,11 +39,30 @@ flat array format. See `web/ARCHITECTURE.md` for the schemas.
   node's own verification readiness and the fill encodes subtree completeness.
 - **Crate Map** — one node per crate, edges weighted by call count. For Lean
   graphs the button is relabeled **Namespace Map** and grouping uses the first
-  two path segments (e.g. `ArkLib/Data`). Click one crate then another to set
-  a boundary query (functions in the source crate that call the target crate);
-  double-click a crate to open it in the Call Graph.
+  two path segments (e.g. `ArkLib/Data`); on the blueprint layer it is the
+  **Chapter Map**. Click one crate then another to show
+  the calls between them inside the Crate Map; its **View in Call Graph**
+  button then sets a boundary query, which keeps the calls whose caller is in
+  the source crate (the UI labels say the opposite, see
+  [#60](https://github.com/Beneficial-AI-Foundation/probegraph/issues/60)).
+  Double-click a crate to open its files in the Call Graph.
+- **Hierarchy (testing)** — one box per crate to start. Click a collapsed
+  group to expand it in place (crate → directory → file → function), click
+  an expanded group's background to collapse it, and press Esc to collapse
+  everything. Click a function for its details. Group boxes show rollup
+  counts and a verified-fraction bar, and edges are aggregated between the
+  visible boxes. The expanded groups are kept in `?expanded=`.
 
-The algorithms are specified in `web/docs/technical/`.
+Crate Map and Hierarchy aggregate the whole graph, so the large-graph limits
+below don't apply to them. The algorithms are specified in
+[web/docs/technical/](../../web/docs/technical/README.md).
+
+Below the filters, **Reset Filters** restores the defaults, **Clear
+Selection** drops clicked nodes, and **Copy Link** copies a shareable URL
+(see Sharing). **Reset View** works in the Call Graph only: it fits the graph
+to the window, or, when the graph can't fit at the minimum zoom, centres on
+the selected node or the query's node. The Call Graph does this on its own
+whenever the set of rendered nodes changes.
 
 ## Blueprint and Code layers
 
@@ -80,8 +99,11 @@ Seeds are expanded to the deepest depth that fits the render budget and a
 banner reports "Showing N of M nodes (entry points, depth d)". The Depth
 slider re-expands from the seeds. `?focus=` takes precedence over
 `?entrypoints=`; clearing the focus set resumes the entrypoints seeding.
-The Crate Map is exempt (it aggregates the full graph). Filtered results in
-other situations are truncated to 200 rendered nodes.
+
+Only the Call Graph seeds. The File Map on a large graph with no query shows
+a "use filters" message instead, and Crate Map and Hierarchy render the whole
+graph. Filtered results in the Call Graph and File Map are truncated to 200
+rendered nodes; the seeded view is not.
 
 ## Sidebar filters
 
@@ -130,11 +152,17 @@ Verified box then shows as partly checked.
 Lean nodes. The filter applies after traversal, so paths crossing the hidden
 language still resolve.
 
-**Source Type** (Libsignal / External) reflects the `is_libsignal` flag on
-nodes; it is only meaningful for graphs generated with that classification.
+**Source Type** (Libsignal / External) filters on the `is_libsignal` flag and
+appears only when a graph mixes both values. Probe atom output never sets the
+flag, so in practice it shows only for older D3-format graphs
+([#61](https://github.com/Beneficial-AI-Foundation/probegraph/issues/61)).
 
 **Exclude by Name** and **Exclude by Path** take comma-separated globs
-(`*_comm*`, `*/specs/*`); the path field has presets. **Include Files**
+(`*_comm*`, `*/specs/*`). Exclude by Path is matched against the node ID, not
+the file path, so its presets only work where IDs contain the path; probe and
+Lean IDs don't
+([#61](https://github.com/Beneficial-AI-Foundation/probegraph/issues/61)).
+**Include Files**
 restricts to matching files (`edwards.rs`, `decompress*.rs`), with a
 disambiguation dropdown when a bare filename is ambiguous; when combined with
 a source/sink query it filters the results after traversal instead of blocking
@@ -143,14 +171,12 @@ and restorable.
 
 ## Verification colors
 
-| Color | Status |
-|---|---|
-| green `#4ade80` | verified |
-| dark green `#15803d` | transitively verified |
-| purple `#a855f7` | trusted |
-| red `#ef4444` | failed |
-| grey `#9ca3af` | unverified |
-| blue `#3b82f6` | unknown (no status in the graph) |
+In the Call Graph, node colour is the verification status: green for
+verified, dark green for transitively verified, purple for trusted, red for
+failed, grey for unverified, and blue for unknown (no status in the graph).
+The sidebar's Verification Legend shows them, and the File Map, Crate Map
+and Hierarchy draw their own legends. The exact colours are the
+`--pg-status-*` tokens in `web/style.css`.
 
 ## Clicking nodes
 
@@ -202,8 +228,10 @@ configuration is resolved in this order:
 
 1. per-language `source_configs` derived from a merged envelope's `inputs`
    (repo, ref, and path prefix per input);
-2. a global base URL: the `?github=` URL parameter, else the graph metadata's
-   `github_url`, else the `VITE_GITHUB_URL` build variable;
+2. a global base URL: the `?github=` URL parameter, else the
+   `VITE_GITHUB_URL` build variable, else the graph metadata's `github_url`
+   (the build variable winning is tracked in
+   [#61](https://github.com/Beneficial-AI-Foundation/probegraph/issues/61));
 3. branch from `VITE_GITHUB_BRANCH` (default `main`) and an optional path
    prefix from `?prefix=` / `?github_prefix=` or `VITE_GITHUB_PATH_PREFIX`.
 

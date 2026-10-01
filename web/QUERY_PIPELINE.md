@@ -1,12 +1,14 @@
-# Query Pipeline Architecture
+# Query pipeline
 
-This document describes the composable query pipeline that powers the probegraph interactive viewer's filtering and traversal system.
-
-> **History.** The pipeline replaced a monolithic `applyFilters()` function (~983 lines in `filters.ts`). The pre-refactor design proposal and the original filter docs are archived in `docs/archive/QUERY_ARCHITECTURE_PROPOSAL.md` and `docs/archive/FILTERS_PRE_REFACTOR.md` respectively.
+How the viewer turns filter state into the rendered subgraph. User-facing
+behaviour (match syntax, URL parameters) is in
+[docs/guides/viewer.md](../docs/guides/viewer.md); the design record for query
+intent is [docs/archive/query-intent.md](../docs/archive/query-intent.md).
 
 ## 1. Overview
 
-The pipeline follows a **compile → execute** pattern, separating *what* the user asked from *how* it is evaluated:
+The pipeline follows a **compile → execute** pattern, separating *what* the
+user asked from *how* it is evaluated:
 
 ```
 FilterOptions (UI state)
@@ -29,13 +31,15 @@ FilterOptions (UI state)
 
 | File | Role |
 |------|------|
-| `src/query.ts` | Query AST, 9 operators, resolver, compiler, executor |
+| `src/query.ts` | Query AST, operators, resolver, compiler, executor |
 | `src/intent.ts` | `QueryIntent`: what the query is about (text, exact IDs, focus set, boundary) |
-| `src/url-state.ts` | URL codec: `writeURLState` / `readURLState`, filter defaults |
+| `src/url-state.ts` | URL codec (`writeURLState` / `readURLState`) and `defaultFilters()` |
+| `src/status-filter.ts` | Verification status groups and the exact-status predicate |
+| `src/types.ts` | `FilterOptions`, kind sets, `compileKindPredicate` / `compileKindFlag` |
 | `src/filters.ts` | Public entry point (`applyFilters`), pattern utilities (`globToRegex`, `matchesQuery`) |
-| `src/graph-loader.ts` | JSON format normalization (atom dict, schema envelope, D3Graph, simplified) |
 
-The public API is a single function:
+The public API is one function, which calls `compileQuery` then
+`executeQuery`:
 
 ```typescript
 function applyFilters(
@@ -45,13 +49,13 @@ function applyFilters(
 ): D3Graph
 ```
 
-It calls `compileQuery` then `executeQuery` internally.
-
----
+`compileQuery` is pure: it takes `FilterOptions` and returns a
+`CompiledQuery` without touching the graph.
 
 ## 2. Query AST
 
-The compiler translates `FilterOptions` into a discriminated union called `GraphQuery`, which encodes the traversal mode without performing any graph access:
+The compiler translates `FilterOptions` into a discriminated union,
+`GraphQuery`, that encodes the traversal mode:
 
 ```typescript
 type GraphQuery =
@@ -64,21 +68,18 @@ type GraphQuery =
   | { type: 'noTraversal' };
 ```
 
-### Node matchers
-
-A `NodeMatcher` identifies *which* nodes to start from:
+A `NodeMatcher` identifies the start nodes:
 
 ```typescript
 type NodeMatcher =
   | { kind: 'pattern'; query: string }   // substring or glob against display_name
   | { kind: 'crate';   pattern: string } // crate: prefix query
-  | { kind: 'nodeIds'; ids: Set<string> } // exact IDs (Guide, VS Code)
+  | { kind: 'nodeIds'; ids: Set<string> } // exact IDs (Guide, VS Code, cross-layer links)
 ```
 
 ### Dispatch rules
 
-`compileQuery` switches on `filters.intent` (`src/intent.ts`, design in
-`docs/archive/query-intent.md`):
+`compileQuery` switches on `filters.intent`:
 
 | Intent | Compiled query type |
 |--------|---------------------|
@@ -96,196 +97,117 @@ Text intents:
 | empty | non-empty | `callers` |
 | same string | same string | `neighborhood` |
 | `crate:A` | `crate:B` | `crateBoundary` (`exact: false`, substring) |
-| different | different | `paths` |
-
----
-
-## 3. Filter Types
-
-### 3.1 Source Query (text intent `source`)
-
-Shows what functions are **called by** the matched nodes (callee direction). Traverses forward up to `maxDepth`.
-
-**Matching syntax** (handled by `matchesQuery()` in `filters.ts`):
-
-| Syntax | Example | Meaning |
-|--------|---------|---------|
-| Substring | `decompress` | Matches any `display_name` containing "decompress" |
-| Glob wildcards | `lemma_*` | Anchored match (only names starting with `lemma_`) |
-| Path-qualified | `edwards::decompress` | Matches `decompress` in files named `edwards.rs` or `edwards.lean` |
-| Lean dotted path | `Scalar52.add_spec` | Matches nodes whose full ID contains `Scalar52.add_spec` |
-| Crate-qualified | `crate:curve25519-dalek` | All functions in the named crate |
-
-**Lean disambiguation:** When multiple Lean functions share the same `display_name` (e.g., several `add_spec` theorems), use a dotted module-path prefix from the node ID to narrow the match. For example, `Scalar52.add_spec` matches only `probe:...Scalar52.add_spec`, not the Edwards or Ristretto variants. The dotted-path match is a substring match against the full node ID and is only activated when the query contains a `.` character.
-
-### 3.2 Sink Query (text intent `sink`)
-
-Shows what functions **call** the matched nodes (caller direction). Same matching syntax as source.
-
-### 3.3 Source + Sink Combined
-
-| Combination | Behavior |
-|-------------|----------|
-| Same query (source = sink) | Full neighborhood (callers + callees) |
-| Both `crate:` queries | **Crate boundary mode** — only direct cross-crate calls |
-| Different queries | DFS path finding from all sources to all sinks |
-
-### 3.4 Include Files (`includeFiles`)
-
-Comma-separated file patterns. Without a source/sink query, only functions defined in matching files pass the traversal predicate. When a directional (source/sink) query is active, the file filter instead runs **post-traversal** as a result filter (step 5b): the BFS traverses the full graph, the displayed results are narrowed to the requested files, and the source/sink seed nodes are kept regardless so the connection context stays visible.
-
-| Pattern | Matches |
-|---------|---------|
-| `edwards.rs` | All files named `edwards.rs` |
-| `src/edwards.rs` | Only `*/src/edwards.rs` |
-| `**/backend/**/edwards.rs` | Any `edwards.rs` under a `backend/` directory |
-| `curve25519-dalek/**` | All files under `curve25519-dalek/` |
-
-Filename patterns (no `/`) match against `file_name`; path patterns (with `/`) match against `relative_path`.
-
-### 3.5 Exclude Name Patterns (`excludeNamePatterns`)
-
-Comma-separated glob patterns matched against `display_name`. Example: `*_comm*, lemma_mul_*`.
-
-### 3.6 Exclude Path Patterns (`excludePathPatterns`)
-
-Comma-separated glob patterns matched against the node's full SCIP `id`. Example: `*/specs/*, */test/*`.
-
-### 3.7 Function Kind Filters
-
-Seven kind buckets, dispatched by `compileKindPredicate` (`types.ts`):
-
-| Toggle | Default | Kinds (per `getKindSetsForLanguage`) |
-|--------|---------|--------------------------------------|
-| `showProofFunctions` | true | `proof` (Verus) / `theorem` (Lean) |
-| `showSpecFunctions` | false | `spec` |
-| `showAxioms` | true | `axiom` |
-| `showTypes` | false | `structure`, `inductive`, `class` |
-| `showProjections` | false | `projection` |
-| `showInstances` | false | `instance` |
-| `showExecFunctions` | true | everything else (the default bucket) |
-
-Kind sets are language-aware: for `mixed` graphs the proof bucket covers both `proof` and `theorem`.
-
-### 3.8 Call Type Filters (Link Types)
-
-Five link types (`LinkTypeFilter` in `query.ts`):
-
-| Toggle | Default | Edge type |
-|--------|---------|-----------|
-| `showInnerCalls` | true | Body calls (`inner` / `calls`) |
-| `showPreconditionCalls` | false | `requires` clause calls |
-| `showPostconditionCalls` | false | `ensures` clause calls |
-| `showMappingLinks` | true | Cross-language Rust↔Lean mapping edges |
-| `showSpecLinks` | true | Lean spec-theorem → definition edges |
-
-Requires/Ensures edges typically target spec functions. Enable **both** the call-type toggle and "Show Spec Functions" to see them.
-
-Lean `inner` links carry a `role` when probe-lean emits the `type-dependencies` / `term-dependencies` split: `type` (statement), `term` (definition body or proof, plus names probe-lean reaches through auxiliary declarations, including ones in the type) or `both`. A `spec` link takes the role of the theorem's inner link to the definition, usually `type` or `both`. Two more toggles select them:
-
-| Toggle | Default | Passes roles |
-|--------|---------|--------------|
-| `showStatementDeps` | true | `type`, `both` |
-| `showBodyDeps` | true | `term`, `both` |
-
-They combine by AND with `showInnerCalls` for inner links and with `showSpecLinks` for spec links. Links without a role (`mapping`, graphs without split data) always pass them. Unlike the other link toggles, they restrict **traversal**: `selectNodes` drops the links they reject (`TraversalPredicates.linkFilter`), and the seeded view expands over `roleFilteredGraph`. With A -term→ B -type→ C and body/proof off, a query from A does not reach C. The checkboxes only appear when the graph has role data.
-
-### 3.9 Display Predicates
-
-Applied **after** traversal, so they don't affect reachability:
-
-| Toggle | Default | Filters on |
-|--------|---------|------------|
-| `showLibsignal` / `showNonLibsignal` | true | `is_libsignal` |
-| `showVerifiedNodes` | true | `verified`, `transitively-verified`, `trusted` |
-| `showFailedNodes` | true | `failed` |
-| `showUnverifiedNodes` | true | `unverified` or no status |
-| `exactStatuses` | null | when set (by a Guide action), only these statuses pass; overrides the three toggles above. Toggling a box keeps the exact selection of the other groups (`src/status-filter.ts`) |
-| `showRustNodes` / `showLeanNodes` | true | node `language` (post-traversal so BFS can pass through cross-language nodes) |
-
-### 3.10 Max Depth (`maxDepth`)
-
-Limits BFS traversal depth for `callees`, `callers`, and `neighborhood` queries. `null` or `0` means unlimited. Does **not** limit path finding.
-
-### 3.11 Click-Based Selection (`selectedNodes`)
-
-When no source/sink/include-files are active and `maxDepth` is set, clicking a node triggers `depthFromSelected` — bidirectional BFS from the clicked node.
-
-### 3.12 Hidden Nodes (`hiddenNodes`)
-
-Shift+click hides a node. Hidden nodes are excluded during the traversal-predicate phase (step 1), preventing them from appearing in any result.
-
----
-
-## 4. Pipeline Steps
-
-The `executeQuery` function runs 7 steps (plus a 5b):
-
-### Step 1 — Build traversable subgraph
-
-```
-selectNodes(fullGraph, traversalPredicates) → traversableGraph
-```
-
-Keeps only nodes that pass **all** traversal predicates: kind filter, exclude-name, exclude-path, include-file, hidden-nodes, build-artifact exclusion. Links rejected by the statement / body-or-proof toggles are dropped here (§3.8).
-
-### Step 2 — Resolve matchers
-
-```
-resolveNodeMatcher(matcher, fullGraph, traversableIds) → Set<string>
-```
-
-Patterns are matched against the **full** graph (so a user can find a node even if it shares a name with a filtered-out node), then the result is intersected with the traversable set.
-
-### Step 3 — Dispatch traversal
-
-Based on the `GraphQuery.type`, one of 6 traversal paths is taken:
-
-| Query type | Operator(s) used |
-|-----------|-----------------|
-| `callees` | `traverseForward` (BFS, per start node, merged) |
-| `callers` | `traverseBackward` (BFS, per start node, merged) |
-| `neighborhood` | `traverseForward` + `traverseBackward`, union |
-| `paths` | `findPaths` (DFS with backtracking) |
-| `crateBoundary` | `crateBoundary` (edge scan) |
-| `depthFromSelected` | `traverseBidirectional` (undirected BFS) |
-| `noTraversal` | Focus set, exact ID set, or full traversable set |
-
-Each traversal returns a `TraversalResult` carrying `nodeIds` plus optional side-channel data (`calleeDepths`, `callerDepths`, `boundaryLinkPairs`).
-
-### Step 4 — Assemble result nodes
-
-Filter `fullGraph.nodes` to only those whose `id` is in the traversal result's `nodeIds`.
-
-### Step 5 — Apply display predicates
-
-Post-traversal filtering: libsignal/non-libsignal toggle, verification-status filters, language filters (Rust/Lean), plus re-application of kind filter and hidden-node exclusion (since step 4 pulls from the full graph).
-
-### Step 5b — Apply result file filter
-
-When a directional query is combined with `includeFiles`, the file patterns are applied here instead of in `selectNodes` (see §3.4). Source/sink seed nodes are kept regardless of file.
-
-### Step 6 — Filter links
-
-Three passes over links:
-
-1. **Endpoint filter** — keep only links where both source and target are in the result node set.
-2. **Depth filter** — when a depth limit is active, keep only BFS-tree edges (no shortcut edges). Uses `calleeDepths` / `callerDepths` from the traversal result.
-3. **Link type filter** — apply `showInnerCalls`, `showPreconditionCalls`, `showPostconditionCalls`, `showMappingLinks`, `showSpecLinks`, and for inner and spec links the role toggles.
-
-For `crateBoundary` queries, only links whose `(source, target)` pair is in `boundaryLinkPairs` survive step 1.
-
-### Step 7 — Cleanup and build metadata
-
-1. **Remove isolated nodes** — nodes with no remaining edges, except focus-set and exact intent IDs (anchors). Skipped for an exact status selection without a query, so every matching node shows.
-2. **Build `nodeDepths`** — a `Map<string, number>` attached to the result `D3Graph` for depth-based layout coloring. Merged from forward/backward traversal depths, taking the minimum when a node appears in both.
-3. **Deep copy** — nodes and links are shallow-cloned to prevent D3's force simulation from mutating the original graph.
-
----
+| different | different | `paths` (DFS from every source to every sink) |
+
+`crateBoundary` keeps the links whose caller is in the source crate and
+callee in the target crate, plus their endpoints.
+
+## 3. Filters
+
+Defaults for every field are in `defaultFilters()` (`url-state.ts`); match
+syntax for source/sink is in the viewer guide.
+
+### 3.1 Include Files (`includeFiles`)
+
+Comma-separated file patterns. Patterns without `/` match `file_name`;
+patterns with `/` match `relative_path` (`**` crosses directories). Without a
+source/sink query, only nodes in matching files pass the traversal predicate.
+With a directional query the patterns instead run **after** traversal
+(step 5b): the BFS uses the full graph, results are narrowed to the files, and
+the source/sink seed nodes are kept so the connection stays visible.
+
+### 3.2 Exclude patterns
+
+`excludeNamePatterns` globs match `display_name`. `excludePathPatterns` globs
+match the node's `id`, not its path
+([#61](https://github.com/Beneficial-AI-Foundation/probegraph/issues/61)).
+
+### 3.3 Kind filters
+
+Seven buckets: exec (everything not in another bucket), proof, spec, axioms,
+types (`structure`, `inductive`, `class`), projections and instances.
+`compileKindFlag` maps a kind to its `show*` flag using
+`getKindSetsForLanguage`; the proof bucket is `proof` for Verus, `theorem`
+for Lean, both for mixed graphs, and `blueprint-theorem` on the blueprint
+layer.
+
+### 3.4 Link type filters
+
+`LinkTypeFilter` has five type toggles: `showInnerCalls` (body calls),
+`showPreconditionCalls` (`requires`), `showPostconditionCalls` (`ensures`),
+`showMappingLinks` (Rust↔Lean) and `showSpecLinks` (Lean spec theorem →
+definition). Requires/Ensures edges usually target spec functions, so they
+show only with Spec functions on too.
+
+Lean `inner` links carry a `role` when probe-lean emits the
+`type-dependencies` / `term-dependencies` split: `type` (statement), `term`
+(definition body or proof, plus names reached through auxiliary declarations,
+including ones in the type) or `both`. Blueprint links use the same roles for
+statement and proof uses. A `spec` link takes the role of the theorem's inner
+link to the definition. `showStatementDeps` passes `type` and `both`;
+`showBodyDeps` passes `term` and `both`.
+
+The role toggles combine by AND with `showInnerCalls` for inner links and with
+`showSpecLinks` for spec links; links without a role always pass them. Unlike
+the type toggles, they restrict **traversal**: `selectNodes` drops the links
+they reject (`TraversalPredicates.linkFilter`), and the seeded view expands
+over `roleFilteredGraph`. With A -term→ B -type→ C and body/proof off, a query
+from A does not reach C.
+
+### 3.5 Display predicates
+
+Applied after traversal, so they don't affect reachability:
+
+- `showLibsignal` / `showNonLibsignal` on `is_libsignal`;
+- the status toggles, or `exactStatuses` when a Guide action set one
+  (`status-filter.ts`; toggling a box keeps the exact selection of the other
+  groups);
+- `showRustNodes` / `showLeanNodes` on `language`. Blueprint nodes ignore
+  them.
+
+### 3.6 Depth, selection, hidden nodes
+
+`maxDepth` limits BFS depth for `callees`, `callers`, `neighborhood` and
+`depthFromSelected`; `null` or `0` is unlimited. It does not limit path
+finding. Clicked nodes (`selectedNodes`) drive `depthFromSelected` only with
+no intent, no include files and a finite depth. `hiddenNodes`
+(Shift+click) are removed in step 1 and again in step 5.
+
+## 4. Pipeline steps
+
+`executeQuery` runs seven steps, plus a 5b.
+
+1. **Build the traversable subgraph.** `selectNodes(fullGraph,
+   traversalPredicates)` keeps nodes that pass kind, exclude-name,
+   exclude-path, include-file, hidden and build-artifact (`target/`,
+   `build/`) predicates, and drops links rejected by the role toggles.
+2. **Resolve matchers.** `resolveNodeMatcher` matches patterns against the
+   **full** graph, then intersects with the traversable set, so a function
+   that exists but is filtered out isn't confused with a missing one.
+3. **Dispatch traversal** on `GraphQuery.type` (operators in §5):
+   `callees` / `callers` run per-start-node BFS merged at minimum depth,
+   `neighborhood` unions both, `paths` uses `findPaths`, `crateBoundary`
+   scans edges, `depthFromSelected` uses undirected BFS, and `noTraversal`
+   takes the focus set, exact set or whole traversable set. Each returns a
+   `TraversalResult` with `nodeIds` and optional `calleeDepths`,
+   `callerDepths` and `boundaryLinkPairs`.
+4. **Assemble result nodes** from `fullGraph` by `nodeIds`.
+5. **Display predicates** (§3.5), then re-apply the kind filter (except for
+   `noTraversal`) and hidden nodes, since step 4 reads the full graph.
+   - **5b.** With a directional query and include files, apply the file
+     patterns here (§3.1).
+6. **Filter links**: keep links with both endpoints in the result (only
+   `boundaryLinkPairs` for `crateBoundary`); with a finite depth keep only
+   BFS-tree edges (`depthFilterLinks`); then apply `filterLinksByType`.
+7. **Cleanup**: remove isolated nodes, except focus-set and exact-intent
+   anchors and blueprint entries; skipped for an exact status selection
+   without a query so every matching node shows. Build `nodeDepths` for
+   layout from the traversal depths (minimum when a node has both), and
+   shallow-clone nodes and links so D3 can't mutate the source graph.
 
 ## 5. Operators
 
-Nine pure functions in `query.ts`, each taking a graph (or its parts) and returning a new structure:
+Nine pure functions in `query.ts`, none depending on global state:
 
 | Operator | Signature | Algorithm |
 |----------|-----------|-----------|
@@ -294,101 +216,82 @@ Nine pure functions in `query.ts`, each taking a graph (or its parts) and return
 | `traverseBackward` | `(graph, startIds, maxDepth) → TraversalResult` | BFS on reverse adjacency |
 | `traverseBidirectional` | `(graph, centerIds, maxDepth) → TraversalResult` | BFS on undirected adjacency |
 | `findPaths` | `(graph, sourceIds, sinkIds) → TraversalResult` | DFS with backtracking |
-| `crateBoundary` | `(graph, srcCrate, tgtCrate) → TraversalResult` | Edge scan matching crate pairs |
-| `filterLinksByType` | `(links, filter) → D3Link[]` | Type predicate |
+| `crateBoundary` | `(graph, srcCrate, tgtCrate, exact) → TraversalResult` | Edge scan matching crate pairs |
+| `filterLinksByType` | `(links, filter) → D3Link[]` | Type and role predicate |
 | `depthFilterLinks` | `(links, calleeDepths?, callerDepths?) → D3Link[]` | BFS-tree edge predicate |
-| `removeIsolated` | `(nodes, links, keepSet?) → D3Node[]` | Connected-component filter |
+| `removeIsolated` | `(nodes, links, keepSet?) → D3Node[]` | Drop nodes without links |
 
-All operators are individually testable; none depend on global state.
+## 6. Design decisions
 
----
+**Focus sets are an intent.** A focus set cannot combine with a source/sink
+query: any other intent replaces it. Its IDs restrict `noTraversal` and
+survive isolated-node removal.
 
-## 6. Key Design Decisions
+**Traversal vs display predicates.** Traversal predicates (kind, excludes,
+include files, hidden, build artifacts, role toggles) apply before traversal
+and decide what is reachable. Display predicates (source type, status,
+language) apply after, so a path through a hidden-by-status or Lean node is
+still found even if the node itself is not shown. Include files is the one
+predicate that moves: with a directional query it becomes a result filter
+(§3.1).
 
-### 6.1 Dual-role focus nodes
+**Full-graph matcher resolution** (step 2) avoids "this function exists but
+can't be found" when a predicate filtered it.
 
-A focus set is one kind of intent, so it cannot combine with a source/sink query: any other intent replaces it. Its IDs restrict `noTraversal` and survive isolated-node removal.
+**Depths travel beside the nodes.** Traversal returns depth maps in
+`TraversalResult` rather than writing them onto nodes; the executor uses them
+for depth-based link filtering and the `nodeDepths` it attaches to the result.
 
-### 6.2 Traversal predicates vs. display predicates
+The VS Code exact-node rule (how `selectedNodeId` picks a direction) is in
+[vscode-extension.md](../docs/guides/vscode-extension.md#message-protocol).
 
-**Traversal predicates** (kind, exclude-name, exclude-path, include-file, hidden, build-artifact) are applied *before* traversal in step 1. They determine the reachable subgraph. Exception: with a directional query, the include-file patterns move to step 5b (§3.4) so they narrow results without cutting the traversal.
+## 7. URL state and history
 
-**Display predicates** (libsignal/non-libsignal, verification status, language) are applied *after* traversal in step 5. They don't affect reachability: a path through a libsignal or Lean node is still found, but the node itself may be hidden from the result.
+`writeURLState` / `readURLState` (`url-state.ts`) are the only URL codec.
+Reload and browser back both rebuild the state from `defaultFilters()` plus
+the URL, and only non-default values are written. Every param the viewer owns
+is listed in `OWNED_PARAMS` and deleted before writing; graph-source params
+(`json` / `url`, `github`, `github_prefix` / `prefix`) are not owned, so they
+survive into share links. The full parameter table is in the
+[viewer guide](../docs/guides/viewer.md#sharing-copy-link-and-url-parameters).
 
-### 6.3 Full-graph matcher resolution
+Exactly one query intent is written: `source` / `sink` (text), `id` + `dir` +
+`label` (exact IDs), `focus` (a focus-set URL, resolved after load) or
+`boundary-source` / `boundary-target`. When a hand-edited URL has several,
+the precedence is `id` > `focus` > `boundary-*` > `source`/`sink`.
+`source-crate` / `target-crate` only set the crate dropdowns and Crate Map
+highlight; they never run a query. Other non-filter state: `view`, `layer`
+(only for graphs with a blueprint layer, and only when not the default
+layer), `expanded` (Hierarchy groups) and `entrypoints`. The legacy `hidden`
+(display names) is still read; the legacy `exclude` is owned, so it is
+cleared on write, but never read. For Lean graphs `inner`, `pre` and `post`
+are not written, since those boxes are hidden.
 
-`resolveNodeMatcher` matches patterns against the **full** graph, not the traversable subgraph. This prevents confusing situations where a function "exists" but can't be found because some predicate filtered it out. The matched IDs are then intersected with the traversable set to ensure only valid start nodes are used.
+### History and async loads
 
-### 6.4 VS Code exact node
+Query changes go through `setIntent` in `main.ts`, which makes exactly one
+history write per intent change; `urlWritesSuppressed` stops the render from
+writing a second one. Layer switches and browser back restore state the same
+way, with one write of their own. Guide actions, layer switches and
+cross-layer navigation push an entry marked `{ pushed: true }` in
+`history.state`. Typing in source/sink over a pushed
+entry pushes once (`inputEditHistory`), and later typing replaces. Other
+filter edits replace the current entry and keep its marker.
 
-When VS Code sends a `selectedNodeId` that exists in the graph, the viewer sets an exact `ids` intent; the direction follows which of `initialQuery.source` / `sink` is present (source only: callees, sink only: callers, both: neighborhood). If the ID is not in the graph (e.g., stale index), it falls back to a text intent from the query strings.
+Async loads check a token before committing, so late responses are dropped:
 
-### 6.5 TraversalResult side-channel
+- `intentGeneration` is bumped by every intent change. A `?focus=` load
+  records it in `pendingFocus` and is dropped if it moved.
+- `graphLoadGeneration` is bumped by every `loadGraph()`. `?entrypoints=`
+  loads check it so a late payload can't apply to a different graph.
+- `graphRequest` is bumped by every graph-source request (auto-load, file
+  pick, deferred load), so a slow auto-load can't replace a file the user
+  picked meanwhile.
 
-Rather than encoding depth information in the node objects, traversal operators return a `TraversalResult` with optional `calleeDepths`, `callerDepths`, and `boundaryLinkPairs` maps. The executor uses these for depth-based link filtering (step 6) and for the `nodeDepths` metadata attached to the final graph (step 7).
+## 8. Tests
 
-### 6.6 Compiler purity
-
-`compileQuery` is a pure function — it takes `FilterOptions` and returns a `CompiledQuery` with no graph access. This makes it trivially testable and allows potential future caching of compiled queries.
-
----
-
-## 7. URL Parameters
-
-Filter state is encoded in shareable URLs by `writeURLState` / `readURLState` (`src/url-state.ts`). Reload and browser back both rebuild the state from defaults plus the URL. Guide actions push a history entry. The first source/sink edit on a Guide entry also pushes; later typing replaces. Other filter edits replace the entry and keep its marker.
-
-Query intent (exactly one is written):
-
-| Parameter | Intent | Example |
-|-----------|--------|---------|
-| `source` / `sink` | `text` | `?source=decompress` |
-| `id` (repeated) + `dir` + `label` | exact `ids` (`dir`: `none`, `callers`, `callees`, `both`) | `?id=probe:A&dir=callers&label=A` |
-| `focus` | focus-set JSON URL, fetched after load → focus `ids` intent | `?focus=./focus.json` |
-| `boundary-source` / `boundary-target` | `boundary` (exact group names) | `?boundary-source=a&boundary-target=b` |
-
-When an old or hand-edited URL has several, the precedence is `id` > `focus` > `boundary-*` > `source`/`sink`.
-
-Other state:
-
-| Parameter | FilterOptions field / target | Example |
-|-----------|------------------------------|---------|
-| `sel` (repeated) | `selectedNodes` (click selection) | `?sel=probe:A` |
-| `files` | `includeFiles` | `?files=edwards.rs,scalar.rs` |
-| `depth` | `maxDepth` (0 = unlimited, omitted for the default 1) | `?depth=3` |
-| `exec` / `proof` / `spec` | `showExecFunctions` / `showProofFunctions` / `showSpecFunctions` (0/1) | `?spec=1` |
-| `axioms` / `types` / `proj` / `inst` | `showAxioms` / `showTypes` / `showProjections` / `showInstances` (0/1) | `?types=1` |
-| `inner` / `pre` / `post` | `showInnerCalls` / `showPreconditionCalls` / `showPostconditionCalls` (0/1) | `?pre=1` |
-| `mapping` / `speclinks` | `showMappingLinks` / `showSpecLinks` (0/1) | `?mapping=0` |
-| `statement` / `body` | `showStatementDeps` / `showBodyDeps` (0/1) | `?body=0` |
-| `libsignal` / `external` | `showLibsignal` / `showNonLibsignal` (0/1) | `?external=0` |
-| `rust` / `lean` | `showRustNodes` / `showLeanNodes` (0/1) | `?lean=0` |
-| `verified` / `failed` / `unverified` | `showVerifiedNodes` / `showFailedNodes` / `showUnverifiedNodes` (0/1) | `?unverified=0` |
-| `status` | `exactStatuses` (comma-joined); the three toggles are derived from it | `?status=transitively-verified` |
-| `excludeName` | `excludeNamePatterns` | `?excludeName=*_comm*` |
-| `excludePath` | `excludePathPatterns` | `?excludePath=*/specs/*` |
-| `hide` (repeated) | `hiddenNodes` (IDs) | `?hide=probe:A` |
-| `hidden` | legacy, read only: comma-joined display names, each resolved to its first match | `?hidden=foo,bar` |
-| `entrypoints` | entry-point JSON URL for the seeded view, fetched after load | `?entrypoints=./ep.json` |
-| `view` | active view (module state) | `?view=crate-map` |
-| `source-crate` / `target-crate` | crate dropdown / Crate Map highlight only, not a query | `?source-crate=libsignal-core` |
-
-A link with only `source-crate` / `target-crate` no longer runs a boundary query; old links that also carry `crate:` source/sink load as a text intent.
-
-Graph-source parameters (`json` / `url`, `github`, `github_prefix` / `prefix`) are handled separately in `autoLoadGraph()` and are preserved when the share link is generated.
-
-When the project language is Lean, the generator omits `inner`, `pre` and `post`: those toggles are hidden and forced on for Lean graphs. `mapping`, `speclinks`, `statement` and `body` are written for every language.
-
----
-
-## 8. Testing
-
-Run everything with `npm run test:run` (vitest) and `npx playwright test` (e2e). The suites relevant to the pipeline:
-
-- **Unit tests** (`query.test.ts`): individual operators, the compiler, and the resolver on small hand-crafted graphs — kind/exclude/hidden predicates, maxDepth, path finding, dispatch rules, exact-override fallback.
-- **Golden tests** (`query.integration.test.ts`): real graph data (Verus SCIP graph, Verus atoms, Lean atoms) through `applyFilters`, asserting exact output counts and node presence as a regression baseline.
-- **Backward-compatibility tests** (`filters.test.ts`): the pre-refactor suite for `applyFilters`, `matchesQuery`, `globToRegex`, `pathPatternToRegex`; passes unchanged.
-- Adjacent suites: `graph-utils.test.ts` (seed tiers, budgeted expansion), `graph-loader.test.ts` (format normalization, entry-point derivation), `graph.test.ts` (fit transform, depth), and the Playwright specs in `e2e/`.
-
----
-
-**Last updated:** September 2026
+`query.test.ts` covers operators, the compiler and the resolver on small
+graphs; `query.integration.test.ts` runs real Verus and Lean graphs through
+`applyFilters` as golden tests; `filters.test.ts`, `intent.test.ts` and
+`status-filter.test.ts` cover the pattern utilities, intents and status
+filter. Run them with `npm run test:run` (see [README.md](README.md)).

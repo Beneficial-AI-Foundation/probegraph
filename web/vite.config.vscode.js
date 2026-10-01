@@ -6,7 +6,7 @@ import { defineConfig } from 'vite';
  * Key differences from production config:
  * - Base path is './' (relative) instead of '/probegraph/' 
  * - Output goes to dist-vscode/
- * - All assets are inlined or bundled (no CDN dependencies)
+ * - Imported assets are bundled; index.html still loads Inter from Google Fonts
  */
 export default defineConfig({
   root: '.',

@@ -9,23 +9,33 @@ this file covers development.
 
 ```bash
 npm install
-npm run dev          # dev server on http://localhost:3000
+npm run dev          # opens http://localhost:3000/probegraph/
 ```
+
+The Vite base path is `/probegraph/` (the Pages subdirectory) in dev too.
 
 Other scripts (see `package.json`):
 
 ```bash
-npm run build         # production build (Pages base path /probegraph/)
-npm run build:vscode  # VS Code webview build (relative base, dist-vscode/)
+npm run build         # production build to dist/
+npm run build:vscode  # VS Code webview build to dist-vscode/
 npm run type-check    # tsc --noEmit
 npm test              # vitest, watch mode
 npm run test:run      # vitest, single run
-npx playwright test   # e2e suite in web/e2e/
+npx playwright test   # e2e suite in e2e/ (starts its own server on port 3001)
 ```
 
-CI runs `type-check` and `test:run` on every push to main (see
-`.github/workflows/build.yml`); the Pages deploy also runs them before
-building.
+## CI and deploy
+
+`.github/workflows/build.yml` runs on pushes and pull requests to main. Its
+`web-tests` job runs `type-check` and `test:run`; its `web-e2e` job ("Web
+Viewer E2E") runs the Playwright suite on Chromium and uploads the results on
+failure.
+
+`.github/workflows/deploy-pages.yml` deploys to GitHub Pages on pushes to
+main that touch `web/`, or by manual dispatch. It runs the type check and
+unit tests, then builds with `VITE_GRAPH_JSON_URL`, `VITE_GITHUB_URL` and
+`VITE_GITHUB_PATH_PREFIX` set from the dispatch inputs or their defaults.
 
 ## Demo graph
 
@@ -39,21 +49,18 @@ local graphs.
 
 - [docs/guides/viewer.md](../docs/guides/viewer.md) — user guide: views,
   filters, URL parameters, sharing.
-- [ARCHITECTURE.md](ARCHITECTURE.md) — module structure, input formats,
-  data flow.
-- [QUERY_PIPELINE.md](QUERY_PIPELINE.md) — the query/filter engine.
-- [docs/technical/](docs/technical/) — layout and coloring algorithms per
-  view.
-- [../docs/guides/vscode-extension.md](../docs/guides/vscode-extension.md) —
+- [ARCHITECTURE.md](ARCHITECTURE.md) — input formats, modules, data flow.
+- [QUERY_PIPELINE.md](QUERY_PIPELINE.md) — the query and filter engine.
+- [docs/technical/](docs/technical/README.md) — layout and colouring
+  algorithms per view.
+- [docs/guides/vscode-extension.md](../docs/guides/vscode-extension.md) —
   the VS Code webview integration.
 
 ## Troubleshooting
 
 - **Nothing renders after loading a file** — check the browser console; the
-  loader accepts probe atom dicts, schema envelopes, the native
-  `{nodes, links, metadata}` format, and a legacy flat array. Anything else
-  falls through with a warning.
-- **"Large Graph Detected" prompt** — the file is over 10 MiB; set a Source,
-  Sink, or Include Files filter and press Load & Search.
-- **Large graph loads but shows a seeded subset** — expected for graphs over
-  2 000 nodes / 10 000 links; see the seeded-view section of the viewer guide.
+  loader warns about formats it doesn't recognise (see
+  [Input formats](ARCHITECTURE.md#input-formats)).
+- **"Large Graph Detected" prompt or a partial view** — see
+  [Large graphs and the seeded view](../docs/guides/viewer.md#large-graphs-and-the-seeded-view)
+  and [Loading a graph](../docs/guides/viewer.md#loading-a-graph).
