@@ -1216,6 +1216,7 @@ async function autoLoadGraph(): Promise<void> {
 
       // Yield to browser before heavy synchronous work so the UI stays responsive
       await new Promise(r => setTimeout(r, 0));
+      if (superseded()) return;
 
       const rawData = JSON.parse(text);
       const graph = parseAndNormalizeGraph(rawData);
@@ -1263,6 +1264,7 @@ async function autoLoadGraph(): Promise<void> {
 
     // Yield to browser before heavy synchronous work so the UI stays responsive
     await new Promise(r => setTimeout(r, 0));
+    if (superseded()) return;
 
     const rawData = JSON.parse(text);
     const graph = parseAndNormalizeGraph(rawData);
@@ -1318,9 +1320,9 @@ async function loadDeferredGraph(): Promise<void> {
     }
     
     const text = await response.text();
+    if (request !== graphRequest) return;
     const rawData = JSON.parse(text);
     const graph = parseAndNormalizeGraph(rawData);
-    if (request !== graphRequest) return;
 
     deferredGraphUrl = null; // Clear the deferred URL
 
@@ -2409,9 +2411,9 @@ async function handleFileLoad(event: Event): Promise<void> {
 
   try {
     const text = await file.text();
+    if (request !== graphRequest) return;
     const rawData = JSON.parse(text);
     const graph = parseAndNormalizeGraph(rawData);
-    if (request !== graphRequest) return;
 
     loadGraph(graph, `Loaded from file: ${file.name}`);
   } catch (error) {
