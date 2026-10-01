@@ -107,8 +107,9 @@ contains them: Axioms (on by default — they are the trusted base),
 Types (`structure`/`inductive`/`class`), Projections, and Instances (all off
 by default). Mixed graphs additionally get the Verus Spec toggle.
 
-**Edge Types** lists only the edge kinds the graph has. Verus and mixed
-graphs get Body Calls (on) and Requires and Ensures clause edges (off).
+**Edge Types** adapts to the graph. Verus and mixed graphs always get Body
+Calls (on) and Requires and Ensures clause edges (off), whether or not the
+graph has edges of each kind.
 Lean graphs from probe-lean with the type/term split get **Statement deps**
 (dependencies used in a declaration's type) and **Body/proof deps**
 (used in its definition body or proof), both on; on the blueprint layer
@@ -116,9 +117,9 @@ they are the entries' statement and proof uses. These two boxes restrict
 traversal, not only display: with Body/proof off, a query does not reach a
 node through a body/proof edge. An edge in both roles shows while either box
 is on. Mapping (cross-language Rust↔Lean) and Specifications (Lean def →
-spec theorem) edges, both on, appear when the graph has them; they follow
-their own boxes, not the role boxes. Graphs with none of these hide the
-section.
+spec theorem) edges, both on, appear only when the graph has them. Mapping
+edges follow only their own box; Specifications edges that carry a role also
+follow the role boxes. Graphs with none of these hide the section.
 
 **Verification Status** has three toggles: verified-like (verified,
 transitively verified, trusted), failed, and unverified/unknown. A Guide
