@@ -7,36 +7,34 @@
 
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { 
-    loadIndex, 
-    indexExists,
-    formatTimestamp,
-    CallGraphIndex,
-    D3Node
-} from './indexLoader';
+import { formatTimestamp, isInside, D3Node } from './indexLoader';
 import { resolveCursor } from '../../web/src/editor-lookup';
 import { enclosingSymbol } from './cursorSymbol';
-import { 
-    showCallGraphWebview,
-    ShowGraphOptions,
-    onDidReceiveWebviewMessage,
-    onDidSendGraph
-} from './webviewLoader';
+import { GraphPanel, Direction, HostMessage, WebviewMessage } from './webviewLoader';
+import { GraphRevision, GraphSession, Sessions } from './session';
 import { 
     initializePipelineRunner, 
     runPipeline, 
     cancelPipeline, 
     checkPrerequisites,
-    getPipelineStatus
+    getPipelineStatus,
+    hasGenerator,
 } from './pipelineRunner';
 
 /**
  * API returned from activate(), for the integration tests
  */
 export interface CallGraphApi {
-    onDidReceiveWebviewMessage: vscode.Event<{ type: string }>;
-    onDidSendGraph: vscode.Event<{ type: string; selectedNodeId: string | null }>;
+    /** Every message the webview posts */
+    onDidReceiveWebviewMessage: vscode.Event<WebviewMessage>;
+    /** Every message sent to the webview */
+    onDidPostMessage: vscode.Event<HostMessage>;
+    /** Handle a message as if the webview had posted it */
+    deliverWebviewMessage(message: WebviewMessage): Promise<void>;
 }
+
+let sessions: Sessions;
+let panel: GraphPanel;
 
 /**
  * Extension activation
@@ -44,41 +42,50 @@ export interface CallGraphApi {
 export function activate(context: vscode.ExtensionContext): CallGraphApi {
     console.log('Call Graph Visualizer extension is now active!');
     
+    sessions = new Sessions(context.globalStorageUri.fsPath);
+    panel = new GraphPanel(context, () => sessions.graph);
+    context.subscriptions.push(
+        sessions,
+        panel,
+        sessions.onDidChangeGraph(() => panel.graphChanged()),
+        panel.onDidSelect((result) => {
+            if (result.status === 'filtered') {
+                reportFiltered(result.selection.nodeId, result.filteredBy);
+            } else if (result.status === 'missing') {
+                vscode.window.showWarningMessage('The declaration is no longer in the graph.');
+            }
+        }),
+    );
+
     // Initialize the pipeline runner
     initializePipelineRunner(context);
     
     // Register commands
     registerCommands(context);
     
-    // Preload index if available
+    // Bind to the active editor's folder so the status bar says what is loaded
     preloadIndex();
 
-    return { onDidReceiveWebviewMessage, onDidSendGraph };
+    return {
+        onDidReceiveWebviewMessage: panel.onDidReceiveMessage,
+        onDidPostMessage: panel.onDidPostMessage,
+        deliverWebviewMessage: (m) => panel.deliver(m),
+    };
 }
 
 /**
  * Register all extension commands
  */
 function registerCommands(context: vscode.ExtensionContext): void {
-    // Show call graph (bidirectional - default)
+    const show = (direction: Direction) => () => showCallGraph(direction);
+
     context.subscriptions.push(
-        vscode.commands.registerCommand('callGraph.showGraph', async () => {
-            await showCallGraph(context, 'both');
-        })
-    );
-    
-    // Show dependencies only
-    context.subscriptions.push(
-        vscode.commands.registerCommand('callGraph.showDependencies', async () => {
-            await showCallGraph(context, 'dependencies');
-        })
-    );
-    
-    // Show dependents only
-    context.subscriptions.push(
-        vscode.commands.registerCommand('callGraph.showDependents', async () => {
-            await showCallGraph(context, 'dependents');
-        })
+        vscode.commands.registerCommand('callGraph.showAtCursor', show('both')),
+        vscode.commands.registerCommand('callGraph.showGraph', show('both')),
+        vscode.commands.registerCommand('callGraph.showDependencies', show('callees')),
+        vscode.commands.registerCommand('callGraph.showDependents', show('callers')),
+        // Legacy command for backwards compatibility
+        vscode.commands.registerCommand('call-graph-visualizer.displayCallGraph', show('both')),
     );
     
     // Regenerate index
@@ -111,47 +118,29 @@ function registerCommands(context: vscode.ExtensionContext): void {
             await showPrerequisiteStatus();
         })
     );
-    
-    // Legacy command for backwards compatibility
-    context.subscriptions.push(
-        vscode.commands.registerCommand('call-graph-visualizer.displayCallGraph', async () => {
-            await showCallGraph(context, 'both');
-        })
-    );
 }
 
 /**
- * Preload the call graph index if it exists
+ * Bind to the active editor's folder and read its graph, if there is one
  */
-async function preloadIndex(): Promise<void> {
-    const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-    if (!workspaceFolder) {
+function preloadIndex(): void {
+    const uri = vscode.window.activeTextEditor?.document.uri;
+    const folder = uri && vscode.workspace.getWorkspaceFolder(uri);
+    if (!folder) {
         return;
     }
-    
-    const workspaceRoot = workspaceFolder.uri.fsPath;
-    
-    if (indexExists(workspaceRoot)) {
-        loadIndex(workspaceRoot).catch((error) => {
-            console.warn('[Extension] Failed to preload index:', error.message);
-        });
-    }
+    const session = sessions.bind(folder);
+    session?.load().catch((error) => {
+        console.warn('[Extension] No index to preload:', error.message);
+    });
 }
 
 const SUPPORTED_LANGUAGES = new Set(['rust', 'lean4']);
 
 /**
- * Direction type for graph display
- */
-type GraphDirection = 'both' | 'dependencies' | 'dependents';
-
-/**
  * Show call graph for the function at cursor
  */
-async function showCallGraph(
-    context: vscode.ExtensionContext,
-    direction: GraphDirection
-): Promise<void> {
+async function showCallGraph(direction: Direction): Promise<void> {
     const editor = vscode.window.activeTextEditor;
     if (!editor) {
         vscode.window.showErrorMessage('No active text editor');
@@ -163,84 +152,39 @@ async function showCallGraph(
         return;
     }
     
-    const workspaceFolder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
-    if (!workspaceFolder) {
+    if (editor.document.uri.scheme !== 'file') {
+        vscode.window.showErrorMessage('The call graph works on files on disk');
+        return;
+    }
+    
+    const folder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
+    if (!folder) {
         vscode.window.showErrorMessage('File is not in a workspace folder');
         return;
     }
     
-    const workspaceRoot = workspaceFolder.uri.fsPath;
-    
-    // Check if index exists
-    if (!indexExists(workspaceRoot)) {
-        const action = await vscode.window.showWarningMessage(
-            'Call graph index not found. Would you like to generate it now?',
-            'Generate Index',
-            'Cancel'
-        );
-        
-        if (action === 'Generate Index') {
-            await regenerateIndex();
-        }
+    // Where the cursor was when the command ran, not after the awaits below
+    const position = editor.selection.active;
+    const session = await sessions.forFolder(folder);
+    if (!session) {
         return;
     }
     
-    // Show progress
-    await vscode.window.withProgress({
-        location: vscode.ProgressLocation.Notification,
-        title: 'Loading call graph...',
-        cancellable: false
-    }, async (progress) => {
-        try {
-            // Load index
-            progress.report({ message: 'Loading index...' });
-            const index = await loadIndex(workspaceRoot);
-            
-            progress.report({ message: 'Finding the declaration...' });
-            const node = await findNodeAtCursor(editor, workspaceFolder, index);
-            if (!node) {
-                return;
-            }
-            
-            // Prepare options based on direction
-            const config = vscode.workspace.getConfiguration('callGraph');
-            const depth = config.get<number>('depth', 3);
-            
-            const options: ShowGraphOptions = {
-                depth
-            };
-            
-            // Pass the unique node ID for exact matching
-            options.selectedNodeId = node.id;
-            
-            // Also set the display name for the query UI
-            const functionName = node.display_name;
-            
-            switch (direction) {
-                case 'both':
-                    // Same query in source and sink shows full neighborhood
-                    options.sourceQuery = functionName;
-                    options.sinkQuery = functionName;
-                    break;
-                case 'dependencies':
-                    // Source only shows callees (what it calls)
-                    options.sourceQuery = functionName;
-                    break;
-                case 'dependents':
-                    // Sink only shows callers (who calls it)
-                    options.sinkQuery = functionName;
-                    break;
-            }
-            
-            // Show the graph
-            progress.report({ message: 'Opening graph explorer...' });
-            showCallGraphWebview(context, index, options);
-            
-        } catch (error: any) {
-            vscode.window.showErrorMessage(`Failed to show call graph: ${error.message}`);
-            console.error('[Extension] Error showing call graph:', error);
-        }
-    });
+    let graph: GraphRevision;
+    try {
+        graph = await session.load();
+    } catch (error: any) {
+        await reportUnreadable(session, editor.document.languageId, error);
+        return;
+    }
+
+    const node = await findNodeAtCursor(editor.document, position, graph);
+    if (!node) {
+        return;
+    }
+    
+    const depth = vscode.workspace.getConfiguration('callGraph', folder).get<number>('depth', 3);
+    panel.show({ nodeId: node.id, direction, depth });
 }
 
 /**
@@ -248,13 +192,19 @@ async function showCallGraph(
  * why and returns null; when several fit, asks.
  */
 async function findNodeAtCursor(
-    editor: vscode.TextEditor,
-    workspaceFolder: vscode.WorkspaceFolder,
-    index: CallGraphIndex
+    document: vscode.TextDocument,
+    position: vscode.Position,
+    graph: GraphRevision,
 ): Promise<D3Node | null> {
-    const { document } = editor;
-    const position = editor.selection.active;
-    const graphPath = path.relative(workspaceFolder.uri.fsPath, document.uri.fsPath).split(path.sep).join('/');
+    const { projectRoot, index } = graph;
+    if (!isInside(projectRoot, document.uri.fsPath)) {
+        vscode.window.showWarningMessage(
+            `${path.basename(document.uri.fsPath)} is outside the project root ${projectRoot}. ` +
+            `Set callGraph.projectRoot if the graph's paths are relative to another directory.`
+        );
+        return null;
+    }
+    const graphPath = path.relative(projectRoot, document.uri.fsPath).split(path.sep).join('/');
     const symbol = await enclosingSymbol(document, position);
     const result = resolveCursor(index.locations, { graphPath, line: position.line + 1, symbol });
     
@@ -275,36 +225,96 @@ async function findNodeAtCursor(
         }
         case 'not-indexed': {
             const what = {
-                file: `${graphPath} is not in the graph`,
+                file: `${graphPath} is not in the graph (paths are relative to ${projectRoot}; ` +
+                    `callGraph.projectRoot changes that)`,
                 line: 'No declaration in the graph covers this line',
                 symbol: `\`${symbol?.name}\` is not in the graph`,
             }[result.reason];
-            vscode.window.showWarningMessage(`${what}. ${describeIndex(index)}`);
+            await reportNotIndexed(`${what}. ${describeIndex(graph)}`, document.languageId);
             return null;
         }
     }
 }
 
 /** Which file the graph came from and how old it is, for messages. */
-function describeIndex(index: CallGraphIndex): string {
-    const { indexPath, extractedAt, sourceCommit } = index.metadata;
-    const parts = [`Graph: ${path.basename(indexPath)}`];
-    if (extractedAt) {
-        parts.push(`extracted ${formatTimestamp(extractedAt)}`);
+function describeIndex(graph: GraphRevision): string {
+    const { indexPath, extractedAt, sourceCommit } = graph.index.metadata;
+    return `Graph: ${path.basename(indexPath)}, ` +
+        `extracted ${extractedAt ? formatTimestamp(extractedAt) : 'unknown'}, ` +
+        `commit ${sourceCommit ? sourceCommit.slice(0, 7) : 'unknown'}.`;
+}
+
+/** A warning with a Regenerate button when a generator is configured. */
+async function reportNotIndexed(message: string, languageId: string): Promise<void> {
+    const folder = sessions.session?.folder;
+    if (folder && hasGenerator(folder, languageId)) {
+        const action = await vscode.window.showWarningMessage(message, 'Regenerate');
+        if (action === 'Regenerate') {
+            await regenerateIndex();
+        }
+    } else {
+        vscode.window.showWarningMessage(message);
     }
-    if (sourceCommit) {
-        parts.push(`at ${sourceCommit.slice(0, 7)}`);
+}
+
+/** The index could not be read: missing, or not a graph. */
+async function reportUnreadable(session: GraphSession, languageId: string, error: any): Promise<void> {
+    if (session.indexState !== 'none') {
+        vscode.window.showErrorMessage(`Failed to read the call graph: ${error.message}`);
+        return;
     }
-    return parts.join(', ') + '.';
+    if (languageId === 'rust') {
+        const action = await vscode.window.showWarningMessage(
+            'Call graph index not found. Would you like to generate it now?',
+            'Generate Index',
+            'Cancel'
+        );
+        if (action === 'Generate Index') {
+            await regenerateIndex();
+        }
+    } else {
+        vscode.window.showWarningMessage(
+            `No graph at ${session.indexPath}. Run \`probe-lean extract\` on the Lake project, ` +
+            `or point callGraph.indexPath at an extract.`
+        );
+    }
+}
+
+const FILTER_NAMES: Record<string, string> = {
+    showExecFunctions: 'Exec', showProofFunctions: 'Proof', showSpecFunctions: 'Spec',
+    showAxioms: 'Axiom', showTypes: 'Type', showProjections: 'Projection', showInstances: 'Instance',
+    showRustNodes: 'Rust', showLeanNodes: 'Lean', showLibsignal: 'libsignal', showNonLibsignal: 'non-libsignal',
+    showVerifiedNodes: 'Verified', showFailedNodes: 'Failed', showUnverifiedNodes: 'Unverified',
+    exactStatuses: 'status', excludeNamePatterns: 'name exclusion', excludePathPatterns: 'path exclusion',
+    includeFiles: 'file',
+};
+
+/** The selected node is in the graph but a viewer filter hides it. */
+async function reportFiltered(nodeId: string, filteredBy: string[]): Promise<void> {
+    const name = sessions.graph?.index.graph.nodes.find(n => n.id === nodeId)?.display_name ?? nodeId;
+    if (filteredBy.length === 0) {
+        vscode.window.showWarningMessage(`${name} is hidden by a combination of the viewer's filters.`);
+        return;
+    }
+    const names = filteredBy.map(k => FILTER_NAMES[k] ?? k);
+    const action = await vscode.window.showWarningMessage(
+        `${name} is hidden by the ${names.join(' and ')} filter${names.length > 1 ? 's' : ''}.`,
+        'Show it'
+    );
+    if (action === 'Show it') {
+        panel.relaxFilters(filteredBy);
+    }
 }
 
 /**
- * Regenerate the call graph index
+ * Regenerate the call graph index for the session's folder (or the active
+ * editor's)
  */
 async function regenerateIndex(): Promise<void> {
-    const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-    if (!workspaceFolder) {
-        vscode.window.showErrorMessage('No workspace folder open');
+    const uri = vscode.window.activeTextEditor?.document.uri;
+    const folder = sessions.session?.folder ?? (uri && vscode.workspace.getWorkspaceFolder(uri));
+    if (!folder) {
+        vscode.window.showErrorMessage('Open a file in the project to regenerate its call graph');
         return;
     }
     
@@ -337,8 +347,8 @@ async function regenerateIndex(): Promise<void> {
         }
     }
     
-    // Run the pipeline
-    await runPipeline();
+    // Run the pipeline; the session's watcher picks up the new file
+    await runPipeline(folder);
 }
 
 /**

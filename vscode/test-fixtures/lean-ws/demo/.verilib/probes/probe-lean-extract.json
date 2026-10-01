@@ -1,0 +1,41 @@
+{
+  "schema": "probe-lean/extract",
+  "schema-version": "3.0",
+  "timestamp": "2026-09-30T11:36:52Z",
+  "tool": { "name": "probe-lean", "version": "0.14.0", "command": "extract" },
+  "source": {
+    "repo": "https://example.invalid/demo.git",
+    "commit": "0123456789abcdef0123456789abcdef01234567",
+    "language": "lean",
+    "package": "Demo"
+  },
+  "data": {
+    "probe:Demo.succ": {
+      "display-name": "succ",
+      "kind": "def",
+      "language": "lean",
+      "code-module": "Demo.Basic",
+      "code-path": "Demo/Basic.lean",
+      "code-text": { "lines-start": 4, "lines-end": 5 },
+      "dependencies": []
+    },
+    "probe:Demo.succ_pos": {
+      "display-name": "succ_pos",
+      "kind": "theorem",
+      "language": "lean",
+      "code-module": "Demo.Basic",
+      "code-path": "Demo/Basic.lean",
+      "code-text": { "lines-start": 7, "lines-end": 8 },
+      "dependencies": ["probe:Demo.succ"]
+    },
+    "probe:Demo.twice": {
+      "display-name": "twice",
+      "kind": "def",
+      "language": "lean",
+      "code-module": "Demo.Basic",
+      "code-path": "Demo/Basic.lean",
+      "code-text": { "lines-start": 10, "lines-end": 10 },
+      "dependencies": ["probe:Demo.succ"]
+    }
+  }
+}

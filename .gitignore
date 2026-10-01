@@ -16,6 +16,7 @@ Cargo.lock
 *.json
 !examples/**/*.json
 !web/public/**/*.json
+!vscode/test-fixtures/**/*.json
 
 # But keep CSV tracking files
 !data/csv/*.csv

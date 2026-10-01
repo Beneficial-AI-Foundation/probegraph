@@ -1,7 +1,7 @@
 {
   "name": "call-graph-visualizer",
   "displayName": "Call Graph Visualizer",
-  "description": "Interactive call graph explorer for Verus/Rust projects. Embeds the full probegraph web app with depth slider, Source/Sink queries, and verification status visualization.",
+  "description": "Interactive call graph explorer for Rust, Verus and Lean projects. Embeds the full probegraph web app with depth slider, Source/Sink queries, and verification status visualization.",
   "version": "0.1.0",
   "publisher": "beneficial-ai-foundation",
   "repository": {
@@ -28,8 +28,34 @@
     "onLanguage:lean4"
   ],
   "main": "./dist/extension.js",
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "Graph files are read and shown in any workspace. Regenerating the index runs the probegraph pipeline, which needs a trusted workspace.",
+      "restrictedConfigurations": [
+        "callGraph.defaultScipCallgraphPath"
+      ]
+    }
+  },
   "contributes": {
+    "languages": [
+      {
+        "id": "lean4",
+        "aliases": [
+          "Lean 4"
+        ],
+        "extensions": [
+          ".lean"
+        ]
+      }
+    ],
     "commands": [
+      {
+        "command": "callGraph.showAtCursor",
+        "title": "Show at Cursor",
+        "category": "Call Graph",
+        "icon": "$(type-hierarchy)"
+      },
       {
         "command": "callGraph.showGraph",
         "title": "Show Call Graph (Bidirectional)",
@@ -65,33 +91,34 @@
         "title": "Display Call Graph (Legacy)"
       }
     ],
+    "keybindings": [
+      {
+        "command": "callGraph.showAtCursor",
+        "key": "ctrl+alt+g",
+        "mac": "cmd+alt+g",
+        "when": "editorTextFocus && (editorLangId == rust || editorLangId == lean4)"
+      }
+    ],
     "menus": {
       "editor/context": [
         {
-          "submenu": "callGraph.submenu",
+          "command": "callGraph.showAtCursor",
           "when": "editorLangId == rust || editorLangId == lean4",
           "group": "navigation@1"
         }
       ],
-      "callGraph.submenu": [
+      "editor/title": [
         {
-          "command": "callGraph.showGraph",
-          "group": "1_graph@1"
-        },
-        {
-          "command": "callGraph.showDependencies",
-          "group": "1_graph@2"
-        },
-        {
-          "command": "callGraph.showDependents",
-          "group": "1_graph@3"
-        },
-        {
-          "command": "callGraph.regenerateIndex",
-          "group": "2_manage@1"
+          "command": "callGraph.showAtCursor",
+          "when": "editorLangId == rust || editorLangId == lean4",
+          "group": "navigation"
         }
       ],
       "commandPalette": [
+        {
+          "command": "callGraph.showAtCursor",
+          "when": "editorLangId == rust || editorLangId == lean4"
+        },
         {
           "command": "callGraph.showGraph",
           "when": "editorLangId == rust || editorLangId == lean4"
@@ -115,12 +142,6 @@
         }
       ]
     },
-    "submenus": [
-      {
-        "id": "callGraph.submenu",
-        "label": "Call Graph"
-      }
-    ],
     "configuration": {
       "title": "Call Graph Visualizer",
       "properties": {
@@ -134,7 +155,12 @@
         "callGraph.indexPath": {
           "type": "string",
           "default": ".vscode/call_graph_index.json",
-          "description": "Path to the graph file, relative to the workspace root: a pipeline index or a probe extract (for example .verilib/probes/probe-lean-extract.json)"
+          "description": "Path to the graph file, relative to the workspace folder and inside it: a pipeline index or a probe extract (for example .verilib/probes/probe-lean-extract.json)"
+        },
+        "callGraph.projectRoot": {
+          "type": "string",
+          "default": "",
+          "description": "Directory the graph's paths are relative to, relative to the workspace folder. Empty: the index's project root if it is inside the folder, else the Lake root containing the index file, else the folder."
         },
         "callGraph.defaultScipCallgraphPath": {
           "type": "string",

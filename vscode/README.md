@@ -73,17 +73,27 @@ and point `callGraph.indexPath` at the extract instead:
 { "callGraph.indexPath": ".verilib/probes/probe-lean-extract.json" }
 ```
 
-Paths in the graph must be relative to the workspace folder.
+The graph file must be inside the workspace folder. Its paths are read
+relative to the project root: `callGraph.projectRoot` if set, else the
+index's own project root when that is a directory inside the folder, else
+(for a Lean graph) the Lake project containing the index file, else the
+folder itself. The status bar shows what is loaded and when it was
+extracted.
 
 ### 5. Explore Call Graphs
 
 1. Open a Rust or Lean file
 2. Put the cursor in a declaration
-3. Right-click → **Call Graph** → **Show Call Graph (Bidirectional)**
+3. Press `Ctrl+Alt+G` (`Cmd+Alt+G` on macOS), use the graph icon in the
+   editor title, or right-click → **Show at Cursor**. The graph opens beside
+   the code and stays there; **Open in Editor** on a node opens the file in
+   the editor's group.
 
 When the declaration is not in the graph (new, renamed, or outside the
-extracted files), a warning says so and names the graph file and when it was
-extracted, rather than showing something nearby.
+extracted files), a warning says so and names the graph file, when it was
+extracted and at which commit, rather than showing something nearby. When it
+is in the graph but a viewer filter hides it, the warning names the filter
+and offers to turn it off.
 4. Use the full web app UI:
    - Adjust depth with the slider
    - Enter Source/Sink queries to filter
@@ -96,10 +106,11 @@ extracted, rather than showing something nearby.
 
 | Command | Description |
 |---------|-------------|
-| `Call Graph: Show Call Graph (Bidirectional)` | Open graph explorer with full neighborhood |
+| `Call Graph: Show at Cursor` (`Ctrl+Alt+G`) | Open graph explorer on the declaration at the cursor, callers and callees |
+| `Call Graph: Show Call Graph (Bidirectional)` | The same, kept for older keybindings |
 | `Call Graph: Show Dependencies` | Open graph explorer showing callees |
 | `Call Graph: Show Dependents` | Open graph explorer showing callers |
-| `Call Graph: Regenerate Index` | Run the probegraph pipeline |
+| `Call Graph: Regenerate Index` | Run the probegraph pipeline (trusted workspaces only; the index is replaced only when the run succeeds) |
 | `Call Graph: Cancel Pipeline` | Stop the running pipeline |
 | `Call Graph: Check Prerequisites` | Verify all required tools are installed |
 
@@ -139,8 +150,9 @@ The embedded web app provides:
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `callGraph.depth` | `3` | Initial depth for call graph traversal |
-| `callGraph.indexPath` | `.vscode/call_graph_index.json` | Path to the graph: a pipeline index or a probe extract |
-| `callGraph.defaultScipCallgraphPath` | `""` | Path to probegraph repository |
+| `callGraph.indexPath` | `.vscode/call_graph_index.json` | Path to the graph, inside the workspace folder: a pipeline index or a probe extract |
+| `callGraph.projectRoot` | `""` | Directory the graph's paths are relative to, if not the index's own root, the Lake root or the folder |
+| `callGraph.defaultScipCallgraphPath` | `""` | Path to probegraph repository (its `pipeline` binary is found through `CARGO_TARGET_DIR` and `cargo metadata`) |
 | `callGraph.autoRegenerateOnSave` | `false` | Auto-regenerate on Rust file save |
 | `callGraph.debounceDelayMs` | `3000` | Delay before auto-regeneration (ms) |
 | `callGraph.skipVerification` | `false` | Skip Verus verification (faster) |
@@ -265,12 +277,17 @@ npm run vsix    # call-graph-visualizer-<version>.vsix
 
 ```
 src/
-├── extension.ts           # Entry point, command registration
-├── indexLoader.ts         # Load and cache D3 graph index
-├── webviewLoader.ts       # Embed probegraph web app
+├── extension.ts           # Entry point, commands, messages to the user
+├── session.ts             # One folder, one graph file: revisions, watcher, status bar
+├── indexLoader.ts         # Read and validate the graph; index path and project root rules
+├── cursorSymbol.ts        # The declaration at the cursor, from document symbols
+├── webviewLoader.ts       # The viewer in a panel; host side of the selection protocol
 ├── pipelineRunner.ts      # Run probegraph pipeline
 └── test/
-    └── indexLoader.test.ts
+    ├── unit/              # Plain mocha
+    ├── workspace/         # In VS Code, on test-fixtures/quicksort
+    ├── lean/              # In VS Code, on test-fixtures/lean-ws
+    └── multiroot/         # In VS Code, on two copies of quicksort
 
 scripts/build-webview.mjs  # Builds ../web and copies it to webview/
 webview/                   # Built viewer (not tracked)

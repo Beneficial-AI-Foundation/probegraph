@@ -2,17 +2,17 @@
  * PipelineRunner - Run probegraph pipeline to generate/update the index
  * 
  * This module handles:
- * - Running the pipeline command in the background
+ * - Running the pipeline command in the background, without a shell
+ * - Writing to a temporary file and renaming it over the index on success
  * - Showing progress in the status bar
  * - Debouncing save events
- * - Reloading the index after completion
  */
 
 import * as vscode from 'vscode';
 import * as cp from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
-import { getIndexPath, loadIndex, clearCache } from './indexLoader';
+import { resolveIndexPath } from './indexLoader';
 
 /**
  * Pipeline configuration options
@@ -71,25 +71,30 @@ export function initializePipelineRunner(context: vscode.ExtensionContext): void
 function setupFileWatcher(context: vscode.ExtensionContext): void {
     const watcher = vscode.workspace.createFileSystemWatcher('**/*.rs');
     
-    watcher.onDidChange(() => triggerDebounced());
-    watcher.onDidCreate(() => triggerDebounced());
-    watcher.onDidDelete(() => triggerDebounced());
+    watcher.onDidChange((uri) => triggerDebounced(uri));
+    watcher.onDidCreate((uri) => triggerDebounced(uri));
+    watcher.onDidDelete((uri) => triggerDebounced(uri));
     
     context.subscriptions.push(watcher);
     
     // Also watch for document saves (more reliable)
     vscode.workspace.onDidSaveTextDocument((document) => {
         if (document.languageId === 'rust') {
-            triggerDebounced();
+            triggerDebounced(document.uri);
         }
     }, null, context.subscriptions);
 }
 
 /**
- * Trigger pipeline regeneration with debouncing
+ * Trigger pipeline regeneration with debouncing, for the folder of the file
+ * that changed
  */
-function triggerDebounced(): void {
-    const config = vscode.workspace.getConfiguration('callGraph');
+function triggerDebounced(uri: vscode.Uri): void {
+    const folder = vscode.workspace.getWorkspaceFolder(uri);
+    if (!folder) {
+        return;
+    }
+    const config = vscode.workspace.getConfiguration('callGraph', folder);
     const debounceMs = config.get<number>('debounceDelayMs', 3000);
     
     if (debounceTimer) {
@@ -101,23 +106,64 @@ function triggerDebounced(): void {
         
         // Only run if not already running
         if (currentStatus !== 'running') {
-            runPipeline();
+            runPipeline(folder);
         }
     }, debounceMs);
 }
 
 /**
- * Run the probegraph pipeline
+ * The pipeline binary built in a probegraph checkout: under CARGO_TARGET_DIR
+ * if set, else under <repo>/target, else where `cargo metadata` says the
+ * target directory is (a `.cargo/config.toml` can move it). Undefined when
+ * none is built.
  */
-export async function runPipeline(options?: PipelineOptions): Promise<void> {
-    const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-    if (!workspaceFolder) {
-        vscode.window.showErrorMessage('No workspace folder open');
+async function findPipelineBinary(probegraphPath: string): Promise<string | undefined> {
+    const binaryIn = (targetDir: string) => {
+        const binary = path.join(targetDir, 'release', 'pipeline');
+        return fs.existsSync(binary) ? binary : undefined;
+    };
+    if (process.env.CARGO_TARGET_DIR) {
+        return binaryIn(path.resolve(probegraphPath, process.env.CARGO_TARGET_DIR));
+    }
+    const conventional = binaryIn(path.join(probegraphPath, 'target'));
+    if (conventional) {
+        return conventional;
+    }
+    try {
+        const metadata = JSON.parse(await executeCommand(
+            'cargo', ['metadata', '--format-version', '1', '--no-deps'], probegraphPath
+        ));
+        if (typeof metadata.target_directory === 'string') {
+            return binaryIn(metadata.target_directory);
+        }
+    } catch {
+        // No cargo, or not a cargo workspace
+    }
+    return undefined;
+}
+
+/**
+ * Run the probegraph pipeline for a workspace folder, replacing its index
+ * only if the run succeeds
+ */
+export async function runPipeline(folder: vscode.WorkspaceFolder, options?: PipelineOptions): Promise<void> {
+    if (!vscode.workspace.isTrusted) {
+        vscode.window.showErrorMessage(
+            'Regenerating the index runs the probegraph pipeline, which needs a trusted workspace.'
+        );
         return;
     }
-    
-    const workspaceRoot = workspaceFolder.uri.fsPath;
-    const indexPath = getIndexPath(workspaceRoot);
+    const workspaceRoot = folder.uri.fsPath;
+    let indexPath: string;
+    try {
+        indexPath = resolveIndexPath(folder);
+    } catch (error: any) {
+        vscode.window.showErrorMessage(error.message);
+        return;
+    }
+    // The pipeline writes here; the file is renamed over the index at the end,
+    // so a watcher never sees a half-written index
+    const tempPath = path.join(path.dirname(indexPath), `.${path.basename(indexPath)}.${process.pid}.tmp`);
     
     // Ensure output directory exists
     const indexDir = path.dirname(indexPath);
@@ -126,7 +172,7 @@ export async function runPipeline(options?: PipelineOptions): Promise<void> {
     }
     
     // Get configuration
-    const config = vscode.workspace.getConfiguration('callGraph');
+    const config = vscode.workspace.getConfiguration('callGraph', folder);
     const scipCallgraphPath = config.get<string>('defaultScipCallgraphPath', '');
     const skipVerification = options?.skipVerification ?? config.get<boolean>('skipVerification', false);
     const skipSimilarLemmas = options?.skipSimilarLemmas ?? config.get<boolean>('skipSimilarLemmas', true);
@@ -137,13 +183,12 @@ export async function runPipeline(options?: PipelineOptions): Promise<void> {
     let cwd: string = workspaceRoot;
     
     if (scipCallgraphPath && fs.existsSync(scipCallgraphPath)) {
-        // Check for pre-built release binary first
-        const releaseBinary = path.join(scipCallgraphPath, 'target', 'release', 'pipeline');
+        const releaseBinary = await findPipelineBinary(scipCallgraphPath);
         
-        if (fs.existsSync(releaseBinary)) {
+        if (releaseBinary) {
             // Use the pre-built binary
             command = releaseBinary;
-            args = [workspaceRoot, '-o', indexPath];
+            args = [workspaceRoot, '-o', tempPath];
             cwd = scipCallgraphPath; // Run from probegraph dir for script paths
         } else {
             // Use cargo run from probegraph directory
@@ -151,14 +196,14 @@ export async function runPipeline(options?: PipelineOptions): Promise<void> {
             args = [
                 'run', '--release', '-p', 'metrics-cli', '--bin', 'pipeline',
                 '--',
-                workspaceRoot, '-o', indexPath
+                workspaceRoot, '-o', tempPath
             ];
             cwd = scipCallgraphPath;
         }
     } else {
         // Try to find pipeline in PATH
         command = 'pipeline';
-        args = [workspaceRoot, '-o', indexPath];
+        args = [workspaceRoot, '-o', tempPath];
         
         // Show a helpful message if not configured
         vscode.window.showWarningMessage(
@@ -198,6 +243,7 @@ export async function runPipeline(options?: PipelineOptions): Promise<void> {
     outputChannel.appendLine(`Running: ${command} ${args.join(' ')}`);
     outputChannel.appendLine(`Working directory: ${cwd}`);
     outputChannel.appendLine('---');
+    console.log(`[Pipeline] ${command} ${JSON.stringify(args)} in ${cwd}`);
     
     return new Promise((resolve) => {
         const startTime = Date.now();
@@ -218,25 +264,28 @@ export async function runPipeline(options?: PipelineOptions): Promise<void> {
         currentProcess.on('close', async (code) => {
             const duration = ((Date.now() - startTime) / 1000).toFixed(1);
             currentProcess = null;
+            console.log(`[Pipeline] exited with ${code} after ${duration}s`);
             
-            if (code === 0) {
-                currentStatus = 'success';
-                outputChannel.appendLine('---');
-                outputChannel.appendLine(`✓ Pipeline completed successfully in ${duration}s`);
-                outputChannel.appendLine(`Output: ${indexPath}`);
-                
-                // Reload the index
+            if (code === 0 && fs.existsSync(tempPath)) {
                 try {
-                    clearCache();
-                    await loadIndex(workspaceRoot, true);
+                    await fs.promises.rename(tempPath, indexPath);
+                    currentStatus = 'success';
+                    outputChannel.appendLine('---');
+                    outputChannel.appendLine(`✓ Pipeline completed successfully in ${duration}s`);
+                    outputChannel.appendLine(`Output: ${indexPath}`);
                     vscode.window.showInformationMessage(`Call graph index updated (${duration}s)`);
                 } catch (error: any) {
-                    console.error('Failed to reload index:', error);
+                    currentStatus = 'error';
+                    outputChannel.appendLine(`✗ Could not replace ${indexPath}: ${error.message}`);
+                    vscode.window.showErrorMessage(`Could not replace the call graph index. See output for details.`);
                 }
             } else {
                 currentStatus = 'error';
+                fs.promises.rm(tempPath, { force: true }).catch(() => undefined);
                 outputChannel.appendLine('---');
-                outputChannel.appendLine(`✗ Pipeline failed with exit code ${code}`);
+                outputChannel.appendLine(code === 0
+                    ? `✗ Pipeline exited without writing ${tempPath}`
+                    : `✗ Pipeline failed with exit code ${code}`);
                 vscode.window.showErrorMessage(`Call graph pipeline failed. See output for details.`);
             }
             
@@ -247,6 +296,7 @@ export async function runPipeline(options?: PipelineOptions): Promise<void> {
         currentProcess.on('error', (error) => {
             currentStatus = 'error';
             currentProcess = null;
+            console.error(`[Pipeline] failed to start: ${error.message}`);
             outputChannel.appendLine('---');
             outputChannel.appendLine(`✗ Failed to start pipeline: ${error.message}`);
             
@@ -285,6 +335,14 @@ export function cancelPipeline(): void {
  */
 export function getPipelineStatus(): PipelineStatus {
     return currentStatus;
+}
+
+/** True when a generator is configured for the folder's language. */
+export function hasGenerator(folder: vscode.WorkspaceFolder, languageId: string): boolean {
+    if (languageId !== 'rust') {
+        return false;
+    }
+    return !!vscode.workspace.getConfiguration('callGraph', folder).get<string>('defaultScipCallgraphPath');
 }
 
 /**
@@ -366,9 +424,9 @@ export async function checkPrerequisites(): Promise<{ ok: boolean; missing: stri
 /**
  * Execute a command and return its output
  */
-function executeCommand(command: string, args: string[]): Promise<string> {
+function executeCommand(command: string, args: string[], cwd?: string): Promise<string> {
     return new Promise((resolve, reject) => {
-        cp.execFile(command, args, (error, stdout) => {
+        cp.execFile(command, args, { cwd, maxBuffer: 16 * 1024 * 1024 }, (error, stdout) => {
             if (error) {
                 reject(error);
             } else {
@@ -377,4 +435,3 @@ function executeCommand(command: string, args: string[]): Promise<string> {
         });
     });
 }
-
