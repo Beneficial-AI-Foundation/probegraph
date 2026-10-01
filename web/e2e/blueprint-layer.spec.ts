@@ -211,6 +211,8 @@ test('double-clicking a blueprint entry opens its bound declarations', async ({ 
   const shownIds = await nodes(page).evaluateAll(els =>
     els.map(el => (el as unknown as { __data__: { id: string } }).__data__.id));
   expect(shownIds).toEqual(expect.arrayContaining(['probe:collatzStep', 'probe:collatzTerminatesAtOne']));
+  // No single target is selected, and the hovered blueprint entry is gone
+  await expect(page.locator('#node-info')).toContainText('Click or hover over a node');
 
   await page.goBack();
   await expect(page.locator('#layer-blueprint')).toHaveClass(/active/);

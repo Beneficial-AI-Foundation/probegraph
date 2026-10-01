@@ -2117,6 +2117,8 @@ function showLayer(layer: Layer): void {
   crateDependencyMap = new Map();
   crateReverseDependencyMap = new Map();
   state.selectedNode = null;
+  // The hovered circle is removed without firing its mouseleave
+  state.hoveredNode = null;
   selectedSourceCrate = '';
   selectedTargetCrate = '';
 
