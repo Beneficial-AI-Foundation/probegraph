@@ -128,7 +128,8 @@ graph is Verus when a node has `language: "verus"`, Lean when one has
 fields at all is classified by its `kind` values. Graphs whose code nodes are
 tagged `language: "rust"` are therefore neither: on their own they get the
 Lean-style Definitions / Theorems boxes and no Requires / Ensures, and merged
-with Lean they count as Lean.
+with Lean they count as Lean
+([#68](https://github.com/Beneficial-AI-Foundation/probegraph/issues/68)).
 
 Verus graphs get
 Exec / Proof / Spec, with Spec **off by default**. Lean graphs get

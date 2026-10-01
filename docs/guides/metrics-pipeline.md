@@ -148,7 +148,8 @@ missing where.
 - Step 5 tries a function's bare name before its module path, and keeps one
   atom per name. Two tracked functions with the same name in different
   modules (two `helper`s) get the same atom's metrics, and the match rate does
-  not show it. Proof-difficulty rows are keyed by function name alone.
+  not show it. Proof-difficulty rows are keyed by function name alone
+  ([#69](https://github.com/Beneficial-AI-Foundation/probegraph/issues/69)).
 
 ## Other binaries
 
