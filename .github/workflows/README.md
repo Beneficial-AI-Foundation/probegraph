@@ -1,81 +1,46 @@
 # Workflows
 
-CI/CD workflows for probegraph. External projects wanting a call graph should
-start from the [CI integration guide](../../docs/guides/ci-integration.md)
-instead of this file.
+CI and release workflows for probegraph. To add a call graph to another repo,
+use the [CI integration guide](../../docs/guides/ci-integration.md), which also
+lists the reusable workflows' inputs.
 
-## Reusable workflows (called from other repos via `workflow_call`)
+## Reusable workflows
 
-### `generate-callgraph.yml`
+Called from other repos via `workflow_call`:
 
-Generates an enriched call graph for a Rust/Verus project and deploys the web
-viewer to GitHub Pages. Installs Verus (or rust-analyzer with
-`use_rust_analyzer: true`), produces the SCIP index, runs verification and
-similar-lemma enrichment (both skippable), builds the viewer, deploys
-standalone or to a subpath. All inputs optional; `github_url` is auto-detected.
-Full input table in the CI integration guide.
-
-### `generate-lean-callgraph.yml`
-
-Same idea for Lean 4 projects, via `probe-lean pipeline`: `lake build` (with
-`lake exe cache get` first unless `use_mathlib_cache: false`), atom extraction,
-sorry detection, viewer build, Pages deploy. Aligns probe-lean's toolchain to
-the target project's `lean-toolchain`. `pre_built_atoms` skips build and
-extraction when the atoms JSON is already available as an artifact.
-
-### `detect-unused-specs-with-release.yml`
-
-Runs unused specs/proofs analysis on the calling repo using a prebuilt
-`detect_unused_specs` binary from this repo's releases. Inputs: `project_path`
-(default `.`) and `scip_callgraph_version` (a release tag, default `latest`;
-the input name predates the repo rename and is kept for compatibility).
+- `generate-callgraph.yml` builds the graph for a Rust or Verus project and
+  deploys the viewer to GitHub Pages.
+- `generate-lean-callgraph.yml` does the same for Lean 4 projects via
+  `probe-lean pipeline`.
+- `detect-unused-specs-with-release.yml` runs `detect_unused_specs` from a
+  probegraph release. It is currently broken
+  ([#62](https://github.com/Beneficial-AI-Foundation/probegraph/issues/62)).
 
 ## Internal workflows
 
-### `build.yml` — CI
+`build.yml` runs on pushes and pull requests to `main`, with three jobs:
+`web-tests` (type check and unit tests in `web/`), `web-e2e` (Playwright) and
+`build` (clippy, build and test the Rust workspace on Linux, Windows and macOS).
+`cargo fmt --check` runs with `continue-on-error`, and the binary smoke tests
+at the end of `build` cannot fail (#62).
 
-On push/PR to `main`. Two jobs:
+`deploy-pages.yml` publishes this repo's demo viewer on pushes to `main` that
+touch `web/**`, or by manual dispatch with optional graph URL and source-link
+overrides.
 
-- **web-tests**: Node 20, `npm ci`, `npm run type-check`, `npm run test:run`
-  in `web/`.
-- **build** (Linux, Windows, macOS x86_64): clippy, `cargo build --workspace`,
-  `cargo test --workspace`, then release-builds six key binaries and smoke-tests
-  them. `cargo fmt --check` runs with `continue-on-error`, so formatting
-  failures do not fail CI. Uses cargo caching.
+`release.yml` runs on a pushed tag matching `v*.*.*`, or by manual dispatch
+with a `version` input. It builds the binaries listed in its `Build binaries`
+step for Linux x86_64, macOS x86_64 and aarch64, and Windows x86_64, and
+attaches one archive per target to a GitHub Release. The archives include
+`README.md`; the `LICENSE*` copy matches nothing because the repo has no
+LICENSE file (#62). Tags are the source of
+truth for versions; the workspace `Cargo.toml` version is not kept in sync.
 
-### `release.yml` — release distribution
+To release, push a tag (`git tag v5.1.0 && git push origin v5.1.0`) or run
+the Release workflow from the Actions tab.
 
-On tags `v*.*.*` or manual dispatch (with a `version` input). For each of four
-targets (Linux x86_64, macOS x86_64 and aarch64, Windows x86_64), builds 12
-binaries — detect_unused_specs, generate_index_scip_json,
-generate_call_graph_dot, generate_function_subgraph_dot,
-generate_file_subgraph_dot, generate_files_subgraph_dot, write_atoms,
-run_full_pipeline, compute_metrics, compute_proof_metrics,
-enrich_csv_with_metrics, enrich_csv_complete — and packages them with README
-and METRICS_PIPELINE.md as `probegraph-<version>-<target>.tar.gz` (`.zip` on
-Windows), then creates a GitHub Release with the archives attached. No build
-cache, for reproducibility.
+## Adding a binary to releases
 
-### `deploy-pages.yml` — publish the demo viewer
-
-On push to `main` touching `web/**` (or manual dispatch). Runs the web tests,
-builds the viewer with `VITE_GRAPH_JSON_URL` / `VITE_GITHUB_URL` /
-`VITE_GITHUB_PATH_PREFIX` (dispatch inputs override the defaults), and deploys
-to this repo's GitHub Pages.
-
-## Making a release
-
-```bash
-./scripts/release.sh v5.1.0
-```
-
-or manually: `git tag v5.1.0 && git push origin v5.1.0`, or trigger the Release
-workflow from the Actions UI with the version tag. Release notes and archives
-are generated automatically. Note the workspace `Cargo.toml` version is not
-kept in sync with release tags; tags are the source of truth for versions.
-
-## Adding a new binary to releases
-
-Add the `[[bin]]` entry in `crates/metrics-cli/Cargo.toml`, then add the
-`--bin` flag and the archive `cp` line in `release.yml` (and in `build.yml` if
-it should be smoke-tested in CI).
+Add the `[[bin]]` entry in `crates/metrics-cli/Cargo.toml`, then add a
+`--bin` flag and the copy lines for both archive steps (Unix and Windows) in
+`release.yml`.

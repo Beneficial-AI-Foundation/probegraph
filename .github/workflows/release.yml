@@ -93,7 +93,7 @@ jobs:
           cp target/${{ matrix.target }}/release/enrich_csv_complete "${ARCHIVE_NAME}/"
           
           cp README.md "${ARCHIVE_NAME}/" 2>/dev/null || true
-          cp METRICS_PIPELINE.md "${ARCHIVE_NAME}/" 2>/dev/null || true
+          cp docs/guides/metrics-pipeline.md "${ARCHIVE_NAME}/" 2>/dev/null || true
           cp LICENSE* "${ARCHIVE_NAME}/" 2>/dev/null || true
           
           tar -czf "${ARCHIVE_NAME}.tar.gz" "${ARCHIVE_NAME}"
@@ -128,7 +128,7 @@ jobs:
           Copy-Item "target/${{ matrix.target }}/release/enrich_csv_complete.exe" "$ARCHIVE_NAME/"
           
           if (Test-Path "README.md") { Copy-Item "README.md" "$ARCHIVE_NAME/" }
-          if (Test-Path "METRICS_PIPELINE.md") { Copy-Item "METRICS_PIPELINE.md" "$ARCHIVE_NAME/" }
+          if (Test-Path "docs/guides/metrics-pipeline.md") { Copy-Item "docs/guides/metrics-pipeline.md" "$ARCHIVE_NAME/" }
           if (Test-Path "LICENSE") { Copy-Item "LICENSE*" "$ARCHIVE_NAME/" }
           
           Compress-Archive -Path $ARCHIVE_NAME -DestinationPath "$ARCHIVE_NAME.zip"
@@ -241,8 +241,7 @@ jobs:
           ## Documentation
           
           - [README](https://github.com/Beneficial-AI-Foundation/probegraph/blob/main/README.md)
-          - [Metrics Pipeline Guide](https://github.com/Beneficial-AI-Foundation/probegraph/blob/main/METRICS_PIPELINE.md)
-          - [Correlation Analysis Findings](https://github.com/Beneficial-AI-Foundation/probegraph/blob/main/docs/CORRELATION_ANALYSIS_FINDINGS.md)
+          - [Metrics Pipeline Guide](https://github.com/Beneficial-AI-Foundation/probegraph/blob/main/docs/guides/metrics-pipeline.md)
           
           ## Requirements
           
