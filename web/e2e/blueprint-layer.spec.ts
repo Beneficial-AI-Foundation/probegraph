@@ -56,6 +56,22 @@ test('opens on the blueprint layer and switches to code and back', async ({ page
   await expect(page.locator('#view-crate-map')).toHaveText(/Chapter Map/);
 });
 
+test('the double-click hint shows only on the blueprint Call Graph', async ({ page }) => {
+  const hint = page.locator('#instructions-drilldown');
+  await loadFixture(page);
+  await expect(nodes(page)).toHaveCount(9, { timeout: 15000 });
+  await expect(hint).not.toHaveCSS('display', 'none');
+
+  await page.locator('#view-crate-map').click();
+  await expect(hint).toHaveCSS('display', 'none');
+  await page.locator('#view-callgraph').click();
+  await expect(hint).not.toHaveCSS('display', 'none');
+
+  await page.locator('#layer-code').click();
+  await expect(page.locator('#layer-code')).toHaveClass(/active/);
+  await expect(hint).toHaveCSS('display', 'none');
+});
+
 test('the Chapter Map legend names chapters', async ({ page }) => {
   await loadFixture(page);
   await expect(nodes(page)).toHaveCount(9, { timeout: 15000 });

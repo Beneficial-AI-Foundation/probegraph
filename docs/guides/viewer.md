@@ -184,8 +184,10 @@ Cross-layer links in the panel:
 
 - each bound declaration of a blueprint entry links to that declaration on
   the code layer;
-- a Lean declaration that belongs to the blueprint links back to its entry.
-  When several entries bind it (label collisions), all of them are listed.
+- a Lean declaration that belongs to the blueprint links back to every entry
+  that binds it or whose label its `blueprint-label` names. Under label
+  collisions these can differ, so a listed entry may own the label without
+  binding the declaration.
 
 Following a link or double-clicking opens the target with its immediate
 neighbours, turns its Declaration Kind box back on if it was off, and unhides
