@@ -12,7 +12,7 @@ import { CrateMapVisualization, buildCrateGraph } from './crate-map';
 import { HierarchyMapVisualization } from './hierarchy-map';
 import { computeDerivedStatuses } from './status';
 import { parseAndNormalizeGraph, pickSourceConfig } from './graph-loader';
-import { editorSelectionIntent, filtersHiding, type EditorSelection, type SelectStatus } from './editor-selection';
+import { editorSelectionIntent, filtersHiding, relaxations, type EditorSelection, type SelectStatus } from './editor-selection';
 import { escapeHtml } from './html';
 import { StatusGroup, exactStatusFilter, groupCheckState, withGroupChecked } from './status-filter';
 import {
@@ -3835,6 +3835,15 @@ function handleVSCodeMessage(event: MessageEvent): void {
     case 'selectNode':
       if (message.revision === vscodeRevision && message.selection) {
         replySelectResult(message.revision, message.requestId, message.selection);
+      }
+      break;
+
+    case 'relaxFilters':
+      // The extension undoing the filters a selectResult named
+      if (message.revision === vscodeRevision && Array.isArray(message.keys)) {
+        Object.assign(state.filters, relaxations(message.keys));
+        syncFilterUI();
+        applyFiltersAndUpdate();
       }
       break;
 

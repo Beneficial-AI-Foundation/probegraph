@@ -85,6 +85,7 @@ type Selection = { nodeId: string; direction: 'both' | 'callees' | 'callers' | '
 // extension → webview
 { type: 'loadGraph', revision: 1, graph, selection?: Selection, requestId?: number }
 { type: 'selectNode', revision: 1, requestId: 2, selection: Selection }
+{ type: 'relaxFilters', revision: 1, keys: ['showSpecFunctions'] }
 
 // webview → extension
 { type: 'graphLoaded', revision: 1, nodes: 2907 }
@@ -105,6 +106,19 @@ user set them. If one still hides the node, the status is `filtered` and
 `showSpecFunctions` or `excludeNamePatterns`); it
 is empty when no single filter is responsible. `missing` means the ID is not
 in the graph.
+
+**`relaxFilters`** sets the named `FilterOptions` keys to the value that lets
+everything through (a kind shown, a pattern cleared), for the loaded revision
+only. The extension sends it when the user answers a `filtered` result with
+"Show it".
+
+The extension in `vscode/` keeps to these rules on its side: it sends
+`loadGraph` only when the webview has not confirmed the current revision,
+holds at most one selection until `graphLoaded` arrives (a newer selection
+replaces it), does not resend a selection equal to the last one it sent for
+that revision, and drops `selectResult` for another revision or a superseded
+request. When its graph file changes, it resends `loadGraph` with the latest
+selection. A new panel starts again from `ready`.
 
 ### Webview → extension
 

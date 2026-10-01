@@ -50,6 +50,21 @@ const NODE_FILTER_RELAXATIONS: { [K in keyof FilterOptions]?: FilterOptions[K] }
 };
 
 /**
+ * The filter values that let everything through for `keys`, for a host that
+ * wants to undo what hid a selection. Keys that are not node filters are
+ * ignored.
+ */
+export function relaxations(keys: string[]): Partial<FilterOptions> {
+  const out: Partial<FilterOptions> = {};
+  for (const key of keys) {
+    if (key in NODE_FILTER_RELAXATIONS) {
+      (out as Record<string, unknown>)[key] = NODE_FILTER_RELAXATIONS[key as keyof FilterOptions];
+    }
+  }
+  return out;
+}
+
+/**
  * The node filters that each, relaxed on its own, would draw the node under
  * these filters. Empty when no single filter is responsible.
  */

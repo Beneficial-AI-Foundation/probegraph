@@ -184,6 +184,18 @@ test.describe('VS Code webview', () => {
         { type: 'selectResult', revision: 1, requestId: 3, status: 'missing' },
       ]);
     });
+
+    test('relaxFilters turns the named filters on for the loaded revision only', async ({ page }) => {
+      await load(page, select('qs/sorted()'));
+      await expect.poll(() => results(page)).toEqual([
+        { type: 'selectResult', revision: 1, requestId: 1, status: 'filtered', filteredBy: ['showSpecFunctions'] },
+      ]);
+      await post(page, { type: 'relaxFilters', revision: 0, keys: ['showSpecFunctions'] });
+      await expect(page.locator('#show-spec-functions')).not.toBeChecked();
+      await post(page, { type: 'relaxFilters', revision: 1, keys: ['showSpecFunctions'] });
+      await expect(page.locator('#show-spec-functions')).toBeChecked();
+      await expect.poll(() => drawn(page)).toContain('qs/sorted()');
+    });
   });
 
   test('refresh is answered with requestRefresh', async ({ page }) => {
