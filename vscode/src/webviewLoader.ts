@@ -11,7 +11,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
-import { CallGraphIndex, D3Node } from './indexLoader';
+import { CallGraphIndex } from './indexLoader';
 
 /**
  * Options for showing the call graph
@@ -43,6 +43,11 @@ const webviewMessages = new vscode.EventEmitter<{ type: string }>();
 
 /** Fires for every message the webview posts. */
 export const onDidReceiveWebviewMessage = webviewMessages.event;
+
+const graphMessages = new vscode.EventEmitter<{ type: string; selectedNodeId: string | null }>();
+
+/** Fires for every graph sent to the webview. */
+export const onDidSendGraph = graphMessages.event;
 
 /**
  * Show the call graph webview with the given index and options
@@ -119,23 +124,9 @@ function sendGraphToWebview(
     index: CallGraphIndex,
     options: ShowGraphOptions
 ): void {
-    // Convert the index to D3Graph format expected by the web app
-    // The web app expects { nodes: D3Node[], links: D3Link[], metadata: {...} }
-    const nodes = Array.from(index.nodesById.values());
-    const graphData = {
-        nodes,
-        links: index.links,
-        metadata: {
-            total_nodes: index.metadata.totalNodes,
-            total_edges: index.metadata.totalEdges,
-            project_root: index.metadata.projectRoot,
-            generated_at: index.metadata.generatedAt.toISOString()
-        }
-    };
-    
-    panel.webview.postMessage({
+    const message = {
         type: 'loadGraph',
-        graph: graphData,
+        graph: index.graph,
         initialQuery: {
             source: options.sourceQuery || '',
             sink: options.sinkQuery || '',
@@ -143,7 +134,9 @@ function sendGraphToWebview(
         },
         // Pass the unique node ID for exact matching
         selectedNodeId: options.selectedNodeId || null
-    });
+    };
+    panel.webview.postMessage(message);
+    graphMessages.fire(message);
 }
 
 /**

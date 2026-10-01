@@ -51,9 +51,11 @@ suite('Extension in a Rust workspace', () => {
         assert.deepStrictEqual(contributed.filter((c) => !registered.has(c)), []);
     });
 
-    test('Show Call Graph opens the explorer and the viewer starts in it', async () => {
+    test('Show Call Graph opens the explorer on the function at the cursor', async () => {
         const messages: string[] = [];
+        const selected: (string | null)[] = [];
         const subscription = api.onDidReceiveWebviewMessage((m) => messages.push(m.type));
+        const sent = api.onDidSendGraph((m) => selected.push(m.selectedNodeId));
         try {
             const editor = await openLibRs();
             // Inside partition (lines 14-26)
@@ -68,8 +70,78 @@ suite('Extension in a Rust workspace', () => {
             // ready is posted by the viewer's script, so the bundled viewer loaded
             // under the extension's Content Security Policy
             await waitFor('ready from the webview', () => (messages.includes('ready') ? true : undefined));
+            const id = await waitFor('the graph', () => selected[0] ?? undefined);
+            assert.match(id, /partition/);
         } finally {
             subscription.dispose();
+            sent.dispose();
+            await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+        }
+    });
+
+    test('reads a probe extract set as the index and does not guess outside declarations', async () => {
+        const root = workspaceRoot();
+        const extract = path.join(root, '.verilib', 'probes', 'probe-rust-extract.json');
+        const atom = (name: string, start: number, end: number, dependencies: string[] = []) => ({
+            'display-name': name, dependencies, 'code-module': '', 'code-path': 'src/lib.rs',
+            'code-text': { 'lines-start': start, 'lines-end': end }, kind: 'exec', language: 'rust',
+        });
+        fs.mkdirSync(path.dirname(extract), { recursive: true });
+        fs.writeFileSync(extract, JSON.stringify({
+            schema: 'probe-rust/extract', 'schema-version': '2.0', timestamp: '2026-01-01T00:00:00Z',
+            source: { repo: 'https://example.invalid/quicksort.git', commit: 'abc1234', language: 'rust', package: 'quicksort' },
+            data: {
+                'probe:quicksort': atom('quicksort', 4, 12, ['probe:partition']),
+                'probe:partition': atom('partition', 14, 26),
+            },
+        }));
+        const selected: (string | null)[] = [];
+        const sent = api.onDidSendGraph((m) => selected.push(m.selectedNodeId));
+        const config = vscode.workspace.getConfiguration('callGraph');
+        await config.update('indexPath', '.verilib/probes/probe-rust-extract.json', vscode.ConfigurationTarget.Workspace);
+        try {
+            const editor = await openLibRs();
+            const at = async (line: number) => {
+                editor.selection = new vscode.Selection(line - 1, 4, line - 1, 4);
+                await vscode.commands.executeCommand('callGraph.showGraph');
+            };
+            await at(1);
+            await at(5);
+            assert.deepStrictEqual(await waitFor('the graph', () => selected[0] ?? undefined), 'probe:quicksort');
+            assert.strictEqual(selected.length, 1, 'line 1 is outside every declaration');
+        } finally {
+            sent.dispose();
+            await config.update('indexPath', undefined, vscode.ConfigurationTarget.Workspace);
+            await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+        }
+    });
+
+    test('checks the enclosing symbol from the language server against the graph', async () => {
+        const lines = (start: number, end: number) => new vscode.Range(start - 1, 0, end - 1, 1);
+        // VS Code caches symbols per document version, so each name gets its own provider
+        const symbolsNaming = (functionName: string) => vscode.languages.registerDocumentSymbolProvider('rust', {
+            provideDocumentSymbols: () => {
+                const fn = new vscode.DocumentSymbol(functionName, '', vscode.SymbolKind.Function, lines(14, 26), lines(14, 14));
+                fn.children = [new vscode.DocumentSymbol('pivot', '', vscode.SymbolKind.Variable, lines(18, 18), lines(18, 18))];
+                return [fn];
+            },
+        });
+        const selected: (string | null)[] = [];
+        const sent = api.onDidSendGraph((m) => selected.push(m.selectedNodeId));
+        let provider = symbolsNaming('partition_renamed');
+        try {
+            const editor = await openLibRs();
+            editor.selection = new vscode.Selection(17, 8, 17, 8);
+            await vscode.commands.executeCommand('callGraph.showGraph');
+            assert.deepStrictEqual(selected, [], 'a renamed function is not the old one on its lines');
+
+            provider.dispose();
+            provider = symbolsNaming('partition');
+            await vscode.commands.executeCommand('callGraph.showGraph');
+            assert.match(await waitFor('the graph', () => selected[0] ?? undefined), /partition/);
+        } finally {
+            provider.dispose();
+            sent.dispose();
             await vscode.commands.executeCommand('workbench.action.closeAllEditors');
         }
     });

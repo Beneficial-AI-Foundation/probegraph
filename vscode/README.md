@@ -1,6 +1,6 @@
 # Call Graph Visualizer Extension
 
-A VS Code extension that provides **interactive call graph exploration** for Verus/Rust projects. This extension embeds the full [probegraph](https://github.com/Beneficial-AI-Foundation/probegraph) web app directly in VS Code, giving you powerful filtering and visualization capabilities.
+A VS Code extension that provides **interactive call graph exploration** for Verus/Rust and Lean projects. This extension embeds the full [probegraph](https://github.com/Beneficial-AI-Foundation/probegraph) web app directly in VS Code, giving you powerful filtering and visualization capabilities.
 
 ## ✨ Features
 
@@ -66,11 +66,24 @@ Or add to your project's `.vscode/settings.json`.
 3. Run: **"Call Graph: Regenerate Index"**
 4. Wait for the pipeline to complete (~30-60 seconds)
 
+For a Lean project, or a Rust project with a probe extract, skip the pipeline
+and point `callGraph.indexPath` at the extract instead:
+
+```json
+{ "callGraph.indexPath": ".verilib/probes/probe-lean-extract.json" }
+```
+
+Paths in the graph must be relative to the workspace folder.
+
 ### 5. Explore Call Graphs
 
-1. Open a Rust file
-2. Click on a function name
+1. Open a Rust or Lean file
+2. Put the cursor in a declaration
 3. Right-click → **Call Graph** → **Show Call Graph (Bidirectional)**
+
+When the declaration is not in the graph (new, renamed, or outside the
+extracted files), a warning says so and names the graph file and when it was
+extracted, rather than showing something nearby.
 4. Use the full web app UI:
    - Adjust depth with the slider
    - Enter Source/Sink queries to filter
@@ -126,7 +139,7 @@ The embedded web app provides:
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `callGraph.depth` | `3` | Initial depth for call graph traversal |
-| `callGraph.indexPath` | `.vscode/call_graph_index.json` | Path to the index file |
+| `callGraph.indexPath` | `.vscode/call_graph_index.json` | Path to the graph: a pipeline index or a probe extract |
 | `callGraph.defaultScipCallgraphPath` | `""` | Path to probegraph repository |
 | `callGraph.autoRegenerateOnSave` | `false` | Auto-regenerate on Rust file save |
 | `callGraph.debounceDelayMs` | `3000` | Delay before auto-regeneration (ms) |

@@ -1,7 +1,14 @@
 # Editor → graph: open the call graph from a Rust, Verus or Lean construct
 
 Status (2026-10-01): Phase 0 done on branch `vscode/move-extension` except
-archiving the old repo (step 7), which waits for the merge. Revised the same day after a
+archiving the old repo (step 7), which waits for the merge. Phase 1 done,
+with fixtures cut from secure-messaging's extracts. To try the extension on
+secure-messaging before Phase 2, parts of Phase 3 came forward: the
+extension loads through `parseAndNormalizeGraph` + `validateGraph`, resolves
+the cursor with `resolveCursor` (symbols from the document symbol provider,
+exact workspace-relative paths), reloads only valid files, and runs in
+`lean4` as well as `rust`. Still to do in Phase 3: sessions, project root
+rules, async reads, the protocol, panel placement and the status bar. Revised the same day after a
 Codex review; see "Review decisions" at the end, and "Decisions" before
 that.
 

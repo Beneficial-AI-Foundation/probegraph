@@ -11,11 +11,11 @@ cpSync('test-fixtures/quicksort', workspace, { recursive: true });
 export default defineConfig([
 	{
 		label: 'unit',
-		files: 'out/test/unit/**/*.test.js',
+		files: 'out/vscode/src/test/unit/**/*.test.js',
 	},
 	{
 		label: 'workspace',
-		files: 'out/test/workspace/**/*.test.js',
+		files: 'out/vscode/src/test/workspace/**/*.test.js',
 		workspaceFolder: workspace,
 		launchArgs: ['--disable-extensions'],
 	},

@@ -1,25 +1,26 @@
 /**
  * Call Graph Visualizer Extension
  * 
- * This extension provides interactive call graph visualization for Verus/Rust projects.
- * It uses pre-computed indices from probegraph for instant O(1) subgraph extraction.
+ * Shows the probegraph call graph around the Rust, Verus or Lean declaration
+ * at the cursor, from a pipeline index or a probe extract.
  */
 
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { 
     loadIndex, 
-    getIndexInfo, 
     indexExists,
-    findNodeAtPosition,
-    findNodesByName,
+    formatTimestamp,
     CallGraphIndex,
     D3Node
 } from './indexLoader';
+import { resolveCursor } from '../../web/src/editor-lookup';
+import { enclosingSymbol } from './cursorSymbol';
 import { 
     showCallGraphWebview,
     ShowGraphOptions,
-    onDidReceiveWebviewMessage
+    onDidReceiveWebviewMessage,
+    onDidSendGraph
 } from './webviewLoader';
 import { 
     initializePipelineRunner, 
@@ -34,6 +35,7 @@ import {
  */
 export interface CallGraphApi {
     onDidReceiveWebviewMessage: vscode.Event<{ type: string }>;
+    onDidSendGraph: vscode.Event<{ type: string; selectedNodeId: string | null }>;
 }
 
 /**
@@ -51,7 +53,7 @@ export function activate(context: vscode.ExtensionContext): CallGraphApi {
     // Preload index if available
     preloadIndex();
 
-    return { onDidReceiveWebviewMessage };
+    return { onDidReceiveWebviewMessage, onDidSendGraph };
 }
 
 /**
@@ -130,23 +132,13 @@ async function preloadIndex(): Promise<void> {
     const workspaceRoot = workspaceFolder.uri.fsPath;
     
     if (indexExists(workspaceRoot)) {
-        try {
-            const info = getIndexInfo(workspaceRoot);
-            console.log(`[Extension] Index found: ${info.path}`);
-            
-            // Load in background
-            loadIndex(workspaceRoot).then(() => {
-                console.log('[Extension] Index preloaded successfully');
-            }).catch((error) => {
-                console.warn('[Extension] Failed to preload index:', error.message);
-            });
-        } catch (error) {
-            console.warn('[Extension] Error checking index:', error);
-        }
-    } else {
-        console.log('[Extension] No index found, user will need to generate one');
+        loadIndex(workspaceRoot).catch((error) => {
+            console.warn('[Extension] Failed to preload index:', error.message);
+        });
     }
 }
+
+const SUPPORTED_LANGUAGES = new Set(['rust', 'lean4']);
 
 /**
  * Direction type for graph display
@@ -166,9 +158,8 @@ async function showCallGraph(
         return;
     }
     
-    // Check if it's a Rust file
-    if (editor.document.languageId !== 'rust') {
-        vscode.window.showErrorMessage('This command only works with Rust files');
+    if (!SUPPORTED_LANGUAGES.has(editor.document.languageId)) {
+        vscode.window.showErrorMessage('The call graph works in Rust and Lean files');
         return;
     }
     
@@ -205,9 +196,11 @@ async function showCallGraph(
             progress.report({ message: 'Loading index...' });
             const index = await loadIndex(workspaceRoot);
             
-            // Find the exact function at cursor position
-            progress.report({ message: 'Finding function...' });
-            const node = await findFunctionAtCursor(editor, index);
+            progress.report({ message: 'Finding the declaration...' });
+            const node = await findNodeAtCursor(editor, workspaceFolder, index);
+            if (!node) {
+                return;
+            }
             
             // Prepare options based on direction
             const config = vscode.workspace.getConfiguration('callGraph');
@@ -217,30 +210,26 @@ async function showCallGraph(
                 depth
             };
             
-            if (node) {
-                // Pass the unique node ID for exact matching
-                options.selectedNodeId = node.id;
-                
-                // Also set the display name for the query UI
-                const functionName = node.display_name;
-                
-                switch (direction) {
-                    case 'both':
-                        // Same query in source and sink shows full neighborhood
-                        options.sourceQuery = functionName;
-                        options.sinkQuery = functionName;
-                        break;
-                    case 'dependencies':
-                        // Source only shows callees (what it calls)
-                        options.sourceQuery = functionName;
-                        break;
-                    case 'dependents':
-                        // Sink only shows callers (who calls it)
-                        options.sinkQuery = functionName;
-                        break;
-                }
-                
-                console.log(`[Extension] Selected node: ${node.display_name} (${node.id.slice(-50)}...)`);
+            // Pass the unique node ID for exact matching
+            options.selectedNodeId = node.id;
+            
+            // Also set the display name for the query UI
+            const functionName = node.display_name;
+            
+            switch (direction) {
+                case 'both':
+                    // Same query in source and sink shows full neighborhood
+                    options.sourceQuery = functionName;
+                    options.sinkQuery = functionName;
+                    break;
+                case 'dependencies':
+                    // Source only shows callees (what it calls)
+                    options.sourceQuery = functionName;
+                    break;
+                case 'dependents':
+                    // Sink only shows callers (who calls it)
+                    options.sinkQuery = functionName;
+                    break;
             }
             
             // Show the graph
@@ -255,75 +244,58 @@ async function showCallGraph(
 }
 
 /**
- * Find the function at the current cursor position
- * Returns the exact node from the index, or null if not found
+ * The graph node of the declaration at the cursor. When there is none, says
+ * why and returns null; when several fit, asks.
  */
-async function findFunctionAtCursor(
+async function findNodeAtCursor(
     editor: vscode.TextEditor,
+    workspaceFolder: vscode.WorkspaceFolder,
     index: CallGraphIndex
 ): Promise<D3Node | null> {
-    const document = editor.document;
+    const { document } = editor;
     const position = editor.selection.active;
-    const line = position.line + 1; // Convert to 1-based
+    const graphPath = path.relative(workspaceFolder.uri.fsPath, document.uri.fsPath).split(path.sep).join('/');
+    const symbol = await enclosingSymbol(document, position);
+    const result = resolveCursor(index.locations, { graphPath, line: position.line + 1, symbol });
     
-    // Get the relative path
-    const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
-    if (!workspaceFolder) {
-        return null;
-    }
-    
-    const relativePath = path.relative(workspaceFolder.uri.fsPath, document.uri.fsPath);
-    
-    // Try to find by file + line (most accurate)
-    let node = findNodeAtPosition(index, relativePath, line);
-    
-    if (node) {
-        console.log(`[Extension] Found node by file+line: ${node.display_name}`);
-        return node;
-    }
-    
-    // Fallback: try to find by function name at cursor
-    const wordRange = document.getWordRangeAtPosition(position);
-    if (wordRange) {
-        const functionName = document.getText(wordRange);
-        const nodes = findNodesByName(index, functionName);
-        
-        if (nodes.length === 1) {
-            console.log(`[Extension] Found unique node by name: ${nodes[0].display_name}`);
-            return nodes[0];
-        } else if (nodes.length > 1) {
-            // Multiple matches - try to find the one in this file
-            const fileName = path.basename(relativePath);
-            node = nodes.find(n => 
-                n.relative_path?.endsWith(relativePath) ||
-                n.relative_path?.endsWith(fileName) ||
-                n.file_name === fileName
-            ) || null;
-            
-            if (node) {
-                console.log(`[Extension] Found node by name + file: ${node.display_name}`);
-                return node;
-            }
-            
-            // If still ambiguous, let user choose
+    switch (result.kind) {
+        case 'match':
+            return result.node;
+        case 'ambiguous': {
             const picked = await vscode.window.showQuickPick(
-                nodes.map(n => ({
+                result.candidates.map(n => ({
                     label: n.display_name,
-                    description: n.relative_path || n.file_name,
-                    detail: `Line ${n.start_line || 'N/A'} - ${n.mode || 'exec'}`,
+                    description: `lines ${n.start_line}-${n.end_line ?? n.start_line}`,
+                    detail: n.id,
                     node: n
                 })),
-                { placeHolder: 'Multiple functions found. Select one:' }
+                { placeHolder: 'Several graph nodes are declared here. Select one:' }
             );
-            
-            if (picked) {
-                console.log(`[Extension] User selected: ${picked.node.display_name}`);
-                return picked.node;
-            }
+            return picked?.node ?? null;
+        }
+        case 'not-indexed': {
+            const what = {
+                file: `${graphPath} is not in the graph`,
+                line: 'No declaration in the graph covers this line',
+                symbol: `\`${symbol?.name}\` is not in the graph`,
+            }[result.reason];
+            vscode.window.showWarningMessage(`${what}. ${describeIndex(index)}`);
+            return null;
         }
     }
-    
-    return null;
+}
+
+/** Which file the graph came from and how old it is, for messages. */
+function describeIndex(index: CallGraphIndex): string {
+    const { indexPath, extractedAt, sourceCommit } = index.metadata;
+    const parts = [`Graph: ${path.basename(indexPath)}`];
+    if (extractedAt) {
+        parts.push(`extracted ${formatTimestamp(extractedAt)}`);
+    }
+    if (sourceCommit) {
+        parts.push(`at ${sourceCommit.slice(0, 7)}`);
+    }
+    return parts.join(', ') + '.';
 }
 
 /**

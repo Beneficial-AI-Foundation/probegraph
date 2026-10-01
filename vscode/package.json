@@ -24,7 +24,8 @@
     "scip"
   ],
   "activationEvents": [
-    "onLanguage:rust"
+    "onLanguage:rust",
+    "onLanguage:lean4"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -68,7 +69,7 @@
       "editor/context": [
         {
           "submenu": "callGraph.submenu",
-          "when": "editorLangId == rust",
+          "when": "editorLangId == rust || editorLangId == lean4",
           "group": "navigation@1"
         }
       ],
@@ -93,15 +94,15 @@
       "commandPalette": [
         {
           "command": "callGraph.showGraph",
-          "when": "editorLangId == rust"
+          "when": "editorLangId == rust || editorLangId == lean4"
         },
         {
           "command": "callGraph.showDependencies",
-          "when": "editorLangId == rust"
+          "when": "editorLangId == rust || editorLangId == lean4"
         },
         {
           "command": "callGraph.showDependents",
-          "when": "editorLangId == rust"
+          "when": "editorLangId == rust || editorLangId == lean4"
         },
         {
           "command": "callGraph.regenerateIndex"
@@ -133,7 +134,7 @@
         "callGraph.indexPath": {
           "type": "string",
           "default": ".vscode/call_graph_index.json",
-          "description": "Path to the call graph index file (relative to workspace root)"
+          "description": "Path to the graph file, relative to the workspace root: a pipeline index or a probe extract (for example .verilib/probes/probe-lean-extract.json)"
         },
         "callGraph.defaultScipCallgraphPath": {
           "type": "string",
