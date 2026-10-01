@@ -1,18 +1,17 @@
 # Editor → graph: open the call graph from a Rust, Verus or Lean construct
 
-Status (2026-10-01): Phase 0 done on branch `vscode/move-extension` except
-archiving the old repo (step 7), which waits for the merge. Phase 1 done,
-with fixtures cut from secure-messaging's extracts. To try the extension on
-secure-messaging before Phase 2, parts of Phase 3 came forward: the
-extension loads through `parseAndNormalizeGraph` + `validateGraph`, resolves
-the cursor with `resolveCursor` (symbols from the document symbol provider,
-exact workspace-relative paths), reloads only valid files, and runs in
-`lean4` as well as `rust`. Still to do in Phase 3: sessions, project root
-rules, async reads, the protocol, panel placement and the status bar.
-Phase 2 done on `vscode/panel-protocol`; the protocol is in
-`docs/guides/vscode-extension.md`. Revised the same day after a
-Codex review; see "Review decisions" at the end, and "Decisions" before
-that.
+Status (2026-10-02): Phases 0 to 2 are on `main`. Phase 0 merged in #67
+and Phase 2 in #70; the protocol is in `docs/guides/vscode-extension.md`.
+Phase 1 is done, with fixtures cut from secure-messaging's extracts. The
+old repo was archived on 2026-10-02 with a pointer README. To try the
+extension on secure-messaging before Phase 2, parts of Phase 3 came
+forward: the extension loads through `parseAndNormalizeGraph` +
+`validateGraph`, resolves the cursor with `resolveCursor` (symbols from the
+document symbol provider, exact workspace-relative paths), reloads only
+valid files, and runs in `lean4` as well as `rust`. Phase 3 is the current
+work; what remains is listed at the start of that phase. Revised on
+2026-10-01 after a Codex review; see "Review decisions" at the end, and
+"Decisions" before that.
 
 Goal: with the cursor on a declaration in a Rust, Verus or Lean file, one
 keystroke shows that declaration's neighbourhood in a graph panel beside the
@@ -291,9 +290,10 @@ A local file at `indexPath`, in any format the viewer reads:
 
 ### Phase 0: move, build and test baseline
 
-1. Preserve the extension's uncommitted `webview/` changes. Done: local
-   branch `wip/webview-uncommitted-2026-02` (`bff8586`) in the old repo;
-   push it before archiving.
+1. Preserve the extension's uncommitted `webview/` changes. Done: branch
+   `wip/webview-uncommitted-2026-02` in the old repo, pushed with the
+   `webview/` snapshot (`bff8586`) and an untracked design note from
+   December 2025.
 2. Move the extension to `vscode/` with its filtered history. `webview/`
    is no longer tracked: `npm run build` in `vscode/` runs
    `npm run build:vscode` in `web/` and copies `web/dist-vscode` to
@@ -319,6 +319,7 @@ A local file at `indexPath`, in any format the viewer reads:
    the Google Fonts links from the VS Code build.
 6. Remove `shell: true` from `pipelineRunner.ts`.
 7. Archive the old repo with a README pointing to `probegraph/vscode`.
+   Done 2026-10-02.
 
 ### Phase 1: normalization and lookup (probegraph)
 
@@ -350,15 +351,24 @@ A local file at `indexPath`, in any format the viewer reads:
 
 ### Phase 3: extension, first release
 
+Done so far: `indexLoader.ts` parses with `parseAndNormalizeGraph` +
+`validateGraph` and looks up with `resolveCursor`; the watcher handles
+create and reloads only valid files; commands, menus and activation cover
+`rust` and `lean4`.
+Still to do: `webviewLoader.ts` sends `loadGraph` without a `revision` and
+never `selectNode`, so every "Show Call Graph" resends the graph and
+nothing reads `selectResult`; the panel and `navigate` both use
+`ViewColumn.One`; and everything else below.
+
 1. Session object (folder, graph source, revision, pending selection) and
    the protocol; replace `indexLoader.ts` parsing with
    `parseAndNormalizeGraph` + `validateGraph` and its lookup with
-   `resolveCursor`. Async reads.
+   `resolveCursor` (done). Async reads.
 2. Project root rules; `navigate` and `indexPath` containment.
 3. Watcher with create, debounce, validate-then-replace; temp-file-and-
    rename for "Regenerate"; workspace trust for generators.
 4. Commands, keybinding, menus and title icon for `rust` and `lean4`;
-   activation on both languages.
+   activation on both languages (done except the keybinding and icon).
 5. Panel beside the editor, navigation column rule, status bar, quick pick
    and not-indexed messages.
 
