@@ -122,7 +122,30 @@ describe('blueprint node details', () => {
     expect(html).toContain('&lt;img src=x onerror=alert(1)&gt; $a&lt;b$');
     expect(html).toContain('x_decl');
     expect(html).toContain('probe:&lt;y&gt;');
-    expect(blueprintBackrefHtml({ label: '<l>' })).toContain('&lt;l&gt;');
+    expect(blueprintBackrefHtml({ label: '<l>' }, [])).toContain('&lt;l&gt;');
+    expect(blueprintBackrefHtml(undefined, [{ id: 'probe:blueprint:"', info: { label: '<l>' } }]))
+      .toContain('data-node-id="probe:blueprint:&quot;"');
+  });
+
+  it('links bound declarations and the owning entry across layers', () => {
+    const html = blueprintNodeDetailsHtml({ label: 'l', bindings: ['probe:x', 'probe:"y'] }, ctx);
+    expect(html).toContain('data-layer="code" data-node-id="probe:x" style="cursor:pointer; text-decoration:underline;">x_decl</a>');
+    expect(html).toContain('data-node-id="probe:&quot;y"');
+    const entry = { id: 'probe:blueprint:l', info: { label: 'l', title: 'Theorem 1' } };
+    expect(blueprintBackrefHtml(entry.info, [entry]))
+      .toContain('data-layer="blueprint" data-node-id="probe:blueprint:l"');
+    expect(blueprintBackrefHtml({ label: 'l' }, [])).not.toContain('<a ');
+    expect(blueprintBackrefHtml(undefined, [])).toBe('');
+  });
+
+  it('lists every entry of a declaration bound by several', () => {
+    const html = blueprintBackrefHtml({ label: 'a' }, [
+      { id: 'probe:blueprint:a', info: { label: 'a' } },
+      { id: 'probe:blueprint:b', info: { label: 'b' } },
+    ]);
+    expect(html).toContain('Blueprint entries (2)');
+    expect(html).toContain('data-node-id="probe:blueprint:a"');
+    expect(html).toContain('data-node-id="probe:blueprint:b"');
   });
 
   it('labels declared statuses', () => {

@@ -1,8 +1,9 @@
 /**
  * Node-details section for probe-leanblueprint fields: the blueprint entry
- * itself on the blueprint layer, a one-line pointer to the owning entry on
- * the code layer. Every value comes from a third-party extract and is
- * escaped; `statementText` is markup and is shown as plain text.
+ * itself on the blueprint layer, pointers to its entries on the code layer.
+ * Bound declarations and entries link across layers. Every value comes from
+ * a third-party extract and is escaped; `statementText` is markup and is
+ * shown as plain text.
  */
 import { BlueprintInfo } from './types';
 import { escapeHtml } from './html';
@@ -36,9 +37,18 @@ export interface BlueprintDetailsContext {
 const row = (label: string, value: string) =>
   `<div class="node-detail"><strong>${label}:</strong> ${value}</div>`;
 
-const list = (label: string, items: string[]) =>
-  `<div class="node-detail"><strong>${label} (${items.length}):</strong>
-    <ul class="node-list">${items.map(i => `<li>${escapeHtml(i)}</li>`).join('')}</ul></div>`;
+const listHtml = (label: string, itemsHtml: string[]) =>
+  `<div class="node-detail"><strong>${label} (${itemsHtml.length}):</strong>
+    <ul class="node-list">${itemsHtml.map(i => `<li>${i}</li>`).join('')}</ul></div>`;
+
+const list = (label: string, items: string[]) => listHtml(label, items.map(escapeHtml));
+
+/**
+ * Link to `id` on the other layer; main.ts handles `.navigate-to-layer`
+ * clicks. `textHtml` must already be escaped.
+ */
+const layerLink = (layer: 'blueprint' | 'code', id: string, textHtml: string) =>
+  `<a href="#" class="navigate-to-layer" data-layer="${layer}" data-node-id="${escapeHtml(id)}" style="cursor:pointer; text-decoration:underline;">${textHtml}</a>`;
 
 /** Status with its source; `declared` statuses can overclaim (probe-leanblueprint spec). */
 function status(value: string | undefined, source: string | undefined): string {
@@ -71,15 +81,31 @@ export function blueprintNodeDetailsHtml(info: BlueprintInfo, ctx: BlueprintDeta
       <div class="code-block" style="white-space:pre-wrap">${escapeHtml(info.statementText)}</div></div>`);
   }
   if (info.bindings?.length) {
-    parts.push(list('Bound declarations', info.bindings.map(id => ctx.codeName(id) ?? id)));
+    parts.push(listHtml('Bound declarations', info.bindings.map(id =>
+      layerLink('code', id, escapeHtml(ctx.codeName(id) ?? id)))));
   }
   if (info.missingDecls?.length) parts.push(list('Missing declarations', info.missingDecls));
   if (info.upstreamDecls?.length) parts.push(list('Upstream declarations', info.upstreamDecls));
   return parts.join('');
 }
 
-/** The owning blueprint entry of a code-layer atom. */
-export function blueprintBackrefHtml(info: BlueprintInfo): string {
-  const title = info.title ? `${escapeHtml(info.title)} ` : '';
-  return row('Blueprint', `${title}<code>${escapeHtml(info.label)}</code>`);
+/** A blueprint-layer entry pointing at a code-layer atom. */
+export interface BlueprintEntryRef {
+  id: string;
+  info: BlueprintInfo;
+}
+
+const entryText = (info: BlueprintInfo) =>
+  `${info.title ? `${escapeHtml(info.title)} ` : ''}<code>${escapeHtml(info.label)}</code>`;
+
+/**
+ * The blueprint entries of a code-layer atom, each linked to its node:
+ * those binding it and the one its `blueprint-label` names. Under label
+ * collisions these can be several. With none on the blueprint layer, the
+ * atom's own label is shown unlinked.
+ */
+export function blueprintBackrefHtml(info: BlueprintInfo | undefined, entries: BlueprintEntryRef[]): string {
+  if (entries.length === 0) return info ? row('Blueprint', entryText(info)) : '';
+  const links = entries.map(e => layerLink('blueprint', e.id, entryText(e.info)));
+  return links.length === 1 ? row('Blueprint', links[0]) : listHtml('Blueprint entries', links);
 }

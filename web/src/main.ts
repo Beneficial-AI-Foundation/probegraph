@@ -1,4 +1,4 @@
-import { D3Graph, D3Node, GraphState, FilterOptions, ProjectLanguage, BLUEPRINT_LANGUAGE, crateMapLabel, crateNoun, detectProjectLanguage, getKindSetsForLanguage, extractCrateName, isSchema2Envelope } from './types';
+import { D3Graph, D3Node, GraphState, FilterOptions, ProjectLanguage, BLUEPRINT_LANGUAGE, compileKindFlag, crateMapLabel, crateNoun, detectProjectLanguage, getKindSetsForLanguage, extractCrateName, isSchema2Envelope } from './types';
 import { blueprintBackrefHtml, blueprintNodeDetailsHtml } from './blueprint-details';
 import { applyFilters, getCallers, getCallees } from './filters';
 import {
@@ -15,12 +15,12 @@ import { parseAndNormalizeGraph, pickSourceConfig } from './graph-loader';
 import { escapeHtml } from './html';
 import { StatusGroup, exactStatusFilter, groupCheckState, withGroupChecked } from './status-filter';
 import {
-  QueryIntent, NONE_INTENT, textIntent, focusIntent, boundaryIntent,
+  QueryIntent, NONE_INTENT, textIntent, focusIntent, boundaryIntent, exactIntent,
   isFocusIntent, inputsForIntent, intentAfterInputEdit, vscodeIntent, vscodeSetQueryIntent,
 } from './intent';
 import { ActiveView, Layer, defaultFilters, readURLState, writeURLState } from './url-state';
 
-import { GuidePanel } from './guide/guide-panel';
+import { GuidePanel, showToast } from './guide/guide-panel';
 import { buildGraphSummary } from './guide/static-analysis';
 import type { GuideActions, GuideResult, GuideTransition } from './guide/types';
 
@@ -158,6 +158,10 @@ let entrypointsDeferredByFocus = false;
 // it and recheck before committing, so a late response can neither apply to a
 // different graph nor overwrite newer query intent.
 let graphLoadGeneration = 0;
+// Incremented when a graph source is requested (auto-load, file pick,
+// deferred load). A request installs its graph only while it is the latest,
+// so a slow auto-load cannot replace a file the user picked meanwhile.
+let graphRequest = 0;
 
 // Debounce timer for search inputs
 let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -813,8 +817,9 @@ function createVisualization(container: HTMLElement): void {
   } else if (activeView === 'file-map') {
     visualization = new FileMapVisualization(container, state, handleStateChange);
   } else {
-    visualization = new CallGraphVisualization(container, state, handleStateChange);
+    visualization = new CallGraphVisualization(container, state, handleStateChange, drillDownToCode);
   }
+  renderDrilldownHint();
 }
 
 /**
@@ -1165,6 +1170,9 @@ function setupUIHandlers(): void {
  * Priority: URL param > env var > local file
  */
 async function autoLoadGraph(): Promise<void> {
+  const request = ++graphRequest;
+  const superseded = () => request !== graphRequest;
+
   // Check for URL parameters (highest priority)
   const urlParams = new URLSearchParams(window.location.search);
   const jsonUrlParam = urlParams.get('json') || urlParams.get('url');
@@ -1191,7 +1199,8 @@ async function autoLoadGraph(): Promise<void> {
       // Check file size first with HEAD request
       const headResponse = await fetch(jsonUrl, { method: 'HEAD' });
       const contentLength = parseInt(headResponse.headers.get('Content-Length') || '0');
-      
+      if (superseded()) return;
+
       if (contentLength > LARGE_FILE_SIZE_THRESHOLD) {
         console.log(`Large file detected (${(contentLength / 1024 / 1024).toFixed(1)} MB), deferring load`);
         deferredGraphUrl = jsonUrl;
@@ -1208,17 +1217,20 @@ async function autoLoadGraph(): Promise<void> {
 
       // Yield to browser before heavy synchronous work so the UI stays responsive
       await new Promise(r => setTimeout(r, 0));
+      if (superseded()) return;
 
       const rawData = JSON.parse(text);
       const graph = parseAndNormalizeGraph(rawData);
 
       // Yield again before loadGraph (deep copy + initialization)
       await new Promise(r => setTimeout(r, 0));
+      if (superseded()) return;
 
       const source = jsonUrlParam ? 'URL parameter' : 'configured default';
       loadGraph(graph, `Loaded from ${source}: ${jsonUrl}`);
       return;
     } catch (error) {
+      if (superseded()) return;
       console.error('Failed to load graph from URL:', error);
       showError(`Failed to load graph from URL: ${error instanceof Error ? error.message : 'Unknown error'}`);
       // Continue to try local graph.json
@@ -1232,7 +1244,8 @@ async function autoLoadGraph(): Promise<void> {
     const contentLength = parseInt(headResponse.headers.get('Content-Length') || '0');
     
     console.log(`graph.json size: ${(contentLength / 1024 / 1024).toFixed(1)} MB`);
-    
+    if (superseded()) return;
+
     if (contentLength > LARGE_FILE_SIZE_THRESHOLD && !isAggregatedView(activeView)) {
       console.log(`Large file detected, deferring load until user searches`);
       deferredGraphUrl = './graph.json';
@@ -1252,12 +1265,14 @@ async function autoLoadGraph(): Promise<void> {
 
     // Yield to browser before heavy synchronous work so the UI stays responsive
     await new Promise(r => setTimeout(r, 0));
+    if (superseded()) return;
 
     const rawData = JSON.parse(text);
     const graph = parseAndNormalizeGraph(rawData);
 
     // Yield again before loadGraph (deep copy + initialization)
     await new Promise(r => setTimeout(r, 0));
+    if (superseded()) return;
 
     loadGraph(graph, 'Auto-loaded from local file');
   } catch (error) {
@@ -1287,7 +1302,8 @@ async function loadDeferredGraph(): Promise<void> {
   }
   
   isDeferredLoadInProgress = true;
-  
+  const request = ++graphRequest;
+
   const statsDiv = document.getElementById('stats');
   if (statsDiv) {
     statsDiv.innerHTML = `
@@ -1305,9 +1321,10 @@ async function loadDeferredGraph(): Promise<void> {
     }
     
     const text = await response.text();
+    if (request !== graphRequest) return;
     const rawData = JSON.parse(text);
     const graph = parseAndNormalizeGraph(rawData);
-    
+
     deferredGraphUrl = null; // Clear the deferred URL
 
     // Include Files patterns name code files; source/sink text also matches blueprint labels
@@ -1316,6 +1333,7 @@ async function loadDeferredGraph(): Promise<void> {
     // An ambiguous pattern includes every matching file until the user picks
     checkAndShowDisambiguation();
   } catch (error) {
+    if (request !== graphRequest) return;
     console.error('Failed to load deferred graph:', error);
     showError(`Failed to load graph: ${error instanceof Error ? error.message : 'Unknown error'}`);
   } finally {
@@ -2102,6 +2120,8 @@ function showLayer(layer: Layer): void {
   crateDependencyMap = new Map();
   crateReverseDependencyMap = new Map();
   state.selectedNode = null;
+  // The hovered circle is removed without firing its mouseleave
+  state.hoveredNode = null;
   selectedSourceCrate = '';
   selectedTargetCrate = '';
 
@@ -2149,8 +2169,17 @@ function showLayer(layer: Layer): void {
 function renderLayerSwitcher(): void {
   const container = document.getElementById('layer-switcher');
   if (container) container.style.display = blueprintLayer ? '' : 'none';
+  renderDrilldownHint();
   document.getElementById('layer-blueprint')?.classList.toggle('active', activeLayer === 'blueprint');
   document.getElementById('layer-code')?.classList.toggle('active', activeLayer === 'code');
+}
+
+/** Show the double-click hint only where double-click drills down. */
+function renderDrilldownHint(): void {
+  const hint = document.getElementById('instructions-drilldown');
+  if (hint) {
+    hint.style.display = blueprintLayer && activeLayer === 'blueprint' && activeView === 'callgraph' ? '' : 'none';
+  }
 }
 
 /**
@@ -2187,6 +2216,80 @@ function switchLayer(layer: Layer): void {
     urlWritesSuppressed--;
   }
   window.history.pushState({ pushed: true }, '', generateShareableURL());
+}
+
+/**
+ * Switch to `layer` and query `ids` with their immediate neighbours,
+ * turning on the Declaration Kind boxes of the targets if they are off. A
+ * single target is shown in node details. One pushed history entry.
+ */
+function openOnLayer(layer: Layer, ids: string[], label: string): void {
+  const graph = layer === 'blueprint' ? blueprintLayer : codeLayer;
+  const targets = ids.flatMap(id => graph?.nodes.find(n => n.id === id) ?? []);
+  if (targets.length === 0) return;
+  const switched = layer !== activeLayer;
+  switchLayer(layer);
+  setIntent(exactIntent(targets.map(t => t.id), 'both', label, { type: 'drilldown' }), {
+    history: switched ? 'replace' : 'push',
+    pushed: true,
+    before: () => {
+      const flagOf = compileKindFlag(state.projectLanguage);
+      for (const t of targets) {
+        state.filters[flagOf(t.kind || 'exec')] = true;
+        state.filters.hiddenNodes.delete(t.id);
+      }
+      state.filters.maxDepth = 1;
+      seededRequestedDepth = clampSeededDepth(1);
+      syncFilterUI();
+    },
+  });
+  const shownIds = new Set(state.filteredGraph?.nodes.map(n => n.id));
+  const filteredOut = targets.filter(t => !shownIds.has(t.id));
+  if (filteredOut.length > 0) {
+    showToast(`Hidden by the current filters: ${filteredOut.map(t => t.display_name).join(', ')}`);
+  }
+  if (targets.length !== 1) return;
+  const shown = state.fullGraph?.nodes.find(n => n.id === targets[0].id);
+  if (shown) {
+    state.selectedNode = shown;
+    updateNodeInfo();
+  }
+}
+
+/** Follow a blueprint entry <-> Lean declaration link in node details. */
+function navigateToLayerNode(layer: Layer, id: string): void {
+  const target = (layer === 'blueprint' ? blueprintLayer : codeLayer)?.nodes.find(n => n.id === id);
+  if (target) openOnLayer(layer, [id], target.display_name);
+}
+
+/**
+ * Double-click on a blueprint entry: open its bound declarations on the
+ * code layer. False for any other node, which keeps the zoom.
+ */
+function drillDownToCode(node: D3Node, wasSelected: boolean): boolean {
+  if (node.language !== BLUEPRINT_LANGUAGE) return false;
+  // Undo the selection toggle of the double-click's first click when its
+  // second click missed the node, which the blueprint layer (and its
+  // history entry) would otherwise keep
+  const selected = state.filters.selectedNodes;
+  const toggled = selected.has(node.id) !== wasSelected;
+  if (toggled) {
+    if (wasSelected) selected.add(node.id);
+    else selected.delete(node.id);
+  }
+  const bindings = node.blueprint?.bindings ?? [];
+  if (bindings.length === 0) {
+    if (toggled) applyFiltersAndUpdate();
+    showToast(`${node.display_name}: no bound declarations`);
+    return true;
+  }
+  const label = bindings.length === 1
+    ? codeLayer?.nodes.find(n => n.id === bindings[0])?.display_name ?? bindings[0]
+    : `${node.display_name} (${bindings.length} declarations)`;
+  if (toggled) updateURLWithFilters();
+  openOnLayer('code', bindings, label);
+  showToast(`${node.display_name}: ${bindings.length} bound declaration${bindings.length === 1 ? '' : 's'}`);
+  return true;
 }
 
 /**
@@ -2311,14 +2414,18 @@ async function handleFileLoad(event: Event): Promise<void> {
   const file = input.files?.[0];
   
   if (!file) return;
+  const request = ++graphRequest;
+  deferredGraphUrl = null;
 
   try {
     const text = await file.text();
+    if (request !== graphRequest) return;
     const rawData = JSON.parse(text);
     const graph = parseAndNormalizeGraph(rawData);
-    
+
     loadGraph(graph, `Loaded from file: ${file.name}`);
   } catch (error) {
+    if (request !== graphRequest) return;
     console.error('Error loading graph:', error);
     showError(`Error loading graph file: ${error instanceof Error ? error.message : 'Invalid JSON'}`);
   }
@@ -2708,8 +2815,12 @@ function updateNodeInfo(): void {
       repo: configs ? pickSourceConfig(configs, 'lean', sourcePath)?.github_url : undefined,
       codeName: id => codeLayer?.nodes.find(n => n.id === id)?.display_name,
     });
-  } else if (node.blueprint) {
-    blueprintHtml = blueprintBackrefHtml(node.blueprint);
+  } else if (!isBlueprintNode) {
+    const label = node.blueprint?.label;
+    const entries = (blueprintLayer?.nodes ?? [])
+      .filter(n => n.blueprint && (n.blueprint.label === label || n.blueprint.bindings?.includes(node.id)))
+      .map(n => ({ id: n.id, info: n.blueprint! }));
+    blueprintHtml = blueprintBackrefHtml(node.blueprint, entries);
   }
   const [callersLabel, calleesLabel] = isBlueprintNode ? ['Used by', 'Uses'] : ['Callers', 'Callees'];
 
@@ -2869,10 +2980,17 @@ function updateNodeInfo(): void {
       if (!targetId || !state.fullGraph) return;
       const targetNode = state.fullGraph.nodes.find(n => n.id === targetId);
       if (targetNode) {
-        const newState = { ...state };
-        newState.selectedNode = targetNode;
-        handleStateChange(newState, false);
+        state.selectedNode = targetNode;
+        updateNodeInfo();
       }
+    });
+  });
+
+  nodeInfoDiv.querySelectorAll<HTMLElement>('.navigate-to-layer').forEach(el => {
+    el.addEventListener('click', (e) => {
+      e.preventDefault();
+      const { layer, nodeId } = el.dataset;
+      if ((layer === 'blueprint' || layer === 'code') && nodeId) navigateToLayerNode(layer, nodeId);
     });
   });
 }

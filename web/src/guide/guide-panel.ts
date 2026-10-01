@@ -103,7 +103,7 @@ export function guideTransition(action: SuggestedAction, label: string): GuideTr
 /**
  * Show a brief toast notification above the graph.
  */
-function showToast(message: string): void {
+export function showToast(message: string): void {
   const container = document.getElementById('toast-container');
   if (!container) return;
 

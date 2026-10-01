@@ -45,6 +45,26 @@ flat array format. See `web/ARCHITECTURE.md` for the schemas.
 
 The algorithms are specified in `web/docs/technical/`.
 
+## Blueprint and Code layers
+
+A probe-leanblueprint extract holds two graphs: the blueprint entries
+(`language: "blueprint"` atoms, one per theorem or definition in the
+blueprint) and the Lean declarations. The viewer shows one at a time, with a
+**Blueprint** / **Code** switch in the header. The switch appears only when
+the graph has blueprint entries, and the viewer then opens on Blueprint.
+
+- Blueprint edges are the entries' statement and proof uses, so the
+  Statement / Body-or-proof boxes (see Edge Types) apply to both layers and
+  carry over when you switch.
+- Each layer keeps its own query and filters. Kind and language filters of
+  the code layer don't apply to blueprint entries.
+- On the blueprint layer, entries with no edges (planned-only or with a
+  missing declaration) are always shown, and the Crate Map is the
+  **Chapter Map**, grouped by blueprint chapter.
+- An entry's bound Lean declarations are not edges; they are listed in node
+  details and reached by double-click (see Node details).
+- Browser back undoes a layer switch.
+
 ## Large graphs and the seeded view
 
 Graphs over 2 000 nodes or 10 000 links don't render whole. In the Call Graph
@@ -87,10 +107,19 @@ contains them: Axioms (on by default — they are the trusted base),
 Types (`structure`/`inductive`/`class`), Projections, and Instances (all off
 by default). Mixed graphs additionally get the Verus Spec toggle.
 
-**Edge Types** appears for Verus and mixed graphs: Body Calls (on),
-Requires and Ensures clause edges (off), and — when the graph has them —
-Mapping (cross-language Rust↔Lean) and Specifications (Lean def → spec
-theorem) edges, both on. Lean-only graphs hide this section.
+**Edge Types** adapts to the graph. Verus and mixed graphs always get Body
+Calls (on) and Requires and Ensures clause edges (off), whether or not the
+graph has edges of each kind.
+Lean graphs from probe-lean with the type/term split get **Statement deps**
+(dependencies used in a declaration's type) and **Body/proof deps**
+(used in its definition body or proof), both on; on the blueprint layer
+they are the entries' statement and proof uses. These two boxes restrict
+traversal, not only display: with Body/proof off, a query does not reach a
+node through a body/proof edge. An edge in both roles shows while either box
+is on. Mapping (cross-language Rust↔Lean) and Specifications (Lean def →
+spec theorem) edges, both on, appear only when the graph has them. Mapping
+edges follow only their own box; Specifications edges that carry a role also
+follow the role boxes. Graphs with none of these hide the section.
 
 **Verification Status** has three toggles: verified-like (verified,
 transitively verified, trusted), failed, and unverified/unknown. A Guide
@@ -123,12 +152,48 @@ and restorable.
 | grey `#9ca3af` | unverified |
 | blue `#3b82f6` | unknown (no status in the graph) |
 
+## Clicking nodes
+
+- **Click** a node to show it in node details. The click also adds it to a
+  selection: with no query, no Include Files and a finite Depth, the graph narrows
+  to the selected nodes and their neighbours up to that depth. Click again
+  to remove it.
+- **Shift+click** hides a node.
+- **Double-click** a blueprint entry to open its bound Lean declarations on
+  the code layer, with their immediate neighbours (depth 1). A toast gives
+  the number of declarations; an entry with none shows "no bound
+  declarations" and stays on the blueprint layer. Browser back returns to
+  the blueprint layer. Double-clicking any other node zooms in, like
+  double-clicking the background.
+
 ## Node details
 
 Click a node (or hover) to see its kind, verification status, location,
 callers and callees (clickable), and similar lemmas with scores when the graph
 was enriched with them. If a source link can be built, the panel shows
 **View on GitHub** (or **Open in Editor** inside VS Code).
+
+A blueprint entry shows its title, chapter and group, statement and proof
+status (marked "declared" when the blueprint asserts them rather than
+deriving them from the code, since those can overclaim), node class, status
+mismatch, statement text (as plain text), a GitHub issue link when the
+source repository is on GitHub, and its bound, missing and upstream
+declarations. Its callers and callees are labeled Used by and Uses.
+
+Cross-layer links in the panel:
+
+- each bound declaration of a blueprint entry links to that declaration on
+  the code layer;
+- a Lean declaration that belongs to the blueprint links back to every entry
+  that binds it or whose label its `blueprint-label` names. Under label
+  collisions these can differ, so a listed entry may own the label without
+  binding the declaration.
+
+Following a link or double-clicking opens the target with its immediate
+neighbours, turns its Declaration Kind box back on if it was off, and unhides
+it if it was Shift+click hidden. Other filters (exclude patterns, status or
+source boxes) can still leave it out; a toast then names the targets not shown.
+Each is one browser-history step.
 
 ### GitHub source links
 
@@ -155,23 +220,34 @@ non-default values are included. All parameters:
 | `json` / `url` | graph URL to load |
 | `github` | GitHub base URL for source links |
 | `prefix` / `github_prefix` | path prefix for source links |
-| `view` | `blueprint` (File Map) or `crate-map`; default is Call Graph |
+| `layer` | `code` or `blueprint`; default is the blueprint layer when the graph has one |
+| `view` | `file-map`, `crate-map` or `hierarchy`; default is Call Graph. The old `view=blueprint` opens the File Map |
 | `source`, `sink` | the Source → Sink query |
+| `id` (repeated), `dir`, `label` | an exact node set from a Guide suggestion, drill-down or cross-layer link; `dir` is `none`, `callers`, `callees` or `both`, `label` the text shown in the inputs |
+| `boundary-source`, `boundary-target` | a crate boundary query (from the Guide or the Crate Map) |
+| `sel` (repeated) | IDs of clicked (selected) nodes |
 | `files` | Include Files patterns |
 | `depth` | depth limit (0 = all) |
 | `excludeName`, `excludePath` | exclusion globs |
-| `hidden` | comma-separated display names of hidden nodes |
+| `hide` (repeated) | IDs of hidden nodes. The older `hidden` (comma-separated display names) is still read |
 | `focus` | URL of a focus-set JSON (`{"focus_nodes": [...]}`) restricting the initial view |
 | `entrypoints` | URL of a probe-leanblueprint JSON whose blueprint atoms seed the initial view |
-| `source-crate`, `target-crate` | crate boundary selection |
+| `source-crate`, `target-crate` | crate dropdown selection |
+| `expanded` | expanded groups in the Hierarchy view, comma-separated |
 | `exec`, `proof`, `spec`, `axioms`, `types`, `proj`, `inst` | kind toggles (`1`/`0`) |
 | `inner`, `pre`, `post`, `mapping`, `speclinks` | edge-type toggles (`1`/`0`) |
+| `statement`, `body` | Statement deps and Body/proof deps toggles (`1`/`0`) |
 | `verified`, `failed`, `unverified` | verification-status toggles (`1`/`0`) |
 | `status` | exact status set, comma-separated (e.g. `transitively-verified`) |
+| `rust`, `lean` | language toggles for mixed graphs (`1`/`0`) |
 | `libsignal`, `external` | source-type toggles (`1`/`0`) |
 
-Copy Link omits the edge-type parameters for Lean graphs, where that filter
-section doesn't exist.
+Precedence when several query parameters are present: `id`, then `focus`,
+then `boundary-*`, then `source`/`sink`. Only the active layer's state is in
+the URL.
+
+Copy Link omits `inner`, `pre` and `post` for Lean graphs, which have no such
+boxes.
 
 ## Guide tab
 
