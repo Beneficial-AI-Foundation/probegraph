@@ -4,7 +4,7 @@
  * One value replaces the old source/sink strings, focus set, VS Code exact
  * node override and crate-dropdown boundary. Every writer replaces the whole
  * intent, so no part of a previous query leaks into the next one.
- * See docs/plans/query-intent.md.
+ * See docs/archive/query-intent.md.
  *
  * Pure module (no DOM), unit-tested in the node environment.
  */

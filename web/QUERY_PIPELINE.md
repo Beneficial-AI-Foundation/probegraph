@@ -78,7 +78,7 @@ type NodeMatcher =
 ### Dispatch rules
 
 `compileQuery` switches on `filters.intent` (`src/intent.ts`, design in
-`docs/plans/query-intent.md`):
+`docs/archive/query-intent.md`):
 
 | Intent | Compiled query type |
 |--------|---------------------|

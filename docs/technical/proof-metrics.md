@@ -101,5 +101,5 @@ functions named `lemma_*` are recognized as lemmas.
 ## Measured Results
 
 Dataset-level numbers (overheads, correlations with other metrics) live in
-[`docs/research/correlation-analysis.md`](../research/correlation-analysis.md),
+[`docs/archive/correlation-analysis.md`](../archive/correlation-analysis.md),
 not here, so there is a single source for them.

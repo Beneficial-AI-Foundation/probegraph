@@ -3,7 +3,7 @@
  *
  * One function writes the state into URL params and one builds the whole
  * state from defaults plus the URL, so a reload and browser back restore the
- * same thing. Pure module (no DOM). See docs/plans/query-intent.md, "URL mapping".
+ * same thing. Pure module (no DOM). See docs/archive/query-intent.md, "URL mapping".
  */
 
 import type { D3Graph, FilterOptions, ProjectLanguage } from './types';

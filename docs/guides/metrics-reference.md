@@ -172,7 +172,7 @@ conclusion is unaffected.)
 Flag for review: cognitive > 10, cyclomatic > 15, effort > 50K. Consider
 refactoring: cognitive > 15, cyclomatic > 20, length > 500. For verification:
 cyclomatic 1 is ideal, and large length may need proof decomposition — though
-note that per `docs/research/correlation-analysis.md`, none of these metrics
+note that per `docs/archive/correlation-analysis.md`, none of these metrics
 reliably predicts proof difficulty.
 
 ## References

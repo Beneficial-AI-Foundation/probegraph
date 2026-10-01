@@ -137,7 +137,7 @@ Step-by-step guide and column reference:
 - [METRICS_PIPELINE.md](METRICS_PIPELINE.md) — the metrics pipeline, step by step
 - [docs/SIMILAR_LEMMAS.md](docs/SIMILAR_LEMMAS.md) — similar-lemmas enrichment
 - [docs/technical/](docs/technical/) — internals: scip-core architecture, spec/proof metric implementations, tool references
-- [docs/research/correlation-analysis.md](docs/research/correlation-analysis.md) — measured spec/proof/code correlations
+- [docs/archive/correlation-analysis.md](docs/archive/correlation-analysis.md) — spec/proof/code correlations (archived: numbers not reproducible)
 - [web/README.md](web/README.md), [web/ARCHITECTURE.md](web/ARCHITECTURE.md), [web/QUERY_PIPELINE.md](web/QUERY_PIPELINE.md), [web/docs/technical/](web/docs/technical/) — viewer development docs
 
 ## License
