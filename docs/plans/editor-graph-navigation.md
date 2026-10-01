@@ -1,24 +1,28 @@
 # Editor → graph: open the call graph from a Rust, Verus or Lean construct
 
-Status (2026-10-02): Phases 0 to 2 are on `main`. Phase 0 merged in #67
+Status (2026-10-02): Phases 0 to 3 are implemented. Phase 0 merged in #67
 and Phase 2 in #70; the protocol is in `docs/guides/vscode-extension.md`.
 Phase 1 is done, with fixtures cut from secure-messaging's extracts. The
-old repo was archived on 2026-10-02 with a pointer README. To try the
-extension on secure-messaging before Phase 2, parts of Phase 3 came
-forward: the extension loads through `parseAndNormalizeGraph` +
-`validateGraph`, resolves the cursor with `resolveCursor` (symbols from the
-document symbol provider, exact workspace-relative paths), reloads only
-valid files, and runs in `lean4` as well as `rust`. Phase 3 is the current
-work; what remains is listed at the start of that phase. Revised on
-2026-10-01 after a Codex review; see "Review decisions" at the end, and
-"Decisions" before that.
+old repo was archived on 2026-10-02 with a pointer README. Phase 3 (the
+extension's first release) is on the `vscode/phase3-session` branch: the
+session, the host side of the protocol, project-root and containment
+rules, the watcher, "Show at Cursor" with its keybinding and menus, the
+panel beside the editor, the status bar, and the integration tests listed
+in that phase. The performance numbers are at the end of Phase 3. What is
+left before a release is tagging a VSIX. Revised on 2026-10-01 after a
+Codex review; see "Review decisions" at the end, and "Decisions" before
+that.
 
 Goal: with the cursor on a declaration in a Rust, Verus or Lean file, one
 keystroke shows that declaration's neighbourhood in a graph panel beside the
 code, and clicking a node jumps back to the source without hiding the graph.
 Later: CodeLens, following the cursor, and fetching graphs built in CI.
 
-## Where we are
+## Where we were
+
+The seven points below were found on 2026-10-01 and are all addressed by
+Phases 0 to 3 (see each phase for where). Kept as the record of what the
+design answers.
 
 Tested on 2026-10-01 against probegraph `main` (6fd5708) and
 `call_graph_vs_code_extension` `main` (de17d69):
@@ -351,28 +355,35 @@ A local file at `indexPath`, in any format the viewer reads:
 
 ### Phase 3: extension, first release
 
-Done so far: `indexLoader.ts` parses with `parseAndNormalizeGraph` +
-`validateGraph` and looks up with `resolveCursor`; the watcher handles
-create and reloads only valid files; commands, menus and activation cover
-`rust` and `lean4`.
-Still to do: `webviewLoader.ts` sends `loadGraph` without a `revision` and
-never `selectNode`, so every "Show Call Graph" resends the graph and
-nothing reads `selectResult`; the panel and `navigate` both use
-`ViewColumn.One`; and everything else below.
+Implemented on `vscode/phase3-session`. Where things ended up:
 
-1. Session object (folder, graph source, revision, pending selection) and
-   the protocol; replace `indexLoader.ts` parsing with
-   `parseAndNormalizeGraph` + `validateGraph` and its lookup with
-   `resolveCursor` (done). Async reads.
-2. Project root rules; `navigate` and `indexPath` containment.
-3. Watcher with create, debounce, validate-then-replace; temp-file-and-
-   rename for "Regenerate"; workspace trust for generators.
-4. Commands, keybinding, menus and title icon for `rust` and `lean4`;
-   activation on both languages (done except the keybinding and icon).
-5. Panel beside the editor, navigation column rule, status bar, quick pick
-   and not-indexed messages.
+1. `session.ts`: `GraphSession` (one folder, one graph file, revision per
+   read, last good graph kept) and `Sessions` (the one active session, the
+   switch prompt, the status bar). `indexLoader.ts` reads asynchronously
+   and holds the `indexPath` and project-root rules. `webviewLoader.ts` is
+   the host side of the protocol: `loadGraph` only for an unconfirmed
+   revision, one pending selection until `graphLoaded`, equal selections
+   not resent, stale results dropped, everything reset on disposal.
+2. Project root rules as designed; `navigate` paths must be in the graph's
+   path set and under the root; `indexPath` must be inside the folder.
+3. The watcher handles create, change and delete with a 500 ms debounce,
+   plus a 2 s `fs.watchFile` stat poll because `fs.watch` fails where
+   inotify watches run out (it did on the development machine). "Regenerate"
+   writes `.<index>.<pid>.tmp` beside the index and renames it over on
+   success; generators need `workspace.isTrusted`
+   (`capabilities.untrustedWorkspaces: limited`). The `pipeline` binary is
+   looked up under `CARGO_TARGET_DIR`, then `<repo>/target`, then
+   `cargo metadata`'s `target_directory`.
+4. "Call Graph: Show at Cursor" with `ctrl+alt+g` / `cmd+alt+g`, at the top
+   of the editor context menu and as an editor-title icon for `rust` and
+   `lean4`. The extension contributes the `lean4` language ID for `.lean`
+   so it works without vscode-lean4 installed (and in the tests).
+5. Panel with `ViewColumn.Beside` and `preserveFocus`; `navigate` opens in
+   the last text editor's group unless the panel is there. A `filtered`
+   result shows which filters hide the node with a "Show it" button that
+   sends the new `relaxFilters` message to the viewer.
 
-Integration tests (real VS Code):
+Integration tests (real VS Code), all in `vscode/src/test/`:
 
 - Rust and Lean fixtures resolve the cursor; the Lean test runs once
   without a symbol provider (line evidence) and once with symbols supplied
@@ -387,10 +398,27 @@ Integration tests (real VS Code):
   session folder's file.
 - Closing and reopening the panel.
 
-Before release, measure on the SPQR extract (2,907 atoms) and the largest
-graph we have: extension-host blocking during load, memory with the panel
-hidden, time to `graphLoaded`, time from `selectNode` to `selectResult`.
-Record the numbers in this file; they set the budgets for Phase 4.
+Measured on 2026-10-02 (host: node 22 against the compiled loader; webview:
+Chromium through the Playwright harness of `web/e2e/vscode-webview.spec.ts`,
+which is the same renderer as the webview):
+
+| Graph | Size | Nodes / links | Host blocking (parse + normalize + validate + index) | `loadGraph` → `graphLoaded` | `selectNode` → `selectResult` (depth 3) | Page JS heap after load |
+|---|---|---|---|---|---|---|
+| SPQR `lean_Spqr_0.1.0_ec-bridge.json` | 5.1 MB | 2,907 / 13,530 | 53 ms (12 parse, 39 normalize) | 130 ms | 44 ms | 6 MB |
+| secure-messaging `probe-lean-extract.json` | 7.3 MB | 2,313 / 27,706 | 70 ms | not measured | not measured | |
+| `web/public/graph_fixed.json` (libsignal SCIP index) | 32 MB | 22,109 / 48,923 | 82 ms (59 parse, 21 validate) | no `graphLoaded` after 9 min | | |
+
+Cursor lookup (`resolveCursor`) is 1 to 3 µs on every graph. Host-side
+cost is small; the viewer is the limit: its synchronous `loadGraph` on the
+22k-node graph kept Chromium's main thread busy until the run was stopped,
+so graphs of that size are not usable through the panel today. The
+budgets for Phase 4: a graph the size of SPQR stays under 100 ms of host
+blocking and 200 ms to `graphLoaded`; CodeLens and follow mode may issue
+one `selectNode` per cursor move at 50 ms each; anything over ~10k nodes
+needs the viewer's deferred-load path on the `loadGraph` message first.
+"Memory with the panel hidden" was not measured in VS Code itself
+(`retainContextWhenHidden` keeps the page as is, so the page heap is the
+number to watch).
 
 ### Phase 4: later, each behind the protocol and the budgets
 
