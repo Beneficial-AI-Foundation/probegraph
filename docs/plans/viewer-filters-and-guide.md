@@ -7,8 +7,8 @@ Phase 3 (blocked on probe-lean #114, still open) and Phase 4 except for two
 items: `removeIsolated` already keeps the intent's anchor IDs
 (`src/query.ts`, `keepSet`; #46), and the Guide re-renders when kind or edge
 filters change (#48). The ranked lists, SCC-based dependent counts, layers
-strip and BFS truncation are not started; `src/guide/` still has the five
-chips and `main.ts` truncates by connectivity, keeping anchors first (#48).
+strip and BFS truncation are not started; `src/guide/` still has its
+conditional suggestion chips (up to six) and `main.ts` truncates by connectivity, keeping anchors first (#48).
 Planned 2026-09-29 and revised after two Codex reviews that day; see "Review
 decisions" at the end.
 

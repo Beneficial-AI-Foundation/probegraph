@@ -43,7 +43,9 @@ in sync.
 To release, push a tag (`git tag v5.1.0 && git push origin v5.1.0`). A manual
 run from the Actions tab must be started with the tag selected as the ref:
 the release step takes its tag from the ref, so a run on `main` builds every
-target and then fails. The `version` input only names the archives.
+target and then fails. The `version` input doesn't choose the tag: it is
+used for the archive names and release notes only when the run is not on a
+tag.
 
 ## Adding a binary to releases
 

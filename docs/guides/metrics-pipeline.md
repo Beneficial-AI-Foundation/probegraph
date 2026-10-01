@@ -82,7 +82,8 @@ cargo run -p metrics-cli --bin enrich_csv_with_metrics -- functions_to_track.csv
 ```
 
 Matches each tracked function against the RCA output by name and module
-path. Only functions in files under a `src/` directory are loaded from RCA.
+path. Only RCA files whose path contains `src/` are loaded, keyed by the
+path after the first `src/`.
 Append `--debug` to print the match keys tried.
 
 ### Step 5: join spec and proof metrics
@@ -125,13 +126,15 @@ empty.
 
 ## Empty values
 
-A cell is empty when the function was not matched. The step 5 columns are
+A cell is empty when the function was not matched, or when RCA reported no
+value for that metric (a match needs only one of cyclomatic, cognitive or
+Halstead length). The step 5 columns are
 also empty when the value is zero; the RCA columns from step 4 print `0`.
 `has_proof` and `trivial_proof` are empty for functions missing from the
 proof-difficulty CSV. Steps 4 and 5 print their match rates.
 
-Unmatched functions are expected in step 4: files outside `src/` (such as
-`build.rs`) are not loaded, RCA skips macro-generated functions
+Unmatched functions are expected in step 4: files whose path has no `src/`
+(such as a crate-root `build.rs`) are not loaded, RCA skips macro-generated functions
 (`add_assign`, ...) and trait declarations without a body, and Verus-only
 modules are absent from the vanilla source. `verify_rca_coverage
 <rca_json_dir> <vanilla_source_dir> <atoms_json>` reports which functions are
@@ -140,8 +143,10 @@ missing where.
 ## Limitations
 
 - Step 4 strips a leading `curve25519_dalek` from each module path before
-  matching. For any other crate the `crate::...` prefix stays, so tracked
-  functions don't match the RCA keys, which start after `src/`.
+  matching, and no other crate name. For another crate, a module path that
+  starts with the crate name (as in the example above) keeps it and doesn't
+  match the RCA keys, which start after `src/`; give crate-relative module
+  paths (`backend::serial::u64::field`) instead.
 - `add_trivial_proof_from_source` finds the file by splitting each `link` on
   `curve25519-dalek/`, so `<source_repo>` must be the curve25519-dalek crate
   directory and rows linking anywhere else get an empty `trivial_proof`.
