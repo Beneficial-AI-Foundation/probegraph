@@ -1,5 +1,5 @@
 /**
- * WebviewLoader - Load the scip-callgraph web app in a VS Code webview
+ * WebviewLoader - Load the probegraph web app in a VS Code webview
  * 
  * This module handles:
  * - Creating webview panels with the embedded web app

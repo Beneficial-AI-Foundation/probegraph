@@ -1,5 +1,5 @@
 /**
- * IndexLoader - Load and cache the D3 graph index from scip-callgraph pipeline
+ * IndexLoader - Load and cache the D3 graph index from probegraph pipeline
  * 
  * This module handles:
  * - Loading the call_graph_index.json file
@@ -22,7 +22,7 @@ export type VerificationStatus = 'verified' | 'failed' | 'unverified';
 export type FunctionMode = 'exec' | 'proof' | 'spec';
 
 /**
- * D3 Node from scip-callgraph pipeline output
+ * D3 Node from probegraph pipeline output
  */
 export interface D3Node {
     id: string;
@@ -62,7 +62,7 @@ export interface IndexMetadata {
 }
 
 /**
- * Raw D3 graph JSON format from scip-callgraph
+ * Raw D3 graph JSON format from probegraph
  */
 export interface D3Graph {
     nodes: D3Node[];
@@ -185,7 +185,7 @@ export async function loadIndex(workspaceRoot: string, forceReload: boolean = fa
             `To generate the index, run:\n` +
             `  Command Palette → "Call Graph: Regenerate Index"\n\n` +
             `Or manually:\n` +
-            `  cd /path/to/scip-callgraph\n` +
+            `  cd /path/to/probegraph\n` +
             `  cargo run --release -p metrics-cli --bin pipeline -- \\\n` +
             `    ${workspaceRoot} -o ${indexPath} --skip-similar-lemmas`
         );

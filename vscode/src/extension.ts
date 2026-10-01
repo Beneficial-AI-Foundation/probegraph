@@ -2,7 +2,7 @@
  * Call Graph Visualizer Extension
  * 
  * This extension provides interactive call graph visualization for Verus/Rust projects.
- * It uses pre-computed indices from scip-callgraph for instant O(1) subgraph extraction.
+ * It uses pre-computed indices from probegraph for instant O(1) subgraph extraction.
  */
 
 import * as vscode from 'vscode';
@@ -385,7 +385,7 @@ async function showPrerequisiteStatus(): Promise<void> {
         ).then((action) => {
             if (action === 'Show Documentation') {
                 vscode.env.openExternal(
-                    vscode.Uri.parse('https://github.com/Beneficial-AI-Foundation/scip-callgraph')
+                    vscode.Uri.parse('https://github.com/Beneficial-AI-Foundation/probegraph')
                 );
             }
         });

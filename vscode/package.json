@@ -1,7 +1,7 @@
 {
   "name": "call-graph-visualizer",
   "displayName": "Call Graph Visualizer",
-  "description": "Interactive call graph explorer for Verus/Rust projects. Embeds the full scip-callgraph web app with depth slider, Source/Sink queries, and verification status visualization.",
+  "description": "Interactive call graph explorer for Verus/Rust projects. Embeds the full probegraph web app with depth slider, Source/Sink queries, and verification status visualization.",
   "version": "0.1.0",
   "publisher": "beneficial-ai-foundation",
   "repository": {
@@ -138,7 +138,7 @@
         "callGraph.defaultScipCallgraphPath": {
           "type": "string",
           "default": "",
-          "description": "Path to the scip-callgraph repository (for running the pipeline)"
+          "description": "Path to the probegraph repository (for running the pipeline)"
         },
         "callGraph.autoRegenerateOnSave": {
           "type": "boolean",

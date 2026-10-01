@@ -1,10 +1,10 @@
 # Call Graph Visualizer Extension
 
-A VS Code extension that provides **interactive call graph exploration** for Verus/Rust projects. This extension embeds the full [scip-callgraph](https://github.com/Beneficial-AI-Foundation/scip-callgraph) web app directly in VS Code, giving you powerful filtering and visualization capabilities.
+A VS Code extension that provides **interactive call graph exploration** for Verus/Rust projects. This extension embeds the full [probegraph](https://github.com/Beneficial-AI-Foundation/probegraph) web app directly in VS Code, giving you powerful filtering and visualization capabilities.
 
 ## ✨ Features
 
-- **🌐 Full Web App Integration**: Embeds the complete scip-callgraph web viewer in VS Code
+- **🌐 Full Web App Integration**: Embeds the complete probegraph web viewer in VS Code
 - **🎚️ Depth Slider**: Adjust traversal depth (0-10) in real-time
 - **🔍 Source/Sink Queries**: Powerful glob-pattern filtering with support for Rust-style paths (`module::function`)
 - **📁 File Filters**: Include/exclude files by name or pattern
@@ -39,11 +39,11 @@ go build ./cmd/scip
 # Install from: https://github.com/verus-lang/verus
 ```
 
-### 2. Clone scip-callgraph
+### 2. Clone probegraph
 
 ```bash
-git clone --recurse-submodules https://github.com/Beneficial-AI-Foundation/scip-callgraph.git
-cd scip-callgraph
+git clone --recurse-submodules https://github.com/Beneficial-AI-Foundation/probegraph.git
+cd probegraph
 cargo build --release --workspace
 ```
 
@@ -53,7 +53,7 @@ Open VS Code settings (`Ctrl+,`) and set:
 
 ```json
 {
-  "callGraph.defaultScipCallgraphPath": "/path/to/scip-callgraph"
+  "callGraph.defaultScipCallgraphPath": "/path/to/probegraph"
 }
 ```
 
@@ -86,7 +86,7 @@ Or add to your project's `.vscode/settings.json`.
 | `Call Graph: Show Call Graph (Bidirectional)` | Open graph explorer with full neighborhood |
 | `Call Graph: Show Dependencies` | Open graph explorer showing callees |
 | `Call Graph: Show Dependents` | Open graph explorer showing callers |
-| `Call Graph: Regenerate Index` | Run the scip-callgraph pipeline |
+| `Call Graph: Regenerate Index` | Run the probegraph pipeline |
 | `Call Graph: Cancel Pipeline` | Stop the running pipeline |
 | `Call Graph: Check Prerequisites` | Verify all required tools are installed |
 
@@ -127,7 +127,7 @@ The embedded web app provides:
 |---------|---------|-------------|
 | `callGraph.depth` | `3` | Initial depth for call graph traversal |
 | `callGraph.indexPath` | `.vscode/call_graph_index.json` | Path to the index file |
-| `callGraph.defaultScipCallgraphPath` | `""` | Path to scip-callgraph repository |
+| `callGraph.defaultScipCallgraphPath` | `""` | Path to probegraph repository |
 | `callGraph.autoRegenerateOnSave` | `false` | Auto-regenerate on Rust file save |
 | `callGraph.debounceDelayMs` | `3000` | Delay before auto-regeneration (ms) |
 | `callGraph.skipVerification` | `false` | Skip Verus verification (faster) |
@@ -165,7 +165,7 @@ The embedded web app provides:
 │                                                                  │
 │  User clicks function → Load embedded web app → Send graph data │
 │                              ↓                                   │
-│                    Full scip-callgraph UI                        │
+│                    Full probegraph UI                        │
 │           (filters, depth slider, D3 visualization)             │
 │                              ↓                                   │
 │                  Click node → Navigate to source                 │
@@ -187,10 +187,10 @@ The pre-computed index contains:
 Run **"Call Graph: Regenerate Index"** to generate the index.
 
 ### "Pipeline command not found"
-Set `callGraph.defaultScipCallgraphPath` to your scip-callgraph repository path:
+Set `callGraph.defaultScipCallgraphPath` to your probegraph repository path:
 ```json
 {
-  "callGraph.defaultScipCallgraphPath": "/home/user/git/scip-callgraph"
+  "callGraph.defaultScipCallgraphPath": "/home/user/git/probegraph"
 }
 ```
 
@@ -254,8 +254,8 @@ npm run vsix    # call-graph-visualizer-<version>.vsix
 src/
 ├── extension.ts           # Entry point, command registration
 ├── indexLoader.ts         # Load and cache D3 graph index
-├── webviewLoader.ts       # Embed scip-callgraph web app
-├── pipelineRunner.ts      # Run scip-callgraph pipeline
+├── webviewLoader.ts       # Embed probegraph web app
+├── pipelineRunner.ts      # Run probegraph pipeline
 └── test/
     └── indexLoader.test.ts
 
@@ -265,7 +265,7 @@ webview/                   # Built viewer (not tracked)
 
 ## 📚 Related Projects
 
-- [scip-callgraph](https://github.com/Beneficial-AI-Foundation/scip-callgraph) - Call graph generation from SCIP indices
+- [probegraph](https://github.com/Beneficial-AI-Foundation/probegraph) - Call graph generation from SCIP indices
 - [SCIP](https://github.com/sourcegraph/scip) - Source Code Intelligence Protocol
 - [verus-analyzer](https://github.com/verus-lang/verus-analyzer) - Fork of rust-analyzer with Verus support
 - [Verus](https://github.com/verus-lang/verus) - Verified Rust for low-level systems code

@@ -14,6 +14,4 @@ vsc-extension-quickstart.md
 **/.vscode-test.*
 scripts/**
 test-sample.rs
-.github/**
-DEVELOPMENT.md
 test-fixtures/**

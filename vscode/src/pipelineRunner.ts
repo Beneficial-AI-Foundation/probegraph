@@ -1,5 +1,5 @@
 /**
- * PipelineRunner - Run scip-callgraph pipeline to generate/update the index
+ * PipelineRunner - Run probegraph pipeline to generate/update the index
  * 
  * This module handles:
  * - Running the pipeline command in the background
@@ -107,7 +107,7 @@ function triggerDebounced(): void {
 }
 
 /**
- * Run the scip-callgraph pipeline
+ * Run the probegraph pipeline
  */
 export async function runPipeline(options?: PipelineOptions): Promise<void> {
     const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
@@ -144,9 +144,9 @@ export async function runPipeline(options?: PipelineOptions): Promise<void> {
             // Use the pre-built binary
             command = releaseBinary;
             args = [workspaceRoot, '-o', indexPath];
-            cwd = scipCallgraphPath; // Run from scip-callgraph dir for script paths
+            cwd = scipCallgraphPath; // Run from probegraph dir for script paths
         } else {
-            // Use cargo run from scip-callgraph directory
+            // Use cargo run from probegraph directory
             command = 'cargo';
             args = [
                 'run', '--release', '-p', 'metrics-cli', '--bin', 'pipeline',
@@ -162,7 +162,7 @@ export async function runPipeline(options?: PipelineOptions): Promise<void> {
         
         // Show a helpful message if not configured
         vscode.window.showWarningMessage(
-            'scip-callgraph path not configured. Please set "callGraph.defaultScipCallgraphPath" in settings.',
+            'probegraph path not configured. Please set "callGraph.defaultScipCallgraphPath" in settings.',
             'Open Settings'
         ).then(selection => {
             if (selection === 'Open Settings') {
@@ -254,10 +254,10 @@ export async function runPipeline(options?: PipelineOptions): Promise<void> {
             if (error.message.includes('ENOENT')) {
                 outputChannel.appendLine('');
                 outputChannel.appendLine('The pipeline command was not found.');
-                outputChannel.appendLine('Please set the "callGraph.defaultScipCallgraphPath" setting to the path of your scip-callgraph repository.');
+                outputChannel.appendLine('Please set the "callGraph.defaultScipCallgraphPath" setting to the path of your probegraph repository.');
                 outputChannel.appendLine('');
                 outputChannel.appendLine('Example:');
-                outputChannel.appendLine('  "callGraph.defaultScipCallgraphPath": "/home/user/git_repos/scip-callgraph"');
+                outputChannel.appendLine('  "callGraph.defaultScipCallgraphPath": "/home/user/git_repos/probegraph"');
             }
             
             vscode.window.showErrorMessage('Failed to start call graph pipeline. See output for details.');
