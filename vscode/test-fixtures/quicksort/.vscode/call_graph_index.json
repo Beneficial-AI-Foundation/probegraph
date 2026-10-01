@@ -1,0 +1,152 @@
+{
+  "nodes": [
+    {
+      "id": "probe:core/https://github.com/rust-lang/rust/library/core/slice/len()",
+      "display_name": "len",
+      "symbol": "probe:core/https://github.com/rust-lang/rust/library/core/slice/len()",
+      "full_path": "",
+      "relative_path": "",
+      "file_name": "unknown",
+      "parent_folder": "unknown",
+      "start_line": 0,
+      "end_line": 0,
+      "is_libsignal": false,
+      "dependencies": [],
+      "dependents": [
+        "probe:quicksort/0.1.0/partition()",
+        "probe:quicksort/0.1.0/quicksort()"
+      ],
+      "kind": "exec"
+    },
+    {
+      "id": "probe:core/https://github.com/rust-lang/rust/library/core/slice/split_at_mut()",
+      "display_name": "split_at_mut",
+      "symbol": "probe:core/https://github.com/rust-lang/rust/library/core/slice/split_at_mut()",
+      "full_path": "",
+      "relative_path": "",
+      "file_name": "unknown",
+      "parent_folder": "unknown",
+      "start_line": 0,
+      "end_line": 0,
+      "is_libsignal": false,
+      "dependencies": [],
+      "dependents": [
+        "probe:quicksort/0.1.0/quicksort()"
+      ],
+      "kind": "exec"
+    },
+    {
+      "id": "probe:core/https://github.com/rust-lang/rust/library/core/slice/swap()",
+      "display_name": "swap",
+      "symbol": "probe:core/https://github.com/rust-lang/rust/library/core/slice/swap()",
+      "full_path": "",
+      "relative_path": "",
+      "file_name": "unknown",
+      "parent_folder": "unknown",
+      "start_line": 0,
+      "end_line": 0,
+      "is_libsignal": false,
+      "dependencies": [],
+      "dependents": [
+        "probe:quicksort/0.1.0/partition()"
+      ],
+      "kind": "exec"
+    },
+    {
+      "id": "probe:quicksort/0.1.0/partition()",
+      "display_name": "partition",
+      "symbol": "probe:quicksort/0.1.0/partition()",
+      "full_path": "src/lib.rs",
+      "relative_path": "src/lib.rs",
+      "file_name": "lib.rs",
+      "parent_folder": "src",
+      "start_line": 14,
+      "end_line": 26,
+      "is_libsignal": false,
+      "dependencies": [
+        "probe:core/https://github.com/rust-lang/rust/library/core/slice/len()",
+        "probe:core/https://github.com/rust-lang/rust/library/core/slice/swap()"
+      ],
+      "dependents": [
+        "probe:quicksort/0.1.0/quicksort()"
+      ],
+      "kind": "exec"
+    },
+    {
+      "id": "probe:quicksort/0.1.0/quicksort()",
+      "display_name": "quicksort",
+      "symbol": "probe:quicksort/0.1.0/quicksort()",
+      "full_path": "src/lib.rs",
+      "relative_path": "src/lib.rs",
+      "file_name": "lib.rs",
+      "parent_folder": "src",
+      "start_line": 4,
+      "end_line": 12,
+      "is_libsignal": false,
+      "dependencies": [
+        "probe:core/https://github.com/rust-lang/rust/library/core/slice/len()",
+        "probe:core/https://github.com/rust-lang/rust/library/core/slice/split_at_mut()",
+        "probe:quicksort/0.1.0/partition()"
+      ],
+      "dependents": [
+        "probe:quicksort/0.1.0/tests/test_quicksort()"
+      ],
+      "kind": "exec"
+    },
+    {
+      "id": "probe:quicksort/0.1.0/tests/test_quicksort()",
+      "display_name": "test_quicksort",
+      "symbol": "probe:quicksort/0.1.0/tests/test_quicksort()",
+      "full_path": "src/lib.rs",
+      "relative_path": "src/lib.rs",
+      "file_name": "lib.rs",
+      "parent_folder": "src",
+      "start_line": 33,
+      "end_line": 37,
+      "is_libsignal": false,
+      "dependencies": [
+        "probe:quicksort/0.1.0/quicksort()"
+      ],
+      "dependents": [],
+      "kind": "exec"
+    }
+  ],
+  "links": [
+    {
+      "source": "probe:quicksort/0.1.0/partition()",
+      "target": "probe:core/https://github.com/rust-lang/rust/library/core/slice/len()",
+      "type": "inner"
+    },
+    {
+      "source": "probe:quicksort/0.1.0/partition()",
+      "target": "probe:core/https://github.com/rust-lang/rust/library/core/slice/swap()",
+      "type": "inner"
+    },
+    {
+      "source": "probe:quicksort/0.1.0/quicksort()",
+      "target": "probe:core/https://github.com/rust-lang/rust/library/core/slice/len()",
+      "type": "inner"
+    },
+    {
+      "source": "probe:quicksort/0.1.0/quicksort()",
+      "target": "probe:quicksort/0.1.0/partition()",
+      "type": "inner"
+    },
+    {
+      "source": "probe:quicksort/0.1.0/quicksort()",
+      "target": "probe:core/https://github.com/rust-lang/rust/library/core/slice/split_at_mut()",
+      "type": "inner"
+    },
+    {
+      "source": "probe:quicksort/0.1.0/tests/test_quicksort()",
+      "target": "probe:quicksort/0.1.0/quicksort()",
+      "type": "inner"
+    }
+  ],
+  "metadata": {
+    "total_nodes": 6,
+    "total_edges": 6,
+    "project_root": ".",
+    "generated_at": "2026-10-01T13:18:52.830614086+00:00"
+  }
+}

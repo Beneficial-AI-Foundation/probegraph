@@ -18,7 +18,8 @@ import {
 } from './indexLoader';
 import { 
     showCallGraphWebview,
-    ShowGraphOptions
+    ShowGraphOptions,
+    onDidReceiveWebviewMessage
 } from './webviewLoader';
 import { 
     initializePipelineRunner, 
@@ -29,9 +30,16 @@ import {
 } from './pipelineRunner';
 
 /**
+ * API returned from activate(), for the integration tests
+ */
+export interface CallGraphApi {
+    onDidReceiveWebviewMessage: vscode.Event<{ type: string }>;
+}
+
+/**
  * Extension activation
  */
-export function activate(context: vscode.ExtensionContext) {
+export function activate(context: vscode.ExtensionContext): CallGraphApi {
     console.log('Call Graph Visualizer extension is now active!');
     
     // Initialize the pipeline runner
@@ -42,6 +50,8 @@ export function activate(context: vscode.ExtensionContext) {
     
     // Preload index if available
     preloadIndex();
+
+    return { onDidReceiveWebviewMessage };
 }
 
 /**

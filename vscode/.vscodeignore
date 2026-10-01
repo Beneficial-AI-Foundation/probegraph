@@ -16,3 +16,4 @@ scripts/**
 test-sample.rs
 .github/**
 DEVELOPMENT.md
+test-fixtures/**

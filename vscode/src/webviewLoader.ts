@@ -39,6 +39,11 @@ export interface ShowGraphOptions {
  */
 let activePanel: vscode.WebviewPanel | null = null;
 
+const webviewMessages = new vscode.EventEmitter<{ type: string }>();
+
+/** Fires for every message the webview posts. */
+export const onDidReceiveWebviewMessage = webviewMessages.event;
+
 /**
  * Show the call graph webview with the given index and options
  */
@@ -76,6 +81,7 @@ export function showCallGraphWebview(
     // Handle messages from the webview
     panel.webview.onDidReceiveMessage(
         async (message) => {
+            webviewMessages.fire(message);
             switch (message.type) {
                 case 'ready':
                     // Webview is ready, send the graph data

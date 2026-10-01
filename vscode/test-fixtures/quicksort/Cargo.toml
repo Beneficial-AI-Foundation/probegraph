@@ -1,0 +1,16 @@
+[package]
+name = "quicksort"
+version = "0.1.0"
+edition = "2021"
+
+description = "A functional quicksort implementation and related utilities."
+authors = ["Your Name <you@example.com>"]
+license = "MIT"
+
+[dependencies]
+# Uncomment if you add prost or scip-protocol for SCIP parsing
+# prost = "0.11.0"
+# scip-protocol = "0.3.0"
+
+[lib]
+path = "src/lib.rs"

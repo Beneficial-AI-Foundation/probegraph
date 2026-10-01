@@ -63,3 +63,7 @@ jspm_packages/
 # Temporary folders
 tmp/
 temp/
+
+# Test workspace config
+!test-fixtures/*/.vscode/
+!test-fixtures/*/.vscode/*.json
