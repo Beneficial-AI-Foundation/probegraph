@@ -1,6 +1,7 @@
 # Editor → graph: open the call graph from a Rust, Verus or Lean construct
 
-Status (2026-10-01): Phase 0 in progress. Revised the same day after a
+Status (2026-10-01): Phase 0 done on branch `vscode/move-extension` except
+archiving the old repo (step 7), which waits for the merge. Revised the same day after a
 Codex review; see "Review decisions" at the end, and "Decisions" before
 that.
 
@@ -287,15 +288,20 @@ A local file at `indexPath`, in any format the viewer reads:
    and `vsce package`. Packaging refuses a dirty tree, so a VSIX always
    matches a commit.
 4. Turn the 2026-10-01 ad-hoc checks into tests:
-   - probegraph `web/e2e/vscode-webview.spec.ts`: load `dist-vscode` with
-     the extension's CSP and a stubbed `acquireVsCodeApi`; assert `ready`,
+   - `web/e2e/vscode-webview.spec.ts` on the dev server with a stubbed
+     `acquireVsCodeApi`: `ready`, VS Code header and hidden file picker,
      render after `loadGraph`, `navigate` after **Open in Editor**,
-     `setQuery`.
-   - extension integration test in a real VS Code: quicksort fixture;
-     "Show Call Graph" opens the webview tab with no error.
-   - Delete the placeholder tests.
+     `setQuery`, `refresh`.
+   - The extension's CSP is covered in real VS Code instead: the workspace
+     suite (copy of `vscode/test-fixtures/quicksort`) checks that "Show Call
+     Graph" opens the tab and the bundled viewer posts `ready`, seen through
+     the API `activate()` returns. It also checks every contributed command
+     is registered, and that "Regenerate" passes a path with a space and a
+     `;` as one argument.
+   - Placeholder tests deleted; the `formatTimestamp` tests kept.
 5. Rename scip-callgraph → probegraph in the extension README and settings
-   text. Drop the Google Fonts links from the VS Code build.
+   text (the setting key `callGraph.defaultScipCallgraphPath` stays). Drop
+   the Google Fonts links from the VS Code build.
 6. Remove `shell: true` from `pipelineRunner.ts`.
 7. Archive the old repo with a README pointing to `probegraph/vscode`.
 
