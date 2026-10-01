@@ -1330,6 +1330,7 @@ async function loadDeferredGraph(): Promise<void> {
     // An ambiguous pattern includes every matching file until the user picks
     checkAndShowDisambiguation();
   } catch (error) {
+    if (request !== graphRequest) return;
     console.error('Failed to load deferred graph:', error);
     showError(`Failed to load graph: ${error instanceof Error ? error.message : 'Unknown error'}`);
   } finally {
@@ -2164,7 +2165,8 @@ function renderLayerSwitcher(): void {
   const container = document.getElementById('layer-switcher');
   if (container) container.style.display = blueprintLayer ? '' : 'none';
   const drilldownHint = document.getElementById('instructions-drilldown');
-  if (drilldownHint) drilldownHint.style.display = blueprintLayer ? '' : 'none';  document.getElementById('layer-blueprint')?.classList.toggle('active', activeLayer === 'blueprint');
+  if (drilldownHint) drilldownHint.style.display = blueprintLayer ? '' : 'none';
+  document.getElementById('layer-blueprint')?.classList.toggle('active', activeLayer === 'blueprint');
   document.getElementById('layer-code')?.classList.toggle('active', activeLayer === 'code');
 }
 
@@ -2220,15 +2222,26 @@ function openOnLayer(layer: Layer, ids: string[], label: string): void {
     pushed: true,
     before: () => {
       const flagOf = compileKindFlag(state.projectLanguage);
-      for (const t of targets) state.filters[flagOf(t.kind || 'exec')] = true;
+      for (const t of targets) {
+        state.filters[flagOf(t.kind || 'exec')] = true;
+        state.filters.hiddenNodes.delete(t.id);
+      }
       state.filters.maxDepth = 1;
       seededRequestedDepth = clampSeededDepth(1);
       syncFilterUI();
     },
   });
+  const shownIds = new Set(state.filteredGraph?.nodes.map(n => n.id));
+  const filteredOut = targets.filter(t => !shownIds.has(t.id));
+  if (filteredOut.length > 0) {
+    showToast(`Hidden by the current filters: ${filteredOut.map(t => t.display_name).join(', ')}`);
+  }
   if (targets.length !== 1) return;
   const shown = state.fullGraph?.nodes.find(n => n.id === targets[0].id);
-  if (shown) handleStateChange({ ...state, selectedNode: shown }, false);
+  if (shown) {
+    state.selectedNode = shown;
+    updateNodeInfo();
+  }
 }
 
 /** Follow a blueprint entry <-> Lean declaration link in node details. */
@@ -2237,22 +2250,34 @@ function navigateToLayerNode(layer: Layer, id: string): void {
   if (target) openOnLayer(layer, [id], target.display_name);
 }
 
-/** Double-click on a blueprint entry: open its bound declarations on the code layer. */
-function drillDownToCode(node: D3Node): void {
-  if (node.language !== BLUEPRINT_LANGUAGE) return;
+/**
+ * Double-click on a blueprint entry: open its bound declarations on the
+ * code layer. False for any other node, which keeps the zoom.
+ */
+function drillDownToCode(node: D3Node, wasSelected: boolean): boolean {
+  if (node.language !== BLUEPRINT_LANGUAGE) return false;
+  // Undo the selection toggle of the double-click's first click when its
+  // second click missed the node, which the blueprint layer (and its
+  // history entry) would otherwise keep
+  const selected = state.filters.selectedNodes;
+  const toggled = selected.has(node.id) !== wasSelected;
+  if (toggled) {
+    if (wasSelected) selected.add(node.id);
+    else selected.delete(node.id);
+  }
   const bindings = node.blueprint?.bindings ?? [];
   if (bindings.length === 0) {
+    if (toggled) applyFiltersAndUpdate();
     showToast(`${node.display_name}: no bound declarations`);
-    return;
+    return true;
   }
   const label = bindings.length === 1
     ? codeLayer?.nodes.find(n => n.id === bindings[0])?.display_name ?? bindings[0]
     : `${node.display_name} (${bindings.length} declarations)`;
-  // Undo the selection made by the double-click's first click, which the
-  // blueprint layer would otherwise keep
-  state.filters.selectedNodes.delete(node.id);
+  if (toggled) updateURLWithFilters();
   openOnLayer('code', bindings, label);
   showToast(`${node.display_name}: ${bindings.length} bound declaration${bindings.length === 1 ? '' : 's'}`);
+  return true;
 }
 
 /**
@@ -2378,6 +2403,7 @@ async function handleFileLoad(event: Event): Promise<void> {
   
   if (!file) return;
   const request = ++graphRequest;
+  deferredGraphUrl = null;
 
   try {
     const text = await file.text();
@@ -2942,9 +2968,8 @@ function updateNodeInfo(): void {
       if (!targetId || !state.fullGraph) return;
       const targetNode = state.fullGraph.nodes.find(n => n.id === targetId);
       if (targetNode) {
-        const newState = { ...state };
-        newState.selectedNode = targetNode;
-        handleStateChange(newState, false);
+        state.selectedNode = targetNode;
+        updateNodeInfo();
       }
     });
   });

@@ -3,9 +3,6 @@ import { D3Graph, D3Node, D3Link, GraphState } from './types';
 import { statusColor, edgeTypeColor, SELECTION_COLOR, TEXT_COLOR } from './theme';
 import { anchorIds } from './intent';
 
-/** Longest gap between the first click on a node and the double-click event. */
-const DOUBLE_CLICK_MS = 500;
-
 /**
  * Compute topological depth for each node in the graph.
  * Nodes with no incoming edges (callers) are at depth 0.
@@ -303,14 +300,18 @@ export class CallGraphVisualization {
   private renderedNodeIds: Set<string> = new Set();
   private currentNodes: D3Node[] = [];
 
-  private onNodeDoubleClick?: (node: D3Node) => void;
-  private lastNodeClick: { node: D3Node; time: number } | null = null;
+  /**
+   * Gets whether the node was selected before the double-click's first
+   * click; returns whether it handled the double-click.
+   */
+  private onNodeDoubleClick?: (node: D3Node, wasSelected: boolean) => boolean;
+  private lastNodeClick: { node: D3Node; wasSelected: boolean } | null = null;
 
   constructor(
     container: HTMLElement,
     state: GraphState,
     onStateChange: (state: GraphState, selectionChanged?: boolean) => void,
-    onNodeDoubleClick?: (node: D3Node) => void,
+    onNodeDoubleClick?: (node: D3Node, wasSelected: boolean) => boolean,
   ) {
     this.state = state;
     this.onStateChange = onStateChange;
@@ -341,13 +342,19 @@ export class CallGraphVisualization {
     // The first click of a double-click selects the node, which re-queries
     // and can move it from under the pointer; the second click then misses
     // it. So a double-click is matched to the node of its first click, in
-    // the capture phase to keep d3-zoom's double-click zoom off it.
-    this.svg.node()!.addEventListener('dblclick', (event) => {
+    // the capture phase to keep d3-zoom's double-click zoom off it when the
+    // callback handles it. Every first click clears the match here, and a
+    // click on a node sets it again in handleNodeClick.
+    const svgNode = this.svg.node()!;
+    svgNode.addEventListener('click', (event) => {
+      if (event.detail <= 1) this.lastNodeClick = null;
+    }, true);
+    svgNode.addEventListener('dblclick', (event) => {
       const first = this.lastNodeClick;
       this.lastNodeClick = null;
-      if (!first || event.timeStamp - first.time > DOUBLE_CLICK_MS) return;
-      event.stopPropagation();
-      this.onNodeDoubleClick?.(first.node);
+      if (first && this.onNodeDoubleClick?.(first.node, first.wasSelected)) {
+        event.stopImmediatePropagation();
+      }
     }, true);
 
     // Create main group for zooming/panning
@@ -644,7 +651,9 @@ export class CallGraphVisualization {
    */
   private handleNodeClick(event: MouseEvent, node: D3Node): void {
     event.stopPropagation();
-    if (event.detail <= 1 && !event.shiftKey) this.lastNodeClick = { node, time: event.timeStamp };
+    if (event.detail <= 1 && !event.shiftKey) {
+      this.lastNodeClick = { node, wasSelected: this.state.filters.selectedNodes.has(node.id) };
+    }
     
     const newState = { ...this.state };
     

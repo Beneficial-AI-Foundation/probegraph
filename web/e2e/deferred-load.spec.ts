@@ -57,6 +57,25 @@ test('a shared link to a deferred graph shows its query and loads it', async ({ 
   expect(param(page, 'files')).toBe('Collatz.lean');
 });
 
+test('a file picked over a deferred graph is not replaced by it', async ({ page }) => {
+  await serveLarge(page, FIXTURE);
+  let deferredFetches = 0;
+  page.on('request', r => {
+    if (new URL(r.url()).pathname === '/large.json' && r.method() === 'GET') deferredFetches++;
+  });
+  await page.goto('/probegraph/?json=/large.json');
+  await expect(page.locator('#load-graph-btn')).toBeVisible({ timeout: 15000 });
+  await page.locator('#file-input').setInputFiles({
+    name: 'extract.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(FIXTURE)),
+  });
+  await expect(nodes(page)).toHaveCount(9, { timeout: 15000 });
+
+  await page.locator('#source-input').fill('collatz_step');
+  await page.locator('#source-input').press('Enter');
+  await page.waitForTimeout(1000);
+  expect(deferredFetches).toBe(0);
+});
+
 test('an ambiguous Include Files pattern finishes loading the graph after the choice', async ({ page }) => {
   const extract = structuredClone(FIXTURE);
   extract.data['probe:collatzStep']['code-path'] = 'ProjectTemplate/Other/Collatz.lean';

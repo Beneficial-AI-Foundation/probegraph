@@ -162,7 +162,8 @@ and restorable.
   the code layer, with their immediate neighbours (depth 1). A toast gives
   the number of declarations; an entry with none shows "no bound
   declarations" and stays on the blueprint layer. Browser back returns to
-  the blueprint layer. Double-clicking a code-layer node does nothing.
+  the blueprint layer. Double-clicking any other node zooms in, like
+  double-clicking the background.
 
 ## Node details
 
@@ -186,8 +187,10 @@ Cross-layer links in the panel:
   When several entries bind it (label collisions), all of them are listed.
 
 Following a link or double-clicking opens the target with its immediate
-neighbours and turns its Declaration Kind box back on if it was off, so the
-target is never hidden. Each is one browser-history step.
+neighbours, turns its Declaration Kind box back on if it was off, and unhides
+it if it was Shift+click hidden. Other filters (exclude patterns, status or
+source boxes) can still leave it out; a toast then names the targets not shown.
+Each is one browser-history step.
 
 ### GitHub source links
 

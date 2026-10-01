@@ -13,6 +13,12 @@ async function loadFixture(page: Page): Promise<void> {
 
 const nodes = (page: Page) => page.locator('circle.node');
 const layerParam = (page: Page) => new URL(page.url()).searchParams.get('layer');
+const shownNodeIds = (page: Page) => nodes(page).evaluateAll(els =>
+  els.map(el => (el as unknown as { __data__: { id: string } }).__data__.id));
+const nodeIndex = (page: Page, id: string) => nodes(page).evaluateAll((els, id) =>
+  els.findIndex(el => (el as unknown as { __data__: { id: string } }).__data__.id === id), id);
+const zoomTransform = (page: Page) => page.locator('#graph-container svg > g').first().getAttribute('transform');
+const zoomScale = (transform: string | null) => Number(/scale\(([^)]+)\)/.exec(transform ?? '')?.[1] ?? 1);
 
 test('a file picked while the default graph loads is not replaced by it', async ({ page }) => {
   let release!: () => void;
@@ -149,8 +155,10 @@ test('node details show the blueprint entry', async ({ page }) => {
 test('links a blueprint entry to its Lean declarations and back', async ({ page }) => {
   await loadFixture(page);
   await expect(nodes(page)).toHaveCount(9, { timeout: 15000 });
-  // A hidden target kind is turned back on
+  // A Shift+click hidden target and a hidden target kind are turned back on
   await page.locator('#layer-code').click();
+  await nodes(page).nth(await nodeIndex(page, 'probe:collatzStep')).dispatchEvent('click', { shiftKey: true });
+  await expect(page.locator('#hidden-nodes-list')).toContainText('collatzStep');
   await page.locator('#show-exec-functions').uncheck();
   await page.locator('#layer-blueprint').click();
 
@@ -176,12 +184,19 @@ test('links a blueprint entry to its Lean declarations and back', async ({ page 
   await expect(info.locator('h3')).toHaveText('collatz_step');
   expect(new URL(page.url()).searchParams.getAll('id')).toEqual(['probe:blueprint:collatz_step']);
 
+  // The graph's hover and click act on the blueprint layer, not the code one
+  const blueprintIds = await shownNodeIds(page);
+  expect(blueprintIds.every(id => id.startsWith('probe:blueprint:'))).toBe(true);
+  const neighbour = await nodeIndex(page, blueprintIds.find(id => id !== 'probe:blueprint:collatz_step')!);
+  await nodes(page).nth(neighbour).dispatchEvent('mouseenter');
+  await nodes(page).nth(neighbour).dispatchEvent('mouseleave');
+  await nodes(page).nth(neighbour).dispatchEvent('click');
+  await expect(nodes(page)).toHaveCount(blueprintIds.length);
+  expect((await shownNodeIds(page)).every(id => id.startsWith('probe:blueprint:'))).toBe(true);
+
   await page.goBack();
   await expect(page.locator('#layer-code')).toHaveClass(/active/);
 });
-
-const nodeIndex = (page: Page, id: string) => nodes(page).evaluateAll((els, id) =>
-  els.findIndex(el => (el as unknown as { __data__: { id: string } }).__data__.id === id), id);
 
 test('double-clicking a blueprint entry opens its bound declarations', async ({ page }) => {
   await loadFixture(page);
@@ -207,15 +222,52 @@ test('a slow double-click whose second click misses the moved node still drills 
   await expect(nodes(page)).toHaveCount(9, { timeout: 15000 });
   await nodes(page).nth(await nodeIndex(page, 'probe:blueprint:collatz_step')).click();
   await page.waitForTimeout(300);
+  // Only the second click of the double-click, landing on the background
   const svg = (await page.locator('#graph-container svg').boundingBox())!;
-  await page.mouse.click(svg.x + 5, svg.y + 5, { clickCount: 2 });
+  await page.mouse.move(svg.x + 5, svg.y + 5);
+  await page.mouse.down({ clickCount: 2 });
+  await page.mouse.up({ clickCount: 2 });
 
   await expect(page.locator('#layer-code')).toHaveClass(/active/);
   expect(new URL(page.url()).searchParams.getAll('id'))
     .toEqual(['probe:collatzStep', 'probe:collatzTerminatesAtOne']);
-  // The first click's selection is not left on the blueprint layer
+  // The first click's selection is not left on the blueprint layer,
+  // in memory or in its history entry
+  await page.goBack();
+  await expect(page.locator('#layer-blueprint')).toHaveClass(/active/);
+  await expect(nodes(page)).toHaveCount(9);
+  expect(new URL(page.url()).searchParams.has('sel')).toBe(false);
+  await page.goForward();
+  await expect(page.locator('#layer-code')).toHaveClass(/active/);
   await page.locator('#layer-blueprint').click();
   await expect(nodes(page)).toHaveCount(9);
+});
+
+test('double-clicking the background after clicking a node does not drill down', async ({ page }) => {
+  await loadFixture(page);
+  await expect(nodes(page)).toHaveCount(9, { timeout: 15000 });
+  await nodes(page).nth(await nodeIndex(page, 'probe:blueprint:collatz_step')).click();
+  await page.waitForTimeout(300);
+  const svg = (await page.locator('#graph-container svg').boundingBox())!;
+  await page.mouse.click(svg.x + 5, svg.y + 5, { clickCount: 2 });
+
+  await page.waitForTimeout(300);
+  await expect(page.locator('#layer-blueprint')).toHaveClass(/active/);
+  expect(new URL(page.url()).searchParams.has('id')).toBe(false);
+});
+
+test('double-clicking a code-layer node zooms', async ({ page }) => {
+  await loadFixture(page);
+  await page.locator('#layer-code').click();
+  await expect(page.locator('#layer-code')).toHaveClass(/active/);
+  await nodes(page).nth(await nodeIndex(page, 'probe:collatzStep')).dispatchEvent('click');
+  // Let the re-query after the selection settle its camera fit
+  await page.waitForTimeout(1000);
+  const before = zoomScale(await zoomTransform(page));
+  await nodes(page).nth(await nodeIndex(page, 'probe:collatzStep')).dispatchEvent('dblclick');
+
+  await expect.poll(async () => zoomScale(await zoomTransform(page))).toBeCloseTo(2 * before);
+  await expect(page.locator('#layer-code')).toHaveClass(/active/);
 });
 
 test('double-clicking an entry with no bound declarations stays on the blueprint layer', async ({ page }) => {
@@ -226,6 +278,22 @@ test('double-clicking an entry with no bound declarations stays on the blueprint
   await expect(page.locator('.toast')).toContainText('addition_assoc: no bound declarations');
   await expect(page.locator('#layer-blueprint')).toHaveClass(/active/);
   expect(page.url()).toBe(before);
+});
+
+test('a slow double-click on an entry with no bound declarations leaves no selection', async ({ page }) => {
+  await loadFixture(page);
+  await expect(nodes(page)).toHaveCount(9, { timeout: 15000 });
+  await nodes(page).nth(await nodeIndex(page, 'probe:blueprint:addition_assoc')).click();
+  await page.waitForTimeout(300);
+  const svg = (await page.locator('#graph-container svg').boundingBox())!;
+  await page.mouse.move(svg.x + 5, svg.y + 5);
+  await page.mouse.down({ clickCount: 2 });
+  await page.mouse.up({ clickCount: 2 });
+
+  await expect(page.locator('.toast')).toContainText('addition_assoc: no bound declarations');
+  await expect(page.locator('#layer-blueprint')).toHaveClass(/active/);
+  await expect(nodes(page)).toHaveCount(9);
+  expect(new URL(page.url()).searchParams.has('sel')).toBe(false);
 });
 
 test('a Lean declaration links back to its blueprint entry', async ({ page }) => {
