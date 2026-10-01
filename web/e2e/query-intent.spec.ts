@@ -1,5 +1,5 @@
 /**
- * E2E tests for the query intent (docs/plans/query-intent.md): Guide chips
+ * E2E tests for the query intent (docs/archive/query-intent.md): Guide chips
  * replace the whole intent, browser history, and ?focus= load races.
  *
  * Graphs and focus sets are served through page.route, so the fixtures are

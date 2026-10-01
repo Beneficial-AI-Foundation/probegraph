@@ -1,303 +1,114 @@
-# VS Code Extension Integration
+# VS Code extension integration
 
-The call graph web viewer can be embedded in a VS Code extension as a webview panel, enabling interactive call graph exploration directly within the editor.
-
-## Overview
-
-When running inside a VS Code webview, the viewer:
-- Receives graph data from the extension (no file picker needed)
-- Opens source files directly in the editor instead of GitHub links
-- Communicates bidirectionally with the extension via message passing
+The web viewer can run inside a VS Code webview panel. There it receives the
+graph from the extension by message, opens source in the editor instead of on
+GitHub, and talks to the extension in both directions. The viewer detects the
+webview by the presence of `acquireVsCodeApi`.
 
 ## Building for VS Code
-
-Use the dedicated build command that produces assets optimized for webview embedding:
 
 ```bash
 cd web
 npm run build:vscode
 ```
 
-This outputs to `web/dist-vscode/` with:
-- **Relative paths** (`./` base) instead of absolute paths
-- **Inlined assets** for easier loading
-- **Predictable filenames** (`assets/main.js`, `assets/main.css`)
-- **No public folder** (graph.json not bundled - sent via messages)
+This writes `web/dist-vscode/` using `vite.config.vscode.js`:
 
-### Build Configuration
+- relative paths (`base: './'`), so the extension can rewrite asset URLs;
+- predictable filenames: `assets/main.js`, `assets/main.css`;
+- no public folder, so no bundled `graph.json` (the graph comes by message).
 
-The `vite.config.vscode.js` configures:
+JavaScript and CSS are separate files, not inlined; `assetsInlineLimit` only
+inlines imported assets under 100 KB. `index.html` loads the Inter font from
+Google Fonts, so a webview Content Security Policy must allow
+`fonts.googleapis.com` / `fonts.gstatic.com` or the viewer falls back to the
+system font.
 
-```javascript
-{
-  base: './',              // Relative paths for webview
-  publicDir: false,        // Don't copy public folder
-  build: {
-    outDir: 'dist-vscode',
-    assetsInlineLimit: 100000,  // Inline most assets
-  }
-}
-```
+## Message protocol
 
-## Message Protocol
+### Extension → webview
 
-### Extension → Webview
-
-#### `loadGraph`
-
-Send graph data to the webview:
+**`loadGraph`** sends a graph in any format the viewer accepts:
 
 ```typescript
 panel.webview.postMessage({
   type: 'loadGraph',
-  graph: {
-    nodes: [...],
-    links: [...],
-    metadata: {...}
-  },
-  initialQuery: {           // Optional
+  graph,                          // atom dict, envelope or {nodes, links, metadata}
+  initialQuery: {                 // optional
     source: 'my_function',
     sink: '',
-    depth: 3
+    depth: 3,                     // 0 = unlimited
   },
-  selectedNodeId: 'scip:...' // Optional: full node ID for exact-match
-                             // selection instead of display-name matching
+  selectedNodeId: 'scip:...',     // optional, exact node ID
 });
 ```
 
-#### `setQuery`
+When the message has a `selectedNodeId` or a query, the viewer opens the code
+layer (for graphs with a blueprint layer). If `selectedNodeId` is in the
+graph, the query is that exact node and the direction follows which
+`initialQuery` strings are non-empty:
 
-Update the current filter query:
+| `source` | `sink` | Shows |
+|---|---|---|
+| set | empty | callees of the node |
+| empty | set | callers of the node |
+| set | set | callers and callees |
+| empty | empty | just the node |
+
+The strings only choose the direction; they are not matched. A directional
+exact query uses unlimited depth unless `initialQuery.depth` is given. If the
+ID is not in the graph (for example a stale index), the viewer falls back to
+a text query from the `source` / `sink` strings.
+
+**`setQuery`** replaces the query with a text query and switches to the code
+layer:
 
 ```typescript
-panel.webview.postMessage({
-  type: 'setQuery',
-  source: 'function_name',  // Optional
-  sink: 'other_function'    // Optional
+panel.webview.postMessage({ type: 'setQuery', source: 'fn_a', sink: 'fn_b' });
+```
+
+An omitted side keeps its previous text only if the current query is a text
+query; after an exact-node or other query it becomes empty.
+
+**`refresh`** makes the webview reply with `requestRefresh`.
+
+### Webview → extension
+
+- **`ready`** — sent once the webview has set up its message listener.
+- **`navigate`** — sent when the user clicks **Open in Editor**:
+
+  ```typescript
+  { type: 'navigate', relativePath: 'src/lib.rs', startLine: 42, endLine: 58, displayName: 'my_function' }
+  ```
+
+  For a blueprint entry, `relativePath` is the entry's Lean declaration file
+  (`blueprint.sourcePath`), not its chapter. `startLine` and `endLine` are
+  1-based (subtract 1 for `vscode.Position`) and may be undefined when the
+  graph has no line numbers.
+- **`requestRefresh`** — the webview wants fresh graph data.
+
+## Extension side
+
+A minimal host creates the panel with scripts enabled and `dist-vscode/` as a
+local resource root, rewrites `./assets/` in `index.html` to
+`webview.asWebviewUri(...)`, and handles the messages:
+
+```typescript
+panel.webview.onDidReceiveMessage(async (msg) => {
+  if (msg.type === 'ready') panel.webview.postMessage({ type: 'loadGraph', graph });
+  if (msg.type === 'navigate') await openAt(msg.relativePath, msg.startLine, msg.endLine);
+  if (msg.type === 'requestRefresh') panel.webview.postMessage({ type: 'loadGraph', graph: await regenerate() });
 });
 ```
 
-#### `refresh`
+## Differences from the web build
 
-Request the webview to ask for fresh data:
+| Feature | Web | VS Code webview |
+|---|---|---|
+| Graph loading | auto-load, `?json=`, file picker | `loadGraph` message only |
+| File input | visible | hidden |
+| Source navigation | View on GitHub (new tab) | Open in Editor (`navigate`) |
+| Header | SVG logo and "probegraph" | text "Call Graph Explorer" (the logo is replaced) |
 
-```typescript
-panel.webview.postMessage({
-  type: 'refresh'
-});
-```
-
-### Webview → Extension
-
-#### `ready`
-
-Sent when the webview has initialized and is ready to receive data:
-
-```typescript
-{
-  type: 'ready'
-}
-```
-
-#### `navigate`
-
-Sent when the user clicks "Open in Editor" on a node:
-
-```typescript
-{
-  type: 'navigate',
-  relativePath: 'src/lib.rs',
-  startLine: 42,
-  endLine: 58,
-  displayName: 'my_function'
-}
-```
-
-#### `requestRefresh`
-
-Sent when the webview wants fresh graph data:
-
-```typescript
-{
-  type: 'requestRefresh'
-}
-```
-
-## Example Extension Code
-
-### Creating the Webview Panel
-
-```typescript
-import * as vscode from 'vscode';
-import * as path from 'path';
-import * as fs from 'fs';
-
-export function createCallGraphPanel(
-  context: vscode.ExtensionContext,
-  graphData: any
-): vscode.WebviewPanel {
-  const panel = vscode.window.createWebviewPanel(
-    'callGraphViewer',
-    'Call Graph Explorer',
-    vscode.ViewColumn.One,
-    {
-      enableScripts: true,
-      retainContextWhenHidden: true,
-      localResourceRoots: [
-        vscode.Uri.file(path.join(context.extensionPath, 'dist-vscode'))
-      ]
-    }
-  );
-
-  // Load the webview HTML
-  const distPath = path.join(context.extensionPath, 'dist-vscode');
-  panel.webview.html = getWebviewContent(panel.webview, distPath);
-
-  // Handle messages from webview
-  panel.webview.onDidReceiveMessage(
-    async (message) => {
-      switch (message.type) {
-        case 'ready':
-          // Webview is ready, send the graph data
-          panel.webview.postMessage({
-            type: 'loadGraph',
-            graph: graphData
-          });
-          break;
-
-        case 'navigate':
-          // Open file in editor
-          await openFileAtLocation(
-            message.relativePath,
-            message.startLine,
-            message.endLine
-          );
-          break;
-
-        case 'requestRefresh':
-          // Regenerate graph and send new data
-          const freshData = await generateCallGraph();
-          panel.webview.postMessage({
-            type: 'loadGraph',
-            graph: freshData
-          });
-          break;
-      }
-    },
-    undefined,
-    context.subscriptions
-  );
-
-  return panel;
-}
-```
-
-### Loading the Webview HTML
-
-```typescript
-function getWebviewContent(
-  webview: vscode.Webview,
-  distPath: string
-): string {
-  const htmlPath = path.join(distPath, 'index.html');
-  let html = fs.readFileSync(htmlPath, 'utf8');
-
-  // Convert local file paths to webview URIs
-  const assetUri = webview.asWebviewUri(
-    vscode.Uri.file(path.join(distPath, 'assets'))
-  );
-
-  // Replace relative asset paths with webview URIs
-  html = html.replace(
-    /href="\.\/assets\//g,
-    `href="${assetUri}/`
-  );
-  html = html.replace(
-    /src="\.\/assets\//g,
-    `src="${assetUri}/`
-  );
-
-  return html;
-}
-```
-
-### Opening Files in Editor
-
-```typescript
-async function openFileAtLocation(
-  relativePath: string,
-  startLine: number,
-  endLine: number
-): Promise<void> {
-  const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-  if (!workspaceFolder) return;
-
-  const filePath = path.join(workspaceFolder.uri.fsPath, relativePath);
-  const uri = vscode.Uri.file(filePath);
-
-  try {
-    const document = await vscode.workspace.openTextDocument(uri);
-    const editor = await vscode.window.showTextDocument(document);
-
-    // Jump to the function and highlight it
-    const range = new vscode.Range(
-      new vscode.Position(startLine - 1, 0),
-      new vscode.Position(endLine - 1, 0)
-    );
-    editor.selection = new vscode.Selection(range.start, range.start);
-    editor.revealRange(range, vscode.TextEditorRevealType.InCenter);
-  } catch (error) {
-    vscode.window.showErrorMessage(`Could not open file: ${relativePath}`);
-  }
-}
-```
-
-## UI Differences in VS Code Mode
-
-When running in VS Code webview:
-
-| Feature | Web Mode | VS Code Mode |
-|---------|----------|--------------|
-| File loading | File picker dialog | Graph sent via message |
-| Source navigation | Opens GitHub in new tab | Opens file in editor |
-| Header title | "📊 probegraph" | "📊 Call Graph Explorer" |
-| File input | Visible | Hidden |
-
-## Environment Detection
-
-The webview detects VS Code environment by checking for the `acquireVsCodeApi` function:
-
-```typescript
-function isVSCodeEnvironment(): boolean {
-  return typeof (window as any).acquireVsCodeApi === 'function';
-}
-```
-
-## Bundling the Viewer with Your Extension
-
-1. Build the viewer:
-   ```bash
-   cd web && npm run build:vscode
-   ```
-
-2. Copy `dist-vscode/` to your extension directory
-
-3. Add to your extension's `package.json`:
-   ```json
-   {
-     "contributes": {
-       "commands": [{
-         "command": "myExtension.showCallGraph",
-         "title": "Show Call Graph"
-       }]
-     }
-   }
-   ```
-
-4. Register the command in your `extension.ts`
-
-## Related Documentation
-
-- [viewer.md](./viewer.md) - Web viewer features and usage
-- [Web README](../../web/README.md) - Development setup for the web viewer
-
+For viewer features see [viewer.md](viewer.md); for development see
+[web/README.md](../../web/README.md).

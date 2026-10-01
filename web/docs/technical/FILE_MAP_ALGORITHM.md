@@ -1,272 +1,124 @@
 # File Map Algorithm
 
+The File Map draws the query result as a static left-to-right DAG with one
+box per source file. Node shape encodes declaration kind; border and fill
+encode two statuses derived from the dependency graph. Implementation:
+`web/src/file-map.ts` (view) and `web/src/status.ts` (derived statuses). The
+view's internal id is `file-map`; old `?view=blueprint` URLs still open it.
+
 ## Input
 
-A directed graph $G = (V, E)$ where:
+The filtered graph $G = (V, E)$ from the query pipeline (truncated to 200
+nodes, like the Call Graph). Each node has a display name, a `relative_path`,
+a declaration kind (`exec` / `proof` / `spec` for Verus, `def` / `theorem` /
+`axiom` / … for Lean), and the derived `border_status` and `fill_status`
+below. Links have the types listed in
+[CALL_GRAPH_ALGORITHM.md](CALL_GRAPH_ALGORITHM.md#input).
 
-- $V$ is a set of nodes, each with attributes:
-  - $\text{name}(v) \in \Sigma^*$ — display name (string)
-  - $\text{file}(v) \in \Sigma^*$ — file path
-  - $\text{kind}(v) \in \Sigma^*$ — declaration kind, an open set: `exec` / `proof` / `spec` for Verus, `def` / `theorem` / `axiom` / `structure` / … for Lean
-  - $\text{border}(v) \in \{\text{verified}, \text{ready}, \text{blocked}, \text{not-ready}, \text{unknown}\}$
-  - $\text{fill}(v) \in \{\text{fully-verified}, \text{verified}, \text{ready}, \text{none}\}$
+## Derived statuses
 
-- $E \subseteq V \times V \times T$ where $T = \{\text{inner}, \text{pre}, \text{post}, \text{mapping}, \text{spec}\}$ — typed directed edges
+`computeDerivedStatuses` runs once on the **full** graph after load (for a
+large graph, on the first filter), so the colours reflect every dependency,
+not only those in the current result. Write $D(v)$ for $v$'s dependencies
+(callees) in the full graph and call a status *verified-like* if it is
+verified, transitively-verified or trusted. Nodes are processed leaves first:
+a node is evaluated once all of $D(v)$ has been.
 
-## Output
+**Border** (the node's own readiness):
 
-A visual embedding $\mathcal{R}$ consisting of:
+| `border_status` | Condition |
+|-----------------|-----------|
+| `verified` | status is verified-like |
+| `blocked` | status is failed |
+| `ready` | status is unverified and every $d \in D(v)$ has border `verified` (vacuously true if $D(v) = \emptyset$); or no status, $D(v) \neq \emptyset$, and every $d$ has border `verified` |
+| `not_ready` | status is unverified and some $d$ is not `verified` |
+| `unknown` | no status and the `ready` condition fails |
 
-- A position function $\text{pos}: V \to \mathbb{R}^2$
-- A set of rendered shapes $S = \{s_v \mid v \in V\}$
-- A set of rendered curves $C = \{c_e \mid e \in E'\}$ where $E' \subseteq E$
-- A set of group rectangles $B = \{b_f \mid f \in \mathcal{F}\}$ where $\mathcal{F}$ is the set of file groups
-- Interaction handlers $\mathcal{I}$ (click, hover, leave)
+**Fill** (completeness of the dependency subtree):
 
-## Algorithm
+| `fill_status` | Condition |
+|---------------|-----------|
+| `fully_verified` | status is verified-like and every $d$ has fill `fully_verified` (vacuously if $D(v) = \emptyset$) |
+| `verified` | status is verified-like but some $d$ is not `fully_verified` |
+| `ready` | status is not verified-like, $D(v) \neq \emptyset$, and every $d$ is `fully_verified` |
+| `none` | otherwise |
 
-### Step 1. Transitive Reduction
+So an unverified leaf has border `ready` but fill `none`. Nodes never reached
+by the leaves-first walk (on a cycle, or depending on one) get `unknown` /
+`none`.
 
-Compute $E' = \text{TR}(G)$, the transitive reduction of $G$.
+## Step 1. Transitive reduction
 
-$$
-E' = \{ (u, v, t) \in E \mid \neg \exists \text{ path } u \to w_1 \to \cdots \to w_k \to v \text{ in } G \text{ with } k \geq 1 \text{ avoiding the direct } (u,v) \text{ edge} \}
-$$
+`transitiveReduction` (`graph-utils.ts`) drops a link $(u, v, t)$ when $v$ is
+still reachable from $u$ without that direct hop, found by a BFS from $u$'s
+other successors. Reachability ignores link type, so a typed link is dropped
+if any path implies it. Cost is $O(|E| \cdot (|V| + |E|))$.
 
-This yields a graph $G' = (V, E')$ with the same reachability as $G$ but with minimum edges.
+## Step 2. Layout
 
-### Step 2. File Partitioning
-
-Define the partition $\mathcal{F}$ of $V$ induced by the file attribute:
-
-$$
-\mathcal{F} = \{ V_f \mid f \in \text{Im}(\text{file}) \}, \quad V_f = \{ v \in V \mid \text{file}(v) = f \}
-$$
-
-This is a partition: $\bigsqcup_{f} V_f = V$.
-
-### Step 3. Node Sizing
-
-Define a width function $w: V \to \mathbb{R}^+$:
-
-$$
-w(v) = \max(120, \; |\text{name}(v)| \cdot 6.5 + 24)
-$$
-
-Height is constant: $h = 36$ for all nodes.
-
-### Step 4. Compound DAG Layout
-
-This is the core computational step. We solve a constrained optimization problem.
-
-Given the compound graph $\mathcal{G} = (V, E', \mathcal{F})$ — a DAG with hierarchical clustering — find:
+Nodes are grouped by `relative_path` (`unknown` if missing). Each node is
+$w(v) \times 36$ with
 
 $$
-\text{pos}: V \to \mathbb{R}^2, \quad \text{bbox}: \mathcal{F} \to \mathbb{R}^2 \times \mathbb{R}^2
+w(v) = \max(120,\; 6.5\,|\text{name}(v)| + 24)
 $$
 
-subject to:
+and is given to dagre as $(w(v) + 10) \times 46$ so neighbours keep a small
+gap. Each file is a compound parent `file:<path>` of its nodes. dagre runs
+with `rankdir: 'LR'`, `nodesep: 30`, `ranksep: 160`, `marginx`/`marginy: 40`.
 
-1. **Rank ordering** (left-to-right): for every $(u, v, t) \in E'$:
+dagre's compound layout can throw on some topologies (for example cycles that
+span clusters). Then the same nodes and links are laid out flat with the same
+parameters, and file backgrounds are not drawn.
 
-$$
-\text{pos}(u)_x < \text{pos}(v)_x
-$$
+After layout the SVG `viewBox` is set to the layout size plus 80, so the whole
+map fits the container. Manual zoom is limited to $[0.05, 8]$.
 
-2. **Cluster containment**: for every $f \in \mathcal{F}$ and $v \in V_f$:
+## Step 3. Visual encoding
 
-$$
-v \text{ is geometrically inside } \text{bbox}(f)
-$$
+**File groups.** Each file's bounding box is a rounded rectangle in the
+shared group palette (`groupColors` in `theme.ts`, 8 hues, cycling by file
+order) at 0.10 alpha fill and 0.30 alpha stroke, labelled with the last two
+path segments.
 
-3. **Non-overlap**: for all $u \neq v \in V$, the bounding boxes of $u$ and $v$ (defined by $w(u) \times h$ centered at $\text{pos}(u)$) do not overlap.
+**Shape** by kind, using the language's kind sets (`getKindSetsForLanguage`
+in `types.ts`):
 
-4. **Minimize edge crossings**: among valid layouts, prefer those minimizing $|\{(e_1, e_2) \in E' \times E' \mid e_1 \text{ crosses } e_2\}|$.
+| Shape | Kinds | Legend label (Verus / Lean) |
+|-------|-------|-----------------------------|
+| ellipse | proof kinds: `proof` (Verus), `theorem` (Lean), `blueprint-theorem` (blueprint), both in mixed graphs | Proof / lemma, Theorem |
+| diamond | `spec`, `axiom` | Spec function, Axiom |
+| rounded rectangle | everything else | Exec function, Definition |
 
-5. **Compactness**: minimize total area, with spacing constraints:
-   - Vertical separation between nodes $\geq 30\text{px}$
-   - Horizontal separation between ranks $\geq 160\text{px}$
-   - Margins $\geq 40\text{px}$
+Axioms share the spec diamond even though they have their own filter.
 
-This is solved by the dagre library (a Sugiyama-style layered graph drawing algorithm). It is NP-hard in general; dagre uses heuristics.
+**Border colour** (2.5px stroke):
 
-If the compound layout fails (throws), fall back to a flat layout: solve the same problem on $(V, E')$ without the clustering constraints. In that case, $\text{bbox}$ is undefined and group backgrounds are not drawn.
+| `border_status` | Colour |
+|-----------------|--------|
+| `verified` | `--pg-status-verified` |
+| `ready` | `--pg-status-unknown` (blue) |
+| `blocked` | `--pg-status-failed` |
+| `not_ready` | amber (no token) |
+| `unknown` | `--pg-status-unverified` (grey) |
 
-### Step 5. Visual Encoding
+**Fill colour** (fixed in `file-map.ts`, no tokens): `fully_verified` dark
+green, `verified` light green, `ready` light blue, `none` white. The selected
+node's border becomes a 4px `--pg-selection` stroke.
 
-Define three mapping functions from data attributes to visual properties.
+**Edges** run from the source's right side to the target's left side with
+$c = 0.4$, typed colours and dashes as in
+[README.md](README.md#shared-edge-geometry) (`precondition` and
+`postcondition` 6,3), opacity 0.55, width 1.5.
 
-**Shape function** $\sigma: \text{Kind} \to \{\text{rounded-rect}, \text{ellipse}, \text{diamond}\}$, defined over language-aware kind *sets* (`getKindSetsForLanguage` in `types.ts`, applied in `appendShape` in `file-map.ts`):
+## Interaction
 
-$$
-\sigma(k) = \begin{cases}
-\text{ellipse} & \text{if } k \in \text{proofKinds} \; (\text{Verus: proof; Lean: theorem}) \\
-\text{diamond} & \text{if } k \in \text{specKinds} \cup \text{axiomKinds} \\
-\text{rounded-rect} & \text{otherwise (the default, exec/definition bucket)}
-\end{cases}
-$$
+Click, Shift+click and hover work as in the Call Graph; see the
+[viewer guide](../../../docs/guides/viewer.md#clicking-nodes). Hover dims
+non-neighbours to 0.2 and non-incident links to 0.08.
 
-Axioms deliberately reuse the spec diamond even though they filter
-separately. The legend labels flip with the project language: "Exec function
-/ Proof / lemma / Spec function" for Verus, "Definition / Theorem / Axiom"
-for Lean.
+## References
 
-**Border color function** $\beta: \text{BorderStatus} \to \text{Color}$:
-
-$$
-\beta(s) = \begin{cases}
-\text{green} & \text{if } s = \text{verified} \\
-\text{blue} & \text{if } s = \text{ready} \\
-\text{red} & \text{if } s = \text{blocked} \\
-\text{amber} & \text{if } s = \text{not-ready} \\
-\text{gray} & \text{if } s = \text{unknown}
-\end{cases}
-$$
-
-**Fill color function** $\phi: \text{FillStatus} \to \text{Color}$:
-
-$$
-\phi(s) = \begin{cases}
-\text{dark green} & \text{if } s = \text{fully-verified} \\
-\text{light green} & \text{if } s = \text{verified} \\
-\text{light blue} & \text{if } s = \text{ready} \\
-\text{white} & \text{if } s = \text{none}
-\end{cases}
-$$
-
-**Group color function** $\gamma: \mathcal{F} \to \text{Color}$, cycling through an 8-color palette:
-
-$$
-\gamma(f_i) = \text{palette}[i \bmod 8]
-$$
-
-### Step 6. Edge Geometry
-
-Each edge $(u, v, t) \in E'$ is rendered as a cubic Bézier curve $\mathbf{B}(\tau)$ for $\tau \in [0, 1]$.
-
-Let $(x_u, y_u) = \text{pos}(u)$, $(x_v, y_v) = \text{pos}(v)$, $\delta = x_v - x_u$.
-
-$$
-\mathbf{B}(\tau) = (1-\tau)^3 P_0 + 3(1-\tau)^2 \tau \, P_1 + 3(1-\tau) \tau^2 \, P_2 + \tau^3 P_3
-$$
-
-where:
-
-$$
-P_0 = \left(x_u + \frac{w(u)}{2}, \; y_u\right) \quad \text{(right edge of source)}
-$$
-
-$$
-P_1 = \left(x_u + \frac{w(u)}{2} + 0.4\delta, \; y_u\right)
-$$
-
-$$
-P_2 = \left(x_v - \frac{w(v)}{2} - 0.4\delta, \; y_v\right)
-$$
-
-$$
-P_3 = \left(x_v - \frac{w(v)}{2}, \; y_v\right) \quad \text{(left edge of target)}
-$$
-
-Edge style depends on type:
-
-$$
-\text{style}(t) = \begin{cases}
-\text{solid gray} & \text{if } t = \text{inner} \\
-\text{dashed orange} & \text{if } t = \text{pre} \\
-\text{dashed pink} & \text{if } t = \text{post}
-\end{cases}
-$$
-
-### Step 7. Interaction Model
-
-Define the interaction state as $\mathcal{S} = (\text{selected} \subseteq V, \; \text{hovered} \in V \cup \{\bot\})$.
-
-**Click on node $v$**:
-
-$$
-\text{selected}' = \begin{cases}
-\text{selected} \setminus \{v\} & \text{if } v \in \text{selected} \\
-\text{selected} \cup \{v\} & \text{otherwise}
-\end{cases}
-$$
-
-**Shift+click on node $v$**:
-
-$$
-V' = V \setminus \{v\}, \quad E' \leftarrow E' \setminus \{(u,w,t) \mid u = v \lor w = v\}
-$$
-
-(Remove node from graph, trigger re-render.)
-
-**Hover on node $v$**:
-
-Define the 1-neighborhood:
-
-$$
-N(v) = \{v\} \cup \{u \mid (u,v,\_) \in E' \lor (v,u,\_) \in E'\}
-$$
-
-Apply opacity:
-
-$$
-\text{opacity}(u) = \begin{cases}
-1.0 & \text{if } u \in N(v) \\
-0.2 & \text{otherwise}
-\end{cases}
-$$
-
-**Leave**:
-
-$$
-\forall u \in V: \text{opacity}(u) = 1.0
-$$
-
-## Summary: Pipeline Composition
-
-The whole algorithm is a pipeline of transformations:
-
-$$
-G \xrightarrow{\text{TR}} G' \xrightarrow{\Pi_{\text{file}}} (G', \mathcal{F}) \xrightarrow{\text{dagre}} (\text{pos}, \text{bbox}) \xrightarrow{\sigma, \beta, \phi, \gamma, \mathbf{B}} \mathcal{R}
-$$
-
-Or more compactly:
-
-$$
-\text{Blueprint} = \text{Render} \circ \text{Layout} \circ \text{Partition} \circ \text{Reduce}
-$$
-
-where:
-
-| Stage | Function | Description | Complexity |
-|-------|----------|-------------|------------|
-| Reduce | $(V, E) \to (V, E')$ | Transitive reduction | Graph algorithm (BFS per edge) |
-| Partition | $(V, E') \to (V, E', \mathcal{F})$ | File grouping | Trivial set partition, $O(|V|)$ |
-| Layout | $(V, E', \mathcal{F}) \to (\text{pos}, \text{bbox})$ | Constrained DAG placement | NP-hard, solved by heuristic (dagre/Sugiyama) |
-| Render | $(\text{pos}, \text{bbox}, \sigma, \beta, \phi, \gamma, \mathbf{B}) \to \mathcal{R}$ | Visual encoding + interaction | Mapping functions + Bézier computation |
-
-A declarative config can parameterize **Partition** — choosing which attribute induces $\mathcal{F}$. That is one function in a four-stage pipeline, and it is the only stage that is a trivial set operation. The other three stages are algorithms that require code.
-
-## Relationship to Known Algorithms and Techniques
-
-### Compound DAG Layout (Sugiyama Framework)
-
-**References.**
-- Sugiyama, Tagawa & Toda, "Methods for Visual Understanding of Hierarchical System Structures," *IEEE Trans. Systems, Man, and Cybernetics* 11(2), 1981. — The foundational four-phase layered graph drawing framework.
-- Gansner, Koutsofios, North & Vo, "A Technique for Drawing Directed Graphs," *IEEE Trans. Software Engineering* 19(3), 1993. — The basis of Graphviz's `dot` layout engine; dagre is a JavaScript reimplementation of this.
-- Sander, "Layout of Compound Directed Graphs," Technical Report, Universität des Saarlandes, 1996. — Extension of Sugiyama to compound (clustered) graphs.
-
-**Relationship: instantiation with compound extension.** The Sugiyama framework has four phases:
-
-1. **Cycle removal** — make the graph acyclic (dagre reverses back-edges)
-2. **Layer assignment** — assign each node to a horizontal rank (longest-path or network-simplex method)
-3. **Crossing minimization** — reorder nodes within each layer to minimize edge crossings (NP-hard; dagre uses the barycenter heuristic)
-4. **Coordinate assignment** — compute final $(x, y)$ positions (Brandes-Köpf algorithm in dagre)
-
-Our usage is an **instantiation** of this framework via the dagre library, with the **compound graph extension** from Sander: nodes are grouped into file clusters, and the layout must respect cluster containment constraints. The `rankdir: 'LR'` parameter selects a left-to-right variant (transposing the standard top-to-bottom Sugiyama layout).
-
-### Overall Pipeline — Compound Graph Visualization
-
-**Reference.** Sugiyama & Misue, "Visualization of Structural Information: Automatic Drawing of Compound Digraphs," *IEEE Trans. Systems, Man, and Cybernetics* 21(4), 1991.
-
-**Relationship: instantiation.** The full pipeline — transitive reduction, partition into clusters, compound DAG layout, visual encoding — is an instance of the compound digraph visualization problem defined by Sugiyama & Misue. The input is a directed graph with a hierarchical grouping structure; the output is a drawing that respects the grouping while minimizing visual clutter. Our specific contribution is the domain-specific visual encoding (shape = declaration kind, color = verification status), which layers a formal-verification semantics onto the standard compound graph framework.
+- Sugiyama, Tagawa & Toda, "Methods for Visual Understanding of Hierarchical System Structures," *IEEE SMC* 11(2), 1981 — the layered framework dagre implements.
+- Gansner, Koutsofios, North & Vo, "A Technique for Drawing Directed Graphs," *IEEE TSE* 19(3), 1993 — Graphviz `dot`, which dagre follows.
+- Sander, "Layout of Compound Directed Graphs," Universität des Saarlandes, 1996 — compound (clustered) layering.

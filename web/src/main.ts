@@ -2510,7 +2510,7 @@ function applyFiltersAndUpdate(): void {
   // For large graphs with no query intent, render a bounded seeded initial
   // view (entry-point seeds + their depth-limited neighborhood) instead of a
   // blank page. Crate Map and Hierarchy are exempt: they aggregate to a
-  // compact group-level graph. Blueprint is also exempt (keeps the empty
+  // compact group-level graph. The File Map is not seeded (keeps the empty
   // view): its dagre layout is only sized for MAX_RENDERED_NODES-scale
   // inputs, and its border/fill colors need the deferred status computation
   // this branch skips. If no seed tier fits the render budget, fall back to

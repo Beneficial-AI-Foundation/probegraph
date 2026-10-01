@@ -1,21 +1,19 @@
 # CI Integration Guide
 
 How to generate and deploy an interactive call graph for your Rust, Verus, or
-Lean 4 project using the reusable GitHub Actions workflows in this repo.
+Lean 4 project using the reusable GitHub Actions workflows in this repo. The
+workflows run on `ubuntu-latest` and install Linux x86_64 tools, and they
+always build the viewer from probegraph's `main` branch.
 
 ## One-time setup: enable GitHub Pages
 
 In your repository: **Settings → Pages → Build and deployment → Source:
-GitHub Actions**. That is all; the workflows below handle the rest. The
-workflow needs `pages: write` and `id-token: write` permissions, which the
-examples include.
+GitHub Actions**. The workflow needs `pages: write` and `id-token: write`
+permissions.
 
-## Rust / Verus projects
+## Workflow file
 
-### Minimal setup
-
-`github_url` is auto-detected from the calling repository, so the minimal
-workflow needs no inputs:
+Every example below is the `jobs:` section of a workflow file like this one:
 
 ```yaml
 # .github/workflows/callgraph.yml
@@ -40,18 +38,22 @@ jobs:
     uses: Beneficial-AI-Foundation/probegraph/.github/workflows/generate-callgraph.yml@main
 ```
 
-Your call graph deploys to `https://YOUR_ORG.github.io/YOUR_REPO/`.
+With no inputs this builds a Verus project at the repo root and deploys to
+`https://YOUR_ORG.github.io/YOUR_REPO/`.
+
+## Rust / Verus projects
 
 For reproducible runs, pin the Verus release:
 
 ```yaml
+jobs:
+  callgraph:
+    uses: Beneficial-AI-Foundation/probegraph/.github/workflows/generate-callgraph.yml@main
     with:
       verus_version: '0.2025.11.23.41c5885'
 ```
 
-### Non-Verus Rust projects
-
-Use rust-analyzer instead of verus-analyzer and skip the Verus-specific steps:
+For a plain Rust project, use rust-analyzer and skip the Verus-specific steps:
 
 ```yaml
 jobs:
@@ -82,39 +84,32 @@ All inputs are optional.
 | `deploy_mode` | `standalone` or `subpath` | `standalone` |
 | `subpath` | URL subpath when `deploy_mode: subpath` | `callgraph` |
 
+### Base path
+
+The viewer is built for a fixed URL path and shows a blank page when served
+anywhere else. In `standalone` mode the path is `/<name>/`, where `<name>` is
+the last component of `github_url` (which defaults to the calling
+repository). That matches `YOUR_ORG.github.io/YOUR_REPO/`, but not a custom
+domain root or a fork whose `github_url` points at an upstream with a
+different name. In `subpath` mode the path is `/<subpath>/`, taken literally.
+
 ## Lean 4 projects
 
-Uses [probe-lean](https://github.com/Beneficial-AI-Foundation/probe-lean) to
-extract declarations, dependencies, and verification status (sorry detection):
-
 ```yaml
-# .github/workflows/callgraph.yml
-name: Call Graph
-
-on:
-  push:
-    branches: [main]
-  workflow_dispatch:
-
-permissions:
-  contents: read
-  pages: write
-  id-token: write
-
-concurrency:
-  group: "pages"
-  cancel-in-progress: false
-
 jobs:
   callgraph:
     uses: Beneficial-AI-Foundation/probegraph/.github/workflows/generate-lean-callgraph.yml@main
 ```
 
-The workflow runs `probe-lean pipeline`, which builds the project with
-`lake build`, extracts atoms, computes specification status, and maps `sorry`
-warnings to declarations. Each declaration gets a `verification-status`
-(`verified`, `unverified`, or `failed`) rendered with the same color coding as
-Verus projects.
+The workflow builds the project with `lake build`, then runs
+[probe-lean](https://github.com/Beneficial-AI-Foundation/probe-lean)
+`extract` on the build output, which extracts declarations and dependencies
+and maps `sorry` warnings to declarations. Both steps are skipped when
+`pre_built_atoms` is set. Each declaration
+gets a verification status (`verified`, `transitively-verified`, `trusted`,
+`failed` or `unverified`), colored as for Verus projects. probe-lean's Lean
+toolchain is aligned to your project's `lean-toolchain` file; older Lean
+versions may need probe-lean source changes.
 
 ### Lean workflow inputs
 
@@ -133,38 +128,20 @@ All inputs are optional.
 | `deploy_mode` | `standalone` or `subpath` | `standalone` |
 | `subpath` | URL subpath when `deploy_mode: subpath` | `callgraph` |
 
-The workflow aligns probe-lean's Lean toolchain to your project's
-`lean-toolchain` file. Older Lean versions may need probe-lean source changes.
+The [base path](#base-path) rule applies here too.
 
 ## Deploying to a subpath of an existing Pages site
 
-If your repo already publishes a Pages site, generate the graph as an artifact
-and merge it into your site before deploying:
+If your repo already publishes a Pages site, build the graph in `subpath` mode
+and merge its `callgraph-viewer` artifact into your site before deploying:
 
 ```yaml
-# .github/workflows/deploy-with-callgraph.yml
-name: Deploy Site with Call Graph
-
-on:
-  push:
-    branches: [main]
-  workflow_dispatch:
-
-permissions:
-  contents: read
-  pages: write
-  id-token: write
-
-concurrency:
-  group: "pages"
-  cancel-in-progress: false
-
 jobs:
   callgraph:
     uses: Beneficial-AI-Foundation/probegraph/.github/workflows/generate-callgraph.yml@main
     with:
       deploy_mode: subpath
-      subpath: callgraph
+      subpath: YOUR_REPO/callgraph
 
   build-site:
     runs-on: ubuntu-latest
@@ -208,54 +185,31 @@ jobs:
 ```
 
 The graph appears at `https://YOUR_ORG.github.io/YOUR_REPO/callgraph/`.
+`subpath` is the full URL path, including the repo name, because it becomes
+the [base path](#base-path); on a site served from a domain root use
+`subpath: callgraph`.
 
 ## Sharing graphs without a deployment
 
-Any deployed viewer instance can load a graph from a URL with the `?json=`
-parameter, so you can host just the JSON (in a repo, a gist, or any static
-host with CORS) and share a link:
+Any deployed viewer can load a graph from a URL with the `?json=` parameter,
+so you can host just the JSON (in a repo, a gist, or any static host with
+CORS) and share a link:
 
 ```
 https://YOUR_ORG.github.io/YOUR_REPO/?json=https://raw.githubusercontent.com/you/repo/main/graph.json
 ```
 
-## What the deployed viewer includes
+The [viewer guide](viewer.md) covers what the viewer shows and how source
+links are configured.
 
-- Three views: force-directed Call Graph, File Map, and Crate Map (shown as
-  Namespace Map for Lean graphs)
-- Verification status per node (six states, including transitively verified
-  and trusted), with status filters
-- Spec-clause edge types (body call / precondition / postcondition) and, for
-  merged graphs, cross-language Rust-to-Lean mapping links
-- Per-kind declaration filters (exec/proof/spec for Verus; axioms, types,
-  projections, instances for Lean)
-- Similar-lemma suggestions (Verus), source links to GitHub, search, path
-  queries, and shareable filter URLs
-- A Guide tab with a generated graph overview and suggested queries
+## Unused specs report
 
-See the [viewer guide](viewer.md) for usage, including how source links are
-configured (`?github=` parameter, graph metadata, or `VITE_GITHUB_URL` at
-build time).
-
-## Custom domain
-
-To serve the viewer at, e.g., `callgraph.yourdomain.com`: create
-`web/public/CNAME` containing the domain, add a `CNAME` DNS record pointing to
-`YOUR_USERNAME.github.io`, then set the custom domain under Settings → Pages
-and enable Enforce HTTPS.
-
-## Testing viewer changes locally
-
-Before pushing changes that touch `web/`:
-
-```bash
-cd web
-npm install
-npm run type-check
-npm run test:run   # the deploy workflow runs these tests too
-npm run build
-npm run preview
-```
+`detect-unused-specs-with-release.yml` runs `detect_unused_specs` from a
+probegraph release (inputs `project_path`, default `.`, and
+`scip_callgraph_version`, a release tag, default `latest`) and uploads an
+`unused-specs-report` artifact. It is currently broken: it downloads a scip
+asset that does not exist and never installs verus-analyzer
+([#62](https://github.com/Beneficial-AI-Foundation/probegraph/issues/62)).
 
 ## Troubleshooting
 
@@ -274,7 +228,10 @@ setup fails.
 **Lean build fails on a Mathlib project.** Leave `use_mathlib_cache` at its
 default (`true`); building Mathlib from source usually exceeds runner limits.
 
-**Pages deploy fails or 404s.** Check the Actions log for the failed job.
-Confirm Pages source is set to "GitHub Actions". First deployments can take
-5-10 minutes; later ones are faster. TypeScript or build errors reproduce
-locally with `npm run type-check` / `npm run build` in `web/`.
+**Pages deploy fails or 404s.** Check the Actions log for the failed job and
+confirm the Pages source is "GitHub Actions". First deployments can take
+5-10 minutes. A blank page usually means the [base path](#base-path) does
+not match the URL.
+
+**Changing the viewer itself.** See [web/README.md](../../web/README.md) for
+building and testing it locally.

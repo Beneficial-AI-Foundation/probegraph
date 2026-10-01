@@ -22,6 +22,8 @@ Cargo.lock
 
 # Keep documentation plots
 !data/plots/*.png
+# Written by scripts/visualize_metrics.py next to the plots
+data/plots/ANALYSIS_SUMMARY.md
 
 # Backup files
 *.backup

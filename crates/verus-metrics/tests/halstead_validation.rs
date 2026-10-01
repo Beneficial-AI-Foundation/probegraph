@@ -1,6 +1,5 @@
-//! Hand-verified Halstead token counts, converted from the manual validation
-//! records in docs/archive/VALIDATION_RESULTS.md and
-//! docs/archive/QUANTIFIER_VALIDATION.md.
+//! Hand-verified Halstead token counts for plain and quantified specs. The
+//! counting rules are in docs/technical/spec-halstead.md.
 //!
 //! The counts were originally verified against the pre-verus_syn
 //! implementation, which rewrote `forall|x|` to a closure and `==>` to `||`.
@@ -46,7 +45,7 @@ fn assert_close(actual: f64, expected: f64, what: &str, spec: &str) {
     );
 }
 
-// --- VALIDATION_RESULTS.md: manually counted plain specs ---
+// --- Manually counted plain specs ---
 
 #[test]
 fn validation_simple_comparison() {
@@ -101,16 +100,16 @@ fn validation_indexed_byte_comparison() {
     assert_close(m.effort, 349.960, "effort", spec);
 }
 
-// --- QUANTIFIER_VALIDATION.md: quantified specs ---
+// --- Quantified specs ---
 //
-// The historical doc verified these under the old preprocessing, which
+// These were first verified under the old preprocessing, which
 // rewrote `forall|x|`/`exists|x|` to a bare closure (dropping the binder
 // token) and `==>` to `||`. verus_syn parses quantifiers as unary operators
 // (UnOp::Forall/Exists/Choose) and `==>` as its own binary operator, so each
-// quantifier occurrence now counts as one operator the doc did not count.
+// quantifier occurrence now counts as one operator the hand count did not.
 // That is consistent with the Halstead classification rules (unary operators
 // count, like `!`), so the expectations below assert current behavior; each
-// comment records the doc's historical value.
+// comment records the hand-counted value.
 
 #[test]
 fn quantifier_simple_forall() {

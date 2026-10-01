@@ -84,7 +84,8 @@ export interface SeedExpansion {
   ok: true;
   nodeIds: Set<string>;
   /** BFS depth per node; passed to the renderer as nodeDepths so it never
-   *  falls back to computeTopologicalDepth(), which hangs on cycles. */
+   *  falls back to computeTopologicalDepth(), which on cyclic subgraphs keeps
+   *  re-raising depths up to its node-count cap and yields arbitrary layers. */
   nodeDepths: Map<string, number>;
   /** Induced link count (every link with both endpoints in the view, all
    *  types, parallel links counted individually). */

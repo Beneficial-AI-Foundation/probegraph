@@ -1,3 +1,9 @@
+> **Archived 2026-10: numbers not reproducible.** The input CSV is not
+> tracked, the spec metrics predate the `verus_syn` extractor, and
+> `compute_proof_metrics` resolves lemma calls nondeterministically, so
+> re-running the pipeline gives different proof efforts. Regenerate from a
+> committed input before citing any figure here.
+
 # Correlation Analysis: Code, Spec, and Proof Metrics
 
 **Dataset:** curve25519-dalek (Verus-verified), `data/csv/pipeline_FINAL.csv`  
@@ -106,7 +112,7 @@ Note this is the analysis's own ratio, distinct from two similarly named CSV
 columns: `proof_overhead` (transitive / direct proof effort, from
 `enrich_csv_with_proof_metrics`) and `proof_overhead_direct`
 (`body_length - halstead_length`, from `merge_rca_metrics`; see
-`METRICS_PIPELINE.md`).
+[metrics-reference.md](../guides/metrics-reference.md)).
 
 ### Results
 

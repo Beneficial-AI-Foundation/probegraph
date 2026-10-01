@@ -1,8 +1,11 @@
 # Query intent: design note for Phase 1.1
 
-Status: for review (2026-09-29). Prerequisite for Phase 1 of
-`viewer-filters-and-guide.md`; Phases 4 and 5 build on it. Line numbers
-are against `main` at `77cc3a5`.
+> **Status: implemented** in #46 (design reviewed in #43). Kept as the
+> design record; the PR lists where the code departs from it. Current
+> behaviour is in `web/QUERY_PIPELINE.md`.
+
+Prerequisite for Phase 1 of `../plans/viewer-filters-and-guide.md`; Phases 4
+and 5 build on it. Line numbers are against `main` at `77cc3a5`.
 
 ## Problem
 

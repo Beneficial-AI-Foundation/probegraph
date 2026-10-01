@@ -1,105 +1,82 @@
-# Transitive Proof Metrics (`compute_proof_metrics`)
+# Proof Metrics (`compute_proof_metrics`)
 
-## Overview
+`compute_proof_metrics` computes Halstead metrics for the `proof { ... }`
+blocks of each function, directly and including every lemma those blocks
+reach. The CSV columns built from it are listed in
+[metrics-pipeline.md](../guides/metrics-pipeline.md); the Halstead formulas
+are in [metrics-reference.md](../guides/metrics-reference.md).
 
-`compute_proof_metrics` computes Halstead metrics for `proof { ... }` blocks
-in Verus code, including all transitively called lemmas. Direct metrics
-measure the proof block itself; transitive metrics add every lemma the proof
-reaches, which is the actual verification burden of the function.
-
-```rust
-fn verified_function() {
-    proof {
-        lemma_A();  // calls lemma_B, lemma_C
-        lemma_B();  // calls lemma_D
-    }
-}
-```
-
-Direct metrics cover the proof block. Transitive metrics cover the proof
-block plus `lemma_A`, `lemma_B`, `lemma_C`, and `lemma_D`.
+The results are not yet reproducible: the same input gives different
+transitive numbers on different runs
+([#58](https://github.com/Beneficial-AI-Foundation/probegraph/issues/58)).
 
 ## Usage
 
 ```bash
-cargo run -p metrics-cli --bin compute_proof_metrics \
-  <input_atoms_json> <output_atoms_json>
+cargo run -p metrics-cli --bin compute_proof_metrics -- <input_atoms_json> <output_atoms_json>
 ```
 
-The tool takes exactly these two positional arguments; there are no flags.
-The input is an atoms JSON with function bodies and `deps` (typically the
-output of `compute_metrics`); the output is the same atoms with a
-`proof_metrics` field added.
-
-## Output Format
+The input is the atoms JSON written by `compute_metrics`. Every atom must
+have the body-format fields (see [cli-tools.md](cli-tools.md#atoms-formats))
+plus a `metrics` field, which may be `null`; a missing `metrics` is a parse
+error. The output repeats every atom and adds `proof_metrics`, which is
+`null` when no proof block was found:
 
 ```json
-{
-  "identifier": "...",
-  "proof_metrics": {
-    "direct_proof_halstead": {
-      "n1": 10, "n1_total": 53, "n2": 14, "n2_total": 76,
-      "length": 129, "difficulty": 27.14, "volume": 591.46, "effort": 16053.92
-    },
-    "transitive_proof_halstead": {
-      "n1": 10, "n1_total": 73, "n2": 17, "n2_total": 106,
-      "length": 179, "difficulty": 31.18, "volume": 851.12, "effort": 26535.07
-    },
-    "direct_lemmas": ["lemma_pow2_mul_div", "lemma_pow2_pos"],
-    "transitive_lemmas": ["lemma_pow2_mul_div", "lemma_pow2_pos", "lemma_pow2_adds"],
-    "proof_depth": 2
-  }
+"proof_metrics": {
+  "direct_proof_halstead": {
+    "n1": 10, "n1_total": 53, "n2": 14, "n2_total": 76,
+    "length": 129, "difficulty": 27.14, "volume": 591.46, "effort": 16053.92
+  },
+  "transitive_proof_halstead": {
+    "n1": 10, "n1_total": 73, "n2": 17, "n2_total": 106,
+    "length": 179, "difficulty": 31.18, "volume": 851.12, "effort": 26535.07
+  },
+  "direct_lemmas": ["lemma_pow2_mul_div", "lemma_pow2_pos"],
+  "transitive_lemmas": ["lemma_pow2_adds", "lemma_pow2_mul_div", "lemma_pow2_pos"],
+  "proof_depth": 2
 }
 ```
 
-A `parse_error` field appears when a body could not be parsed.
+`n1`/`n2` are unique operators/operands and `n1_total`/`n2_total` their
+occurrence counts. `direct_lemmas` keeps duplicates; `transitive_lemmas` is
+sorted and deduplicated, and includes names that matched no atom. The struct
+also has a `parse_error` field, but nothing sets it, so it never appears.
 
-## Metrics Explained
+## Algorithm
 
-### Direct proof Halstead
+1. **Proof blocks.** The body is scanned as text for `proof ` or `proof{`
+   followed by a brace-balanced block. There is no word-boundary or comment
+   check, so `proof fn` signatures and comments mentioning "proof " also
+   match. The body is first parsed with `verus_syn`, but the result is
+   discarded and the text scan always runs.
+2. **Counting.** Each block is wrapped in `fn dummy() { ... }` and parsed;
+   blocks that fail to parse contribute no counts. Operators are binary and
+   unary operators, `call` and `method_call`; operands are paths and
+   literals. This is a narrower set than the spec metrics (no `.`, `[]`,
+   `()`, `as`, `&`; see [spec-halstead.md](spec-halstead.md)), so proof and
+   spec numbers are not comparable
+   ([#59](https://github.com/Beneficial-AI-Foundation/probegraph/issues/59)).
+3. **Lemma calls.** The regex `\b(lemma_[a-zA-Z0-9_]+)\s*\(` finds calls in
+   each block; functions not named `lemma_*` are never followed.
+4. **Lookup.** For each call, the atoms map is iterated in `HashMap` order and
+   the first atom whose `display_name` or `identifier` contains the name as a
+   substring, and whose `display_name` starts with `lemma_`, is taken (it
+   also accepts a `statement_type` containing `proof`, but atoms from
+   `write_atoms` are all `function`). The
+   order changes between runs and `lemma_pow2` also matches `lemma_pow2_adds`,
+   so the chosen lemma, and everything below it, varies
+   ([#58](https://github.com/Beneficial-AI-Foundation/probegraph/issues/58)).
+5. **Transitive aggregate.** The function's own blocks and those of every
+   reached lemma are combined: totals (`n1_total`, `n2_total`) are summed,
+   unique sets (`n1`, `n2`) are unioned, and the derived values recomputed.
+   A `visited` set stops cycles.
+6. **Depth.** `proof_depth` is the deepest recursion level reached. A call to
+   an already-visited lemma still counts one level, so the depth can be one
+   too high, and the recursion stops past depth 10, so `11` means the chain
+   was truncated
+   ([#58](https://github.com/Beneficial-AI-Foundation/probegraph/issues/58)).
 
-Only the proof block: `n1`/`n2` unique operators/operands, `n1_total`/
-`n2_total` total occurrences, and the derived `length`, `difficulty`,
-`volume`, `effort` (standard Halstead formulas).
-
-### Transitive proof Halstead
-
-Proof block plus all reached lemmas, aggregated as:
-
-- **totals (N1, N2): sum** across all proof blocks;
-- **uniques (n1, n2): set union** across all proof blocks.
-
-A lemma may use an operator the proof already uses; the union avoids double
-counting it in the vocabulary, while the sum still counts every occurrence.
-Derived metrics are recomputed from the aggregates.
-
-### Additional fields
-
-- `direct_lemmas`: lemmas called directly in the proof (with duplicates)
-- `transitive_lemmas`: all lemmas in the dependency tree (deduplicated)
-- `proof_depth`: maximum depth of the lemma call chain
-
-## Implementation Details
-
-**Proof block extraction**: parse the body with `verus_syn`; fall back to a
-brace-balanced regex scan for `proof { ... }` when parsing fails.
-
-**Lemma call detection**: regex `\b(lemma_[a-zA-Z0-9_]+)\s*\(` — only
-functions named `lemma_*` are recognized as lemmas.
-
-**Transitive traversal**: recursive descent over the atoms map with a
-`visited` set for cycle detection and a hardcoded depth cap of 10.
-
-## Limitations
-
-1. Proof-block extraction uses a regex fallback and may miss complex cases.
-2. Lemma detection is name-based (`lemma_*`); proof functions named
-   otherwise are not followed.
-3. `assert(...) by { ... }` blocks are not extracted.
-4. Loop invariants are not extracted.
-
-## Measured Results
-
-Dataset-level numbers (overheads, correlations with other metrics) live in
-[`docs/research/correlation-analysis.md`](../research/correlation-analysis.md),
-not here, so there is a single source for them.
+`assert(...) by { ... }` blocks and loop invariants are not extraction roots
+of their own: they are counted only when they sit inside a block captured in
+step 1, such as a `proof fn` body.

@@ -25,12 +25,12 @@ probegraph/
 │   └── verus_lemma_finder/  # Similar lemma search (git submodule)
 ├── web/                     # Interactive viewer (see web/README.md)
 ├── scripts/                 # Python enrichment and plotting scripts
-├── examples/                # Example data and workflow templates
+├── examples/                # detect_unused_specs example script
 └── docs/
-    ├── guides/              # CI integration, viewer, VS Code, metrics reference
-    ├── technical/           # Internals: scip-core, spec/proof metrics, tools
-    ├── research/            # Correlation analysis findings
-    └── archive/             # Historical design docs
+    ├── guides/              # Using probegraph: CI, viewer, metrics
+    ├── technical/           # Internals: scip-core, spec/proof metrics, CLI tools
+    ├── plans/               # Work in progress
+    └── archive/             # Historical design docs and analyses
 ```
 
 ## Quick start: graph your own project
@@ -45,47 +45,43 @@ cargo build --release --workspace
 
 # Optional, for the similar-lemmas feature:
 uv sync --extra enrich
-uv run maturin develop --release -m external/verus_lemma_finder/rust/Cargo.toml
+(cd external/verus_lemma_finder && uv tool run maturin develop --release)
 
 cargo run --release --bin pipeline -- /path/to/verus-project
 cd web && npm install && npm run dev
 ```
 
 The pipeline generates a SCIP index, exports the call graph to
-`web/public/graph.json`, runs verification to attach statuses, and adds
-similar lemmas. Useful flags:
+`web/public/graph.json` (change with `-o`), runs verification to attach
+statuses, and adds similar lemmas. Useful flags:
 
 | Flag | Effect |
 |------|--------|
 | `--skip-verification` | Faster; no Verus needed |
 | `--skip-similar-lemmas` | No Python needed |
-| `--use-cached-scip` | Reuse an existing SCIP JSON |
+| `--use-cached-scip` | Reuse `<project>/index.scip.json` if it exists |
 | `--github-url <url>` | Source links in the viewer |
 | `-p <crate>` | Select a package in a workspace |
 | `--use-rust-analyzer` | Plain Rust projects (combine with `--skip-verification`) |
 
-The viewer offers three views: **Call Graph** (force-directed), **File Map**
-(grouped by file), and **Crate Map** (crate-level dependencies with boundary
-selection; shown as **Namespace Map** for Lean graphs). Nodes are colored by
-verification status: verified, transitively verified, trusted, failed,
-unverified, unknown. See [docs/guides/viewer.md](docs/guides/viewer.md).
+The [viewer guide](docs/guides/viewer.md) covers the views, filters and
+queries.
 
 ### Generating a SCIP index manually
 
 Install [rust-analyzer](https://rust-analyzer.github.io/book/installation.html)
 (or [verus-analyzer](https://github.com/verus-lang/verus-analyzer)) and
-[scip](https://github.com/sourcegraph/scip), then:
+[scip](https://github.com/sourcegraph/scip), then, in the project directory:
 
 ```bash
 rust-analyzer scip .
-scip print --json index.scip > index_scip.json
+scip print --json index.scip > index.scip.json
 ```
 
 ## CI integration
 
 Reusable workflows build the graph in your repo's CI and deploy the viewer to
-GitHub Pages. Minimal setup for a Verus project (`github_url` is
-auto-detected):
+GitHub Pages. Minimal setup for a Verus project:
 
 ```yaml
 permissions:
@@ -98,48 +94,39 @@ jobs:
     uses: Beneficial-AI-Foundation/probegraph/.github/workflows/generate-callgraph.yml@main
 ```
 
-For a Lean 4 project, use the Lean workflow (powered by
-[probe-lean](https://github.com/Beneficial-AI-Foundation/probe-lean); builds
-the project, extracts the dependency graph, detects `sorry`):
-
-```yaml
-jobs:
-  callgraph:
-    uses: Beneficial-AI-Foundation/probegraph/.github/workflows/generate-lean-callgraph.yml@main
-```
-
-Full input tables, non-Verus Rust projects, subpath deployment to an existing
-Pages site, and Pages setup:
-[docs/guides/ci-integration.md](docs/guides/ci-integration.md).
+Lean 4 projects use `generate-lean-callgraph.yml` the same way. Inputs, plain
+Rust projects and subpath deployment are covered in the
+[CI integration guide](docs/guides/ci-integration.md).
 
 ## Verus metrics
 
 Computes Halstead metrics for `requires`/`ensures`/`decreases` clauses and
 `proof { }` blocks (with transitive lemma analysis), and merges
-implementation-complexity metrics from `rust-code-analysis`. Single command:
+implementation-complexity metrics from `rust-code-analysis`:
 
 ```bash
 cargo run -p metrics-cli --bin run_full_pipeline -- \
-  --scip index_scip.json --csv functions_to_track.csv \
+  --scip index.scip.json --csv functions_to_track.csv \
   --rca-dir rca_jsons/ --proof-csv proofs.csv --output-dir out/
 ```
 
-Step-by-step guide and column reference:
-[METRICS_PIPELINE.md](METRICS_PIPELINE.md) and
-[docs/guides/metrics-reference.md](docs/guides/metrics-reference.md).
+See the [metrics pipeline guide](docs/guides/metrics-pipeline.md) for the
+inputs and steps.
 
 ## Documentation
 
 - [docs/guides/ci-integration.md](docs/guides/ci-integration.md) — reusable workflows for Verus, Rust, and Lean projects
 - [docs/guides/viewer.md](docs/guides/viewer.md) — using the interactive viewer
 - [docs/guides/vscode-extension.md](docs/guides/vscode-extension.md) — embedding the viewer in VS Code extensions
+- [docs/guides/metrics-pipeline.md](docs/guides/metrics-pipeline.md) — running the metrics pipeline
 - [docs/guides/metrics-reference.md](docs/guides/metrics-reference.md) — what each metric column means
-- [METRICS_PIPELINE.md](METRICS_PIPELINE.md) — the metrics pipeline, step by step
-- [docs/SIMILAR_LEMMAS.md](docs/SIMILAR_LEMMAS.md) — similar-lemmas enrichment
-- [docs/technical/](docs/technical/) — internals: scip-core architecture, spec/proof metric implementations, tool references
-- [docs/research/correlation-analysis.md](docs/research/correlation-analysis.md) — measured spec/proof/code correlations
+- [docs/guides/similar-lemmas.md](docs/guides/similar-lemmas.md) — similar-lemmas enrichment
+- [docs/technical/](docs/technical/) — internals: scip-core architecture, spec and proof metrics, CLI tools
+- [docs/archive/](docs/archive/) — historical design docs; [correlation-analysis.md](docs/archive/correlation-analysis.md) has the spec/proof/code correlations (numbers not reproducible)
 - [web/README.md](web/README.md), [web/ARCHITECTURE.md](web/ARCHITECTURE.md), [web/QUERY_PIPELINE.md](web/QUERY_PIPELINE.md), [web/docs/technical/](web/docs/technical/) — viewer development docs
+- [.github/workflows/README.md](.github/workflows/README.md) — this repo's CI and releases
 
 ## License
 
-MIT
+The crates are licensed `MIT OR Apache-2.0` (per `Cargo.toml`); the repo has
+no LICENSE file yet ([#62](https://github.com/Beneficial-AI-Foundation/probegraph/issues/62)).

@@ -1,3 +1,7 @@
+> **Archived 2026-10.** Pitch deck from February 2026, unmaintained since.
+> Some claims were never true of the pipeline (complexity metrics, unused-spec
+> detection). Current usage: `docs/guides/ci-integration.md`.
+
 # Interactive Call Graphs for Every Verus Project
 
 *One workflow. Zero setup. Instant visibility into your codebase.*
