@@ -35,3 +35,6 @@ dist/
 
 # Auto-loaded graph data (example graph is committed for GitHub Pages)
 
+
+# Built by npm run build:vscode; the extension in ../vscode copies it
+dist-vscode/

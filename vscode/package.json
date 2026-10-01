@@ -6,7 +6,8 @@
   "publisher": "beneficial-ai-foundation",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Beneficial-AI-Foundation/call_graph_vs_code_extension"
+    "url": "https://github.com/Beneficial-AI-Foundation/probegraph",
+    "directory": "vscode"
   },
   "engines": {
     "vscode": "^1.102.0"
@@ -166,9 +167,11 @@
   },
   "scripts": {
     "vscode:prepublish": "npm run package",
-    "compile": "webpack",
+    "build:webview": "node scripts/build-webview.mjs",
+    "compile": "npm run build:webview && webpack",
     "watch": "webpack --watch",
-    "package": "webpack --mode production --devtool hidden-source-map",
+    "package": "npm run build:webview && webpack --mode production --devtool hidden-source-map",
+    "vsix": "vsce package",
     "compile-tests": "tsc -p . --outDir out",
     "watch-tests": "tsc -p . -w --outDir out",
     "pretest": "npm run compile-tests && npm run compile && npm run lint",
@@ -179,18 +182,19 @@
     "node-fetch": "^3.3.2"
   },
   "devDependencies": {
-    "@types/vscode": "^1.102.0",
     "@types/mocha": "^10.0.10",
     "@types/node": "20.x",
     "@types/node-fetch": "^2.6.7",
+    "@types/vscode": "^1.102.0",
     "@typescript-eslint/eslint-plugin": "^8.31.1",
     "@typescript-eslint/parser": "^8.31.1",
-    "eslint": "^9.25.1",
-    "typescript": "^5.8.3",
-    "ts-loader": "^9.5.2",
-    "webpack": "^5.99.7",
-    "webpack-cli": "^6.0.1",
     "@vscode/test-cli": "^0.0.11",
-    "@vscode/test-electron": "^2.5.2"
+    "@vscode/test-electron": "^2.5.2",
+    "@vscode/vsce": "^4.0.0",
+    "eslint": "^9.25.1",
+    "ts-loader": "^9.5.2",
+    "typescript": "^5.8.3",
+    "webpack": "^5.99.7",
+    "webpack-cli": "^6.0.1"
   }
 }

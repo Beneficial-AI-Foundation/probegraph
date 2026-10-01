@@ -225,11 +225,20 @@ go build ./cmd/scip
 
 ### Building
 
+The extension lives in `vscode/` of the probegraph repo and bundles the
+viewer from `web/`. `npm run compile` builds the viewer
+(`npm run build:vscode` in `web/`) and copies it to `webview/`, which is not
+tracked.
+
 ```bash
-git clone https://github.com/Beneficial-AI-Foundation/call_graph_vs_code_extension.git
-cd call_graph_vs_code_extension
-npm install
+git clone https://github.com/Beneficial-AI-Foundation/probegraph.git
+cd probegraph
+npm ci --prefix web
+cd vscode
+npm ci
 npm run compile
+npm test        # runs in a downloaded VS Code
+npm run vsix    # call-graph-visualizer-<version>.vsix
 ```
 
 ### Running in Development
@@ -250,23 +259,8 @@ src/
 └── test/
     └── indexLoader.test.ts
 
-webview/                   # Embedded scip-callgraph web app
-├── index.html
-└── assets/
-    ├── main.js
-    └── main.css
-```
-
-### Updating the Web App
-
-To update the embedded web app:
-
-```bash
-# In scip-callgraph/web/
-npm run build:vscode
-
-# Copy to extension
-cp -r dist-vscode/* /path/to/call_graph_vs_code_extension/webview/
+scripts/build-webview.mjs  # Builds ../web and copies it to webview/
+webview/                   # Built viewer (not tracked)
 ```
 
 ## 📚 Related Projects

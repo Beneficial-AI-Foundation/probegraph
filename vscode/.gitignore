@@ -9,7 +9,9 @@ node_modules/
 
 # IDE/Editor files
 .vscode/
-.vscode-test.*
+
+# Built from ../web by scripts/build-webview.mjs
+webview/
 
 # OS generated files
 .DS_Store
