@@ -8,7 +8,9 @@ extension loads through `parseAndNormalizeGraph` + `validateGraph`, resolves
 the cursor with `resolveCursor` (symbols from the document symbol provider,
 exact workspace-relative paths), reloads only valid files, and runs in
 `lean4` as well as `rust`. Still to do in Phase 3: sessions, project root
-rules, async reads, the protocol, panel placement and the status bar. Revised the same day after a
+rules, async reads, the protocol, panel placement and the status bar.
+Phase 2 done on `vscode/panel-protocol`; the protocol is in
+`docs/guides/vscode-extension.md`. Revised the same day after a
 Codex review; see "Review decisions" at the end, and "Decisions" before
 that.
 
@@ -200,7 +202,7 @@ loads) and every selection a `requestId`:
 
 ```typescript
 // host → webview
-{ type: 'loadGraph', revision: number, graph: unknown, selection?: Selection }
+{ type: 'loadGraph', revision: number, graph: unknown, selection?: Selection, requestId?: number }
 { type: 'selectNode', revision: number, requestId: number, selection: Selection }
 type Selection = { nodeId: string; direction: 'both' | 'callees' | 'callers' | 'none'; depth: number };
 
@@ -236,6 +238,12 @@ Viewer side, a selection from the editor:
   directional exact selections does not apply to editor selections.
 
 `loadGraph` without `revision` keeps today's behaviour for other hosts.
+A selection in `loadGraph` is answered like a `selectNode` when it carries a
+`requestId`, after `graphLoaded`.
+
+`filteredBy` names the `FilterOptions` keys that each, relaxed on its own,
+would draw the node (`showSpecFunctions`, `excludeNamePatterns`, ...); it is
+empty when no single filter is responsible.
 
 ### Index updates
 

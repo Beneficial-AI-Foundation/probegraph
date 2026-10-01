@@ -12,6 +12,7 @@ import { CrateMapVisualization, buildCrateGraph } from './crate-map';
 import { HierarchyMapVisualization } from './hierarchy-map';
 import { computeDerivedStatuses } from './status';
 import { parseAndNormalizeGraph, pickSourceConfig } from './graph-loader';
+import { editorSelectionIntent, filtersHiding, type EditorSelection, type SelectStatus } from './editor-selection';
 import { escapeHtml } from './html';
 import { StatusGroup, exactStatusFilter, groupCheckState, withGroupChecked } from './status-filter';
 import {
@@ -3736,6 +3737,41 @@ function handleResize(): void {
 // VS Code Message Handler
 // ============================================================================
 
+// The revision of the graph the extension last sent, for hosts that number
+// them; selections for any other revision are stale
+let vscodeRevision: number | null = null;
+
+/**
+ * Show an editor selection: in the code layer and call graph view, unhidden,
+ * at its depth. Other filters stay; if one hides the node, says which.
+ */
+function applyEditorSelection(selection: EditorSelection): { status: SelectStatus; filteredBy?: string[] } {
+  const node = codeLayer?.nodes.find(n => n.id === selection.nodeId);
+  if (!node) return { status: 'missing' };
+  if (activeLayer !== 'code') switchLayer('code');
+  if (activeView !== 'callgraph') switchView('callgraph', { apply: false });
+  state.filters.hiddenNodes.delete(node.id);
+  setIntent(editorSelectionIntent(selection, node.display_name), {
+    history: 'replace',
+    before: () => {
+      state.filters.maxDepth = selection.depth;
+      syncDepthSliderUI(selection.depth);
+    },
+  });
+  if (state.filteredGraph?.nodes.some(n => n.id === node.id)) return { status: 'shown' };
+  return {
+    status: 'filtered',
+    filteredBy: filtersHiding(state.fullGraph!, state.filters, state.projectLanguage, node.id),
+  };
+}
+
+function replySelectResult(revision: number, requestId: number | undefined, selection: EditorSelection): void {
+  const result = applyEditorSelection(selection);
+  if (requestId !== undefined) {
+    postMessageToExtension({ type: 'selectResult', revision, requestId, ...result });
+  }
+}
+
 /**
  * Handle messages from VS Code extension
  */
@@ -3744,6 +3780,14 @@ function handleVSCodeMessage(event: MessageEvent): void {
   
   switch (message.type) {
     case 'loadGraph':
+      if (message.graph && typeof message.revision === 'number') {
+        const graph = parseAndNormalizeGraph(message.graph);
+        vscodeRevision = message.revision;
+        loadGraph(graph, 'Loaded from VS Code extension', message.selection ? 'code' : undefined);
+        postMessageToExtension({ type: 'graphLoaded', revision: message.revision, nodes: graph.nodes.length });
+        if (message.selection) replySelectResult(message.revision, message.requestId, message.selection);
+        break;
+      }
       // Load graph data sent from extension
       if (message.graph) {
         // Normalize the graph format (supports both D3Graph and simplified formats)
@@ -3788,6 +3832,12 @@ function handleVSCodeMessage(event: MessageEvent): void {
       }
       break;
       
+    case 'selectNode':
+      if (message.revision === vscodeRevision && message.selection) {
+        replySelectResult(message.revision, message.requestId, message.selection);
+      }
+      break;
+
     case 'setQuery':
       // Update the query (e.g., user clicked on a different function)
       if (activeLayer !== 'code') switchLayer('code');

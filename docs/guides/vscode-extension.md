@@ -19,10 +19,12 @@ This writes `web/dist-vscode/` using `vite.config.vscode.js`:
 - no public folder, so no bundled `graph.json` (the graph comes by message).
 
 JavaScript and CSS are separate files, not inlined; `assetsInlineLimit` only
-inlines imported assets under 100 KB. `index.html` loads the Inter font from
-Google Fonts, so a webview Content Security Policy must allow
-`fonts.googleapis.com` / `fonts.gstatic.com` or the viewer falls back to the
-system font.
+inlines imported assets under 100 KB. The build drops the Google Fonts links
+from `index.html` (a webview's Content Security Policy blocks them anyway), so
+the viewer uses the system font.
+
+The extension in [`vscode/`](../../vscode/README.md) builds this and bundles
+it; `npm run compile` there runs the build.
 
 ## Message protocol
 
@@ -72,6 +74,38 @@ query; after an exact-node or other query it becomes empty.
 
 **`refresh`** makes the webview reply with `requestRefresh`.
 
+### Editor selections
+
+A host that follows the editor numbers each graph it sends and selects nodes
+without resending it:
+
+```typescript
+type Selection = { nodeId: string; direction: 'both' | 'callees' | 'callers' | 'none'; depth: number };
+
+// extension → webview
+{ type: 'loadGraph', revision: 1, graph, selection?: Selection, requestId?: number }
+{ type: 'selectNode', revision: 1, requestId: 2, selection: Selection }
+
+// webview → extension
+{ type: 'graphLoaded', revision: 1, nodes: 2907 }
+{ type: 'selectResult', revision: 1, requestId: 2, status: 'shown' | 'filtered' | 'missing', filteredBy?: string[] }
+```
+
+A `loadGraph` with a `revision` ignores `initialQuery` and `selectedNodeId`,
+and is answered with `graphLoaded`. The viewer ignores a `selectNode` whose
+revision is not the one it loaded. Each selection with a `requestId`,
+including one in `loadGraph` (answered after `graphLoaded`), gets a
+`selectResult`.
+
+A selection switches to the code layer and the call graph view, unhides the
+node if the user hid it, and shows it at `depth`. Other filters stay as the
+user set them. If one still hides the node, the status is `filtered` and
+`filteredBy` lists the `FilterOptions` keys that each, relaxed on its own
+(a kind shown, a pattern cleared), would show it (for example
+`showSpecFunctions` or `excludeNamePatterns`); it
+is empty when no single filter is responsible. `missing` means the ID is not
+in the graph.
+
 ### Webview → extension
 
 - **`ready`** — sent once the webview has set up its message listener.
@@ -86,6 +120,7 @@ query; after an exact-node or other query it becomes empty.
   1-based (subtract 1 for `vscode.Position`) and may be undefined when the
   graph has no line numbers.
 - **`requestRefresh`** — the webview wants fresh graph data.
+- **`graphLoaded`**, **`selectResult`** — see [Editor selections](#editor-selections).
 
 ## Extension side
 

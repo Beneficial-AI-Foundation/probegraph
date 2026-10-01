@@ -120,6 +120,72 @@ test.describe('VS Code webview', () => {
     await expect(page.locator('#graph-container svg circle')).toHaveCount(6);
   });
 
+  test.describe('with revisions', () => {
+    // GRAPH plus a spec function, which the default filters hide
+    const WITH_SPEC = {
+      ...GRAPH,
+      nodes: [...GRAPH.nodes, { ...node('qs/sorted()', 'sorted', [40, 44]), kind: 'spec', mode: 'spec' }],
+    };
+    const select = (nodeId: string, depth = 1) => ({ nodeId, direction: 'both', depth });
+    const drawn = (page: Page) => page.evaluate(() =>
+      [...document.querySelectorAll('#graph-container svg circle')]
+        .map((c) => (c as unknown as { __data__?: { id: string } }).__data__?.id).sort());
+    const results = async (page: Page) =>
+      (await sent(page)).filter((m) => m.type === 'selectResult');
+
+    async function load(page: Page, selection?: unknown) {
+      await openWebview(page);
+      await expect.poll(() => sent(page)).toContainEqual({ type: 'ready' });
+      await post(page, { type: 'loadGraph', revision: 1, requestId: 1, graph: WITH_SPEC, selection });
+      await expect.poll(() => sent(page)).toContainEqual({ type: 'graphLoaded', revision: 1, nodes: 7 });
+    }
+
+    test('loadGraph with a selection draws it and reports shown', async ({ page }) => {
+      await load(page, select('qs/partition()'));
+      await expect.poll(() => results(page)).toEqual([
+        { type: 'selectResult', revision: 1, requestId: 1, status: 'shown' },
+      ]);
+      // depth 1: partition, its callees len and swap, its caller quicksort
+      await expect.poll(() => drawn(page)).toEqual(['core/len()', 'core/swap()', 'qs/partition()', 'qs/quicksort()']);
+    });
+
+    test('selectNode moves the selection and ignores other revisions', async ({ page }) => {
+      await load(page, select('qs/partition()'));
+      await post(page, { type: 'selectNode', revision: 0, requestId: 2, selection: select('qs/test_quicksort()') });
+      await post(page, { type: 'selectNode', revision: 1, requestId: 3, selection: select('qs/test_quicksort()') });
+      await expect.poll(() => results(page)).toEqual([
+        { type: 'selectResult', revision: 1, requestId: 1, status: 'shown' },
+        { type: 'selectResult', revision: 1, requestId: 3, status: 'shown' },
+      ]);
+      await expect.poll(() => drawn(page)).toEqual(['qs/quicksort()', 'qs/test_quicksort()']);
+    });
+
+    test('an editor selection unhides a node hidden by shift-click', async ({ page }) => {
+      await load(page, select('qs/quicksort()'));
+      await expect.poll(() => drawn(page)).toContain('qs/partition()');
+      await page.evaluate(() => {
+        const circle = [...document.querySelectorAll('#graph-container svg circle')]
+          .find((c) => (c as unknown as { __data__?: { id: string } }).__data__?.id === 'qs/partition()');
+        circle!.dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey: true }));
+      });
+      await expect.poll(() => drawn(page)).not.toContain('qs/partition()');
+
+      await post(page, { type: 'selectNode', revision: 1, requestId: 2, selection: select('qs/partition()') });
+      await expect.poll(() => results(page)).toContainEqual({ type: 'selectResult', revision: 1, requestId: 2, status: 'shown' });
+      await expect.poll(() => drawn(page)).toContain('qs/partition()');
+    });
+
+    test('a spec function with Spec off is reported filtered, and an unknown id missing', async ({ page }) => {
+      await load(page);
+      await post(page, { type: 'selectNode', revision: 1, requestId: 2, selection: select('qs/sorted()') });
+      await post(page, { type: 'selectNode', revision: 1, requestId: 3, selection: select('qs/gone()') });
+      await expect.poll(() => results(page)).toEqual([
+        { type: 'selectResult', revision: 1, requestId: 2, status: 'filtered', filteredBy: ['showSpecFunctions'] },
+        { type: 'selectResult', revision: 1, requestId: 3, status: 'missing' },
+      ]);
+    });
+  });
+
   test('refresh is answered with requestRefresh', async ({ page }) => {
     await openWebview(page);
     await expect.poll(() => sent(page)).toContainEqual({ type: 'ready' });
