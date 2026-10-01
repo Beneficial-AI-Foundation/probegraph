@@ -266,6 +266,8 @@ export interface D3Node {
   // Preferred seeds for the large-graph seeded initial view.
   is_entry_point?: boolean;
   blueprint?: BlueprintInfo;  // probe-leanblueprint fields (node atoms and bound Lean atoms)
+  is_hidden?: boolean;  // probe-lean `is-hidden`
+  is_generated?: boolean;  // probe-lean `is-lean-generated` or `is-aeneas-generated`
   // Derived statuses computed by DAG walk (used by File Map view)
   border_status?: BorderStatus;
   fill_status?: FillStatus;
@@ -312,6 +314,10 @@ export interface D3GraphMetadata {
   generated_at: string;
   github_url?: string;
   source_configs?: SourceConfig[];
+  /** The envelope's `timestamp`: when the extractor ran. Absent for inputs without one. */
+  extracted_at?: string;
+  /** The envelope's `source.commit`. Absent for merged inputs and inputs without one. */
+  source_commit?: string;
 }
 
 export interface D3Graph {
@@ -408,6 +414,9 @@ export interface ProbeAtom {
   "translation-text"?: { "lines-start": number; "lines-end": number };
   specs?: string[];
   "rust-source"?: string | null;
+  "is-hidden"?: boolean;
+  "is-lean-generated"?: boolean;
+  "is-aeneas-generated"?: boolean;
   // probe-leanblueprint extension fields
   "blueprint-label"?: string;
   "blueprint-kind"?: string;

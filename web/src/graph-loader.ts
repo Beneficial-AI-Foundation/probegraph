@@ -330,6 +330,8 @@ function convertCodeAtoms(atoms: Record<string, ProbeAtom>): D3Graph {
       attributes: atom.attributes,
       is_entry_point: entryPointIds.has(atomName) || undefined,
       blueprint: blueprintInfo(atom),
+      is_hidden: atom["is-hidden"] === true || undefined,
+      is_generated: atom["is-lean-generated"] === true || atom["is-aeneas-generated"] === true || undefined,
     };
   });
 
@@ -465,10 +467,15 @@ export function parseAndNormalizeGraph(data: unknown): D3Graph {
   if (isSchema2Envelope(data)) {
     const sourceConfigs = extractSourceConfigs(data);
     const graph = parseAndNormalizeGraph(data.data);
-    if (sourceConfigs.length > 0) {
-      graph.metadata.source_configs = sourceConfigs;
-      if (graph.blueprintLayer) graph.blueprintLayer.metadata.source_configs = sourceConfigs;
-    }
+    // A merge's timestamp is when it merged, and it has one commit per input
+    const single = !data.inputs;
+    const provenance = {
+      ...(sourceConfigs.length > 0 && { source_configs: sourceConfigs }),
+      ...(single && typeof data.timestamp === 'string' && { extracted_at: data.timestamp }),
+      ...(single && typeof data.source?.commit === 'string' && { source_commit: data.source.commit }),
+    };
+    if (graph.metadata) Object.assign(graph.metadata, provenance);
+    if (graph.blueprintLayer) Object.assign(graph.blueprintLayer.metadata, provenance);
     return graph;
   }
   if (isD3GraphFormat(data)) {
@@ -482,4 +489,40 @@ export function parseAndNormalizeGraph(data: unknown): D3Graph {
   }
   console.warn('Unknown JSON format, attempting to use as D3Graph');
   return data as D3Graph;
+}
+
+/** Above this share of links with an unknown endpoint, a graph is rejected. */
+const MAX_DANGLING_LINK_SHARE = 0.1;
+
+/**
+ * Structural problems that make a normalized graph unusable, empty when there
+ * are none. parseAndNormalizeGraph passes unknown input through as a D3Graph,
+ * so this is what tells a graph from arbitrary JSON.
+ */
+export function validateGraph(graph: unknown): string[] {
+  if (typeof graph !== 'object' || graph === null) return ['not an object'];
+  const { nodes, links } = graph as { nodes?: unknown; links?: unknown };
+  if (!Array.isArray(nodes)) return ['no nodes array: not a format probegraph reads'];
+  if (!Array.isArray(links)) return ['no links array'];
+
+  const problems: string[] = [];
+  const ids = new Set<string>();
+  nodes.forEach((n, i) => {
+    const node = n as Partial<D3Node> | null;
+    if (typeof node?.id !== 'string' || node.id === '') problems.push(`node ${i} has no id`);
+    else if (ids.has(node.id)) problems.push(`duplicate node id ${node.id}`);
+    else ids.add(node.id);
+    if (typeof node?.display_name !== 'string') problems.push(`node ${i} has no display_name`);
+  });
+
+  const endpoint = (e: unknown) =>
+    typeof e === 'string' ? e : typeof e === 'object' && e !== null ? (e as { id?: unknown }).id : undefined;
+  const dangling = links.filter(l => {
+    const link = l as Partial<D3Link> | null;
+    return !ids.has(endpoint(link?.source) as string) || !ids.has(endpoint(link?.target) as string);
+  }).length;
+  if (dangling > links.length * MAX_DANGLING_LINK_SHARE) {
+    problems.push(`${dangling} of ${links.length} links have an unknown endpoint`);
+  }
+  return problems.slice(0, 10);
 }

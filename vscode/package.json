@@ -1,0 +1,201 @@
+{
+  "name": "call-graph-visualizer",
+  "displayName": "Call Graph Visualizer",
+  "description": "Interactive call graph explorer for Verus/Rust projects. Embeds the full probegraph web app with depth slider, Source/Sink queries, and verification status visualization.",
+  "version": "0.1.0",
+  "publisher": "beneficial-ai-foundation",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Beneficial-AI-Foundation/probegraph",
+    "directory": "vscode"
+  },
+  "engines": {
+    "vscode": "^1.102.0"
+  },
+  "categories": [
+    "Visualization",
+    "Other"
+  ],
+  "keywords": [
+    "rust",
+    "verus",
+    "call graph",
+    "visualization",
+    "scip"
+  ],
+  "activationEvents": [
+    "onLanguage:rust",
+    "onLanguage:lean4"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "callGraph.showGraph",
+        "title": "Show Call Graph (Bidirectional)",
+        "category": "Call Graph"
+      },
+      {
+        "command": "callGraph.showDependencies",
+        "title": "Show Dependencies (What This Function Calls)",
+        "category": "Call Graph"
+      },
+      {
+        "command": "callGraph.showDependents",
+        "title": "Show Dependents (What Calls This Function)",
+        "category": "Call Graph"
+      },
+      {
+        "command": "callGraph.regenerateIndex",
+        "title": "Regenerate Index",
+        "category": "Call Graph"
+      },
+      {
+        "command": "callGraph.cancelPipeline",
+        "title": "Cancel Pipeline",
+        "category": "Call Graph"
+      },
+      {
+        "command": "callGraph.checkPrerequisites",
+        "title": "Check Prerequisites",
+        "category": "Call Graph"
+      },
+      {
+        "command": "call-graph-visualizer.displayCallGraph",
+        "title": "Display Call Graph (Legacy)"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "submenu": "callGraph.submenu",
+          "when": "editorLangId == rust || editorLangId == lean4",
+          "group": "navigation@1"
+        }
+      ],
+      "callGraph.submenu": [
+        {
+          "command": "callGraph.showGraph",
+          "group": "1_graph@1"
+        },
+        {
+          "command": "callGraph.showDependencies",
+          "group": "1_graph@2"
+        },
+        {
+          "command": "callGraph.showDependents",
+          "group": "1_graph@3"
+        },
+        {
+          "command": "callGraph.regenerateIndex",
+          "group": "2_manage@1"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "callGraph.showGraph",
+          "when": "editorLangId == rust || editorLangId == lean4"
+        },
+        {
+          "command": "callGraph.showDependencies",
+          "when": "editorLangId == rust || editorLangId == lean4"
+        },
+        {
+          "command": "callGraph.showDependents",
+          "when": "editorLangId == rust || editorLangId == lean4"
+        },
+        {
+          "command": "callGraph.regenerateIndex"
+        },
+        {
+          "command": "callGraph.cancelPipeline"
+        },
+        {
+          "command": "callGraph.checkPrerequisites"
+        }
+      ]
+    },
+    "submenus": [
+      {
+        "id": "callGraph.submenu",
+        "label": "Call Graph"
+      }
+    ],
+    "configuration": {
+      "title": "Call Graph Visualizer",
+      "properties": {
+        "callGraph.depth": {
+          "type": "number",
+          "default": 3,
+          "minimum": 1,
+          "maximum": 10,
+          "description": "Maximum depth for call graph traversal"
+        },
+        "callGraph.indexPath": {
+          "type": "string",
+          "default": ".vscode/call_graph_index.json",
+          "description": "Path to the graph file, relative to the workspace root: a pipeline index or a probe extract (for example .verilib/probes/probe-lean-extract.json)"
+        },
+        "callGraph.defaultScipCallgraphPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the probegraph repository (for running the pipeline)"
+        },
+        "callGraph.autoRegenerateOnSave": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically regenerate the index when Rust files are saved"
+        },
+        "callGraph.debounceDelayMs": {
+          "type": "number",
+          "default": 3000,
+          "minimum": 1000,
+          "maximum": 30000,
+          "description": "Delay in milliseconds before auto-regenerating after a save"
+        },
+        "callGraph.skipVerification": {
+          "type": "boolean",
+          "default": false,
+          "description": "Skip Verus verification when regenerating (faster, but no verification status)"
+        },
+        "callGraph.skipSimilarLemmas": {
+          "type": "boolean",
+          "default": false,
+          "description": "Skip similar lemmas enrichment (no Python required)"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run package",
+    "build:webview": "node scripts/build-webview.mjs",
+    "compile": "npm run build:webview && webpack",
+    "watch": "webpack --watch",
+    "package": "npm run build:webview && webpack --mode production --devtool hidden-source-map",
+    "vsix": "vsce package",
+    "compile-tests": "tsc -p . --outDir out",
+    "watch-tests": "tsc -p . -w --outDir out",
+    "pretest": "npm run compile-tests && npm run compile && npm run lint",
+    "lint": "eslint src",
+    "test": "vscode-test"
+  },
+  "dependencies": {
+    "node-fetch": "^3.3.2"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.10",
+    "@types/node": "20.x",
+    "@types/node-fetch": "^2.6.7",
+    "@types/vscode": "^1.102.0",
+    "@typescript-eslint/eslint-plugin": "^8.31.1",
+    "@typescript-eslint/parser": "^8.31.1",
+    "@vscode/test-cli": "^0.0.11",
+    "@vscode/test-electron": "^2.5.2",
+    "@vscode/vsce": "^4.0.0",
+    "eslint": "^9.25.1",
+    "ts-loader": "^9.5.2",
+    "typescript": "^5.8.3",
+    "webpack": "^5.99.7",
+    "webpack-cli": "^6.0.1"
+  }
+}

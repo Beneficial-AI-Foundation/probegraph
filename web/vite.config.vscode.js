@@ -8,8 +8,17 @@ import { defineConfig } from 'vite';
  * - Output goes to dist-vscode/
  * - Imported assets are bundled; index.html still loads Inter from Google Fonts
  */
+// The webview CSP allows no remote origins, so the Google Fonts links would
+// only produce CSP errors; --pg-font-sans falls back to the system font.
+const dropRemoteFonts = {
+  name: 'drop-remote-fonts',
+  transformIndexHtml: (html) =>
+    html.replace(/^\s*<link [^>]*fonts\.(googleapis|gstatic)\.com[^>]*>\n/gm, ''),
+};
+
 export default defineConfig({
   root: '.',
+  plugins: [dropRemoteFonts],
   base: './',  // Relative paths for webview
   publicDir: false,  // Don't copy public folder (graph.json not needed)
   build: {

@@ -1,6 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { convertAtomDictToD3Graph, pickSourceConfig } from './graph-loader';
-import { ProbeAtom, SourceConfig } from './types';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { convertAtomDictToD3Graph, parseAndNormalizeGraph, pickSourceConfig, validateGraph } from './graph-loader';
+import { D3Graph, ProbeAtom, SourceConfig } from './types';
+
+const fixture = (name: string): unknown =>
+  JSON.parse(readFileSync(resolve(__dirname, 'test-data', name), 'utf8'));
 
 const atom = (over: Partial<ProbeAtom>): ProbeAtom => ({
   "display-name": 'x',
@@ -324,5 +329,64 @@ describe('convertAtomDictToD3Graph statement / body-or-proof roles', () => {
     });
     const links = g.links.filter(l => l.source === 'probe:thm' && l.target === 'probe:def');
     expect(links.map(l => [l.type, l.role]).sort()).toEqual([['inner', 'type'], ['spec', 'type']]);
+  });
+});
+
+// Cut from secure-messaging's probe-lean extract at 061a94e: OppUniKEM StateA,
+// StateB (with their projections) and nearby defs, kemCKA's first four atoms,
+// and two Parser.Attr atoms sharing a range
+const leanExtract = fixture('probe-lean-extract-cut.json');
+// Cut from secure-messaging's merged_etm_libsignal.json: libsignal's
+// identity_key.rs, the two SessionStructure::from impls, three Lean atoms
+const mergedExtract = fixture('probe-merged-rust-lean-cut.json');
+
+describe('parseAndNormalizeGraph flags and provenance', () => {
+  const graph = parseAndNormalizeGraph(leanExtract);
+  const node = (id: string) => graph.nodes.find(n => n.id === id)!;
+
+  it('keeps is-hidden and is-lean-generated', () => {
+    expect(node('probe:oppUniKemCKA.StateB.t')).toMatchObject({ is_hidden: true, is_generated: true });
+    expect(node('probe:oppUniKemCKA.StateB').is_hidden).toBeUndefined();
+    expect(node('probe:oppUniKemCKA.StateB').is_generated).toBeUndefined();
+  });
+
+  it('records when and at which commit the extract was made', () => {
+    expect(graph.metadata.extracted_at).toBe('2026-09-30T11:36:52Z');
+    expect(graph.metadata.source_commit).toBe('061a94e67c2369c1612ca243a15e3ea1f2aef1ff');
+  });
+
+  it('records neither for a merge, whose inputs have different commits', () => {
+    const merged = parseAndNormalizeGraph(mergedExtract);
+    expect(merged.metadata.extracted_at).toBeUndefined();
+    expect(merged.metadata.source_commit).toBeUndefined();
+    expect(merged.metadata.source_configs).toHaveLength(2);
+  });
+});
+
+describe('validateGraph', () => {
+  const valid = (): D3Graph => parseAndNormalizeGraph(leanExtract);
+
+  it('accepts real extracts', () => {
+    expect(validateGraph(valid())).toEqual([]);
+    expect(validateGraph(parseAndNormalizeGraph(mergedExtract))).toEqual([]);
+  });
+
+  it('rejects JSON that is not a graph', () => {
+    expect(validateGraph(parseAndNormalizeGraph({ name: 'package.json' }))).toEqual([
+      'no nodes array: not a format probegraph reads',
+    ]);
+    expect(validateGraph(null)).toEqual(['not an object']);
+  });
+
+  it('reports duplicate and missing ids', () => {
+    const g = valid();
+    g.nodes.push({ ...g.nodes[0] }, { ...g.nodes[0], id: '' });
+    expect(validateGraph(g)).toEqual([`duplicate node id ${g.nodes[0].id}`, `node ${g.nodes.length - 1} has no id`]);
+  });
+
+  it('reports links that mostly point nowhere', () => {
+    const g = valid();
+    g.links = g.links.map(l => ({ ...l, target: 'probe:gone' }));
+    expect(validateGraph(g)).toEqual([`${g.links.length} of ${g.links.length} links have an unknown endpoint`]);
   });
 });
