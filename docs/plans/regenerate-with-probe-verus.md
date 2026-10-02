@@ -1,7 +1,7 @@
 # Regenerate with `probe-verus extract` instead of `pipeline`
 
-Status (2026-10-02): proposal. Nothing implemented. Decisions marked
-"open" at the end need an answer before Phase 1.
+Status (2026-10-02): decided, see "Decisions" at the end. Phase 0 is the
+probe-verus `--output` PR; Phase 1 follows against it.
 
 Goal: "Regenerate Index" in the extension and the reusable
 `generate-callgraph.yml` produce a probe-verus extract (the schema-2
@@ -85,8 +85,8 @@ with `@main` by `libsignal_focus_dalek_lite`, `pmemlog_with_callgraph` and
   and renames the temp file over `indexPath` on success as today.
   `callGraph.skipVerification` maps to `--skip-verify`. A new
   `callGraph.useRustAnalyzer` (default false) maps to `--rust-analyzer`
-  for plain Rust projects. `callGraph.skipSimilarLemmas` is removed (see
-  open decision 1).
+  for plain Rust projects. `callGraph.skipSimilarLemmas` is removed
+  (decision 1).
 - Until probe-verus has `-o`, the runner reads the `Primary output:` line
   from stdout and moves that file to the temp path. This is the fallback,
   not the design.
@@ -131,7 +131,7 @@ with `@main` by `libsignal_focus_dalek_lite`, `pmemlog_with_callgraph` and
   `VITE_GITHUB_URL`; the extract carries `source.repo` as well.
 - Inputs keep their names so the three `@main` consumers keep working.
   `skip_similar_lemmas` stays declared and is ignored, with a notice in
-  the log (open decision 1).
+  the log (decision 1).
 
 ### probegraph cleanup
 
@@ -141,8 +141,9 @@ with `@main` by `libsignal_focus_dalek_lite`, `pmemlog_with_callgraph` and
   `docs/guides/ci-integration.md`.
 - Remove `scripts/enrich_graph_with_similar_lemmas.py`, the
   `external/verus_lemma_finder` submodule and the `enrich` extra in
-  `pyproject.toml` if decision 1 says drop; otherwise adapt the script to
-  the envelope (open decision 1).
+  `pyproject.toml` (decision 1). The viewer's `similar_lemmas` tooltip
+  section stays, reading a field no producer fills until the
+  language-agnostic version below exists.
 
 ## Phases
 
@@ -204,6 +205,15 @@ cycle of the extension (so a user on the previous VSIX can still build
   keyed by source hash and Verus version is the simpler first step.
   Running SCIP and verification concurrently (independent inputs) is a
   few lines and takes a default run from ~95 s to ~63 s.
+- **Similar lemmas for every language.** The Verus-only Python step is
+  dropped here, and the feature comes back as a post-processing probe
+  that reads an extract envelope and writes one with a `similar-lemmas`
+  field on each atom, for any language: Verus against vstd, Lean against
+  Mathlib or the project's own library, Isabelle against the AFP, and so
+  on. The language-specific part is the candidate library and how spec
+  text is turned into a query; the matching, the field, its normalization
+  in the viewer and the tooltip are shared. `verus_lemma_finder` becomes
+  one backend. This is its own plan; it does not block anything here.
 
 ## Risks
 
@@ -222,21 +232,21 @@ cycle of the extension (so a user on the previous VSIX can still build
 - probe-verus's `--auto-install` is deprecated in favour of `setup`;
   the plan uses `setup`, not the flag.
 
-## Open decisions
+## Decisions
 
-1. **Similar lemmas.** The only consumer is a section in the viewer's
-   node tooltip (`main.ts` ~2951). It costs a Python environment and the
-   `verus_lemma_finder` submodule in CI and a `uv` install for extension
-   users. Recommendation: drop it, and remove the script, submodule and
-   extra in Phase 3. The alternative is a post-processing step that reads
-   and writes the envelope and a `similar-lemmas` field carried through
-   normalization.
-2. **Pin or latest.** CI pins `probe_verus_version` with an input to
-   override (recommended; a probe-verus release cannot break a consumer's
-   pages build). The extension uses whatever `probe-verus` the user has
-   and shows its version in "Check Prerequisites".
-3. **Phase 0 first, or ship the fallback.** Waiting for `-o` in a
-   probe-verus release makes the extension change cleaner; the fallback
-   costs about twenty lines and a test. Recommendation: open the
-   probe-verus PR now and implement Phase 1 against the fallback only if
-   the release has not happened by the time Phase 1 is ready.
+Decided 2026-10-02:
+
+1. **Similar lemmas are dropped from this path.** The only consumer is a
+   section in the viewer's node tooltip (`main.ts` ~2951); the step costs
+   a Python environment and the `verus_lemma_finder` submodule in CI and
+   a `uv` install for extension users, and it is Verus-only. It returns
+   as the language-agnostic probe described under "Later", as its own
+   plan.
+2. **CI pins `probe_verus_version`**, with the input to override. A
+   probe-verus release cannot break a consumer's pages build. The
+   extension uses whatever `probe-verus` the user has and shows its
+   version in "Check Prerequisites".
+3. **Phase 0 first.** The probe-verus `--output` PR is opened now; Phase 1
+   is written against `-o` and tested with a fake generator, so it does
+   not wait on the release. The `Primary output:` fallback is implemented
+   only if Phase 1 is ready to merge before probe-verus has released `-o`.
