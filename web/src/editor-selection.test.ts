@@ -34,6 +34,18 @@ describe('filtersHiding', () => {
   it('is empty for a node the filters draw', () => {
     expect(hiding('probe:oppUniKemCKA.initA')).toEqual([]);
   });
+
+  it('names every filter of a set that together hides a node', () => {
+    // Neither relaxed alone draws the structure; both together do
+    expect(hiding('probe:oppUniKemCKA.StateB', { showTypes: false, excludeNamePatterns: 'State*' }))
+      .toEqual(['showTypes', 'excludeNamePatterns']);
+  });
+
+  it('leaves out filters that do not block when the set is restored one by one', () => {
+    expect(hiding('probe:oppUniKemCKA.StateB', {
+      showTypes: false, showProjections: false, excludeNamePatterns: 'State*',
+    })).toEqual(['showTypes', 'excludeNamePatterns']);
+  });
 });
 
 describe('editorSelectionIntent', () => {

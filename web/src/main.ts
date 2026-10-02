@@ -86,6 +86,7 @@ function navigateToSource(node: D3Node): void {
     if (!loc) return;
     api.postMessage({
       type: 'navigate',
+      ...revisionField(),
       relativePath: loc.path,
       startLine: loc.start,
       endLine: loc.end,
@@ -3742,6 +3743,14 @@ function handleResize(): void {
 let vscodeRevision: number | null = null;
 
 /**
+ * `{ revision }` for messages about the loaded graph, so a host that numbers
+ * graphs can drop a click on one it has replaced. Empty for other hosts.
+ */
+function revisionField(): { revision?: number } {
+  return vscodeRevision === null ? {} : { revision: vscodeRevision };
+}
+
+/**
  * Show an editor selection: in the code layer and call graph view, unhidden,
  * at its depth. Other filters stay; if one hides the node, says which.
  */
@@ -3858,7 +3867,7 @@ function handleVSCodeMessage(event: MessageEvent): void {
       
     case 'refresh':
       // Reload the graph (extension will send new data)
-      postMessageToExtension({ type: 'requestRefresh' });
+      postMessageToExtension({ type: 'requestRefresh', ...revisionField() });
       break;
   }
 }
