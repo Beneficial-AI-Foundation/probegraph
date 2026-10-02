@@ -184,6 +184,29 @@ test.describe('VS Code webview', () => {
         { type: 'selectResult', revision: 1, requestId: 3, status: 'missing' },
       ]);
     });
+
+    test('relaxFilters turns the named filters on for the loaded revision only', async ({ page }) => {
+      await load(page, select('qs/sorted()'));
+      await expect.poll(() => results(page)).toEqual([
+        { type: 'selectResult', revision: 1, requestId: 1, status: 'filtered', filteredBy: ['showSpecFunctions'] },
+      ]);
+      await post(page, { type: 'relaxFilters', revision: 0, keys: ['showSpecFunctions'] });
+      await expect(page.locator('#show-spec-functions')).not.toBeChecked();
+      await post(page, { type: 'relaxFilters', revision: 1, keys: ['showSpecFunctions'] });
+      await expect(page.locator('#show-spec-functions')).toBeChecked();
+      await expect.poll(() => drawn(page)).toContain('qs/sorted()');
+    });
+
+    test('navigate carries the loaded revision; requestRefresh is about the session and does not', async ({ page }) => {
+      await load(page, select('qs/partition()'));
+      await clickNode(page, 'partition');
+      await page.locator('#navigate-to-source-btn').click();
+      await expect.poll(() => sent(page)).toContainEqual({
+        type: 'navigate', revision: 1, relativePath: 'src/lib.rs', startLine: 14, endLine: 26, displayName: 'partition',
+      });
+      await post(page, { type: 'refresh' });
+      await expect.poll(() => sent(page)).toContainEqual({ type: 'requestRefresh' });
+    });
   });
 
   test('refresh is answered with requestRefresh', async ({ page }) => {

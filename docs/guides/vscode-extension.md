@@ -85,6 +85,7 @@ type Selection = { nodeId: string; direction: 'both' | 'callees' | 'callers' | '
 // extension → webview
 { type: 'loadGraph', revision: 1, graph, selection?: Selection, requestId?: number }
 { type: 'selectNode', revision: 1, requestId: 2, selection: Selection }
+{ type: 'relaxFilters', revision: 1, keys: ['showSpecFunctions'] }
 
 // webview → extension
 { type: 'graphLoaded', revision: 1, nodes: 2907 }
@@ -99,12 +100,27 @@ including one in `loadGraph` (answered after `graphLoaded`), gets a
 
 A selection switches to the code layer and the call graph view, unhides the
 node if the user hid it, and shows it at `depth`. Other filters stay as the
-user set them. If one still hides the node, the status is `filtered` and
-`filteredBy` lists the `FilterOptions` keys that each, relaxed on its own
-(a kind shown, a pattern cleared), would show it (for example
-`showSpecFunctions` or `excludeNamePatterns`); it
-is empty when no single filter is responsible. `missing` means the ID is not
-in the graph.
+user set them. If they still hide the node, the status is `filtered` and
+`filteredBy` lists the `FilterOptions` keys to relax (a kind shown, a
+pattern cleared) so that it is drawn: the key that does it on its own
+(for example `showSpecFunctions` or `excludeNamePatterns`), or, when none
+does alone, a set that does together, found greedily in filter order and
+not necessarily the smallest. It is empty when no node filter is
+responsible. `missing` means the ID is not in the graph.
+
+**`relaxFilters`** sets the named `FilterOptions` keys to the value that lets
+everything through (a kind shown, a pattern cleared), for the loaded revision
+only. The extension sends it when the user answers a `filtered` result with
+"Show it".
+
+The extension in `vscode/` keeps to these rules on its side: it sends
+`loadGraph` only when the webview has not confirmed the current revision,
+holds at most one selection until `graphLoaded` arrives (a newer selection
+replaces it), and drops `selectResult` for another revision or a superseded
+request. A selection equal to the last one is sent again, since the viewer
+may have moved away from it (the node hidden, the depth changed). When its
+graph file changes, it resends `loadGraph` with the latest selection. A new
+panel starts again from `ready`.
 
 ### Webview → extension
 
@@ -112,14 +128,19 @@ in the graph.
 - **`navigate`** — sent when the user clicks **Open in Editor**:
 
   ```typescript
-  { type: 'navigate', relativePath: 'src/lib.rs', startLine: 42, endLine: 58, displayName: 'my_function' }
+  { type: 'navigate', revision: 1, relativePath: 'src/lib.rs', startLine: 42, endLine: 58, displayName: 'my_function' }
   ```
 
   For a blueprint entry, `relativePath` is the entry's Lean declaration file
   (`blueprint.sourcePath`), not its chapter. `startLine` and `endLine` are
   1-based (subtract 1 for `vscode.Position`) and may be undefined when the
-  graph has no line numbers.
-- **`requestRefresh`** — the webview wants fresh graph data.
+  graph has no line numbers. `revision` is that of the loaded graph, present
+  when `loadGraph` had one; the extension drops a `navigate` for a revision
+  other than its current graph's, since the path would be resolved against
+  the wrong root.
+- **`requestRefresh`** — the webview wants fresh graph data. It is about
+  the session, not a graph, so it carries no revision and the extension
+  acts on it even when no graph is loaded.
 - **`graphLoaded`**, **`selectResult`** — see [Editor selections](#editor-selections).
 
 ## Extension side

@@ -1,0 +1,23 @@
+{
+  "name": "lean4-language-for-tests",
+  "displayName": "lean4 language ID (test fixture)",
+  "description": "Gives .lean files the lean4 language ID, as vscode-lean4 does, so the Lean suite can run with --disable-extensions. Not part of the published extension.",
+  "version": "0.0.0",
+  "publisher": "probegraph-tests",
+  "engines": {
+    "vscode": "^1.102.0"
+  },
+  "contributes": {
+    "languages": [
+      {
+        "id": "lean4",
+        "aliases": [
+          "Lean 4"
+        ],
+        "extensions": [
+          ".lean"
+        ]
+      }
+    ]
+  }
+}

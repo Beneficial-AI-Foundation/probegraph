@@ -1,9 +1,11 @@
 /**
- * IndexLoader - Load and cache the graph the call graph commands use
+ * IndexLoader - Read the graph file the call graph commands use
  *
  * The file may be any format the probegraph viewer reads (probe extract
  * envelopes, atom dicts, the pipeline's D3 index); it goes through the
- * viewer's own normalization and validation.
+ * viewer's own normalization and validation. Which file, and which project
+ * root its paths are relative to, follow the rules in
+ * docs/plans/editor-graph-navigation.md.
  */
 
 import * as vscode from 'vscode';
@@ -18,6 +20,8 @@ export type { D3Graph, D3Node };
 export interface CallGraphIndex {
     graph: D3Graph;
     locations: LocationIndex;
+    /** Every path a node names, for checking `navigate` requests */
+    paths: Set<string>;
     metadata: {
         indexPath: string;
         loadedAt: Date;
@@ -32,66 +36,57 @@ export interface CallGraphIndex {
  */
 const DEFAULT_INDEX_PATH = '.vscode/call_graph_index.json';
 
-let cachedIndex: CallGraphIndex | null = null;
-let indexWatcher: vscode.FileSystemWatcher | null = null;
+/** True when `child` is `parent` or inside it. */
+export function isInside(parent: string, child: string): boolean {
+    const rel = path.relative(parent, child);
+    return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+}
 
 /**
- * Get the index file path for a workspace
+ * The graph file for a workspace folder: `callGraph.indexPath` read with the
+ * folder as the configuration scope, resolved against the folder. Throws
+ * when the result is outside the folder (and outside `storageRoot`, where
+ * downloads will live).
  */
-export function getIndexPath(workspaceRoot: string): string {
-    const config = vscode.workspace.getConfiguration('callGraph');
-    const customPath = config.get<string>('indexPath');
-    
-    if (customPath) {
-        if (path.isAbsolute(customPath)) {
-            return customPath;
+export function resolveIndexPath(folder: vscode.WorkspaceFolder, storageRoot?: string): string {
+    const config = vscode.workspace.getConfiguration('callGraph', folder);
+    const configured = config.get<string>('indexPath') || DEFAULT_INDEX_PATH;
+    const root = folder.uri.fsPath;
+    const indexPath = path.resolve(root, configured);
+    if (isInside(root, indexPath) || (storageRoot && isInside(storageRoot, indexPath))) {
+        return indexPath;
+    }
+    throw new Error(
+        `callGraph.indexPath resolves to ${indexPath}, outside the workspace folder ${root}. ` +
+        `The graph file must be inside the folder.`
+    );
+}
+
+/**
+ * Read, normalize and validate the graph file. Throws if it is missing, not
+ * JSON, or not a graph the viewer can show.
+ */
+export async function readIndex(indexPath: string): Promise<CallGraphIndex> {
+    let text: string;
+    try {
+        text = await fs.promises.readFile(indexPath, 'utf8');
+    } catch (error: any) {
+        if (error.code === 'ENOENT') {
+            const notFound = new Error(
+                `Call graph index not found: ${indexPath}\n\n` +
+                `Set callGraph.indexPath to a probe extract, or run ` +
+                `"Call Graph: Regenerate Index" for a Rust project.`
+            );
+            (notFound as NodeJS.ErrnoException).code = 'ENOENT';
+            throw notFound;
         }
-        return path.join(workspaceRoot, customPath);
+        throw new Error(`Could not read ${indexPath}: ${error.message}`);
     }
-    
-    return path.join(workspaceRoot, DEFAULT_INDEX_PATH);
-}
-
-/**
- * Check if the index file exists
- */
-export function indexExists(workspaceRoot: string): boolean {
-    const indexPath = getIndexPath(workspaceRoot);
-    return fs.existsSync(indexPath);
-}
-
-/**
- * Load the index, from the cache unless forceReload. Throws if the file is
- * missing or not a graph.
- */
-export async function loadIndex(workspaceRoot: string, forceReload: boolean = false): Promise<CallGraphIndex> {
-    const indexPath = getIndexPath(workspaceRoot);
-    
-    if (cachedIndex && !forceReload && cachedIndex.metadata.indexPath === indexPath) {
-        return cachedIndex;
-    }
-    
-    if (!fs.existsSync(indexPath)) {
-        throw new Error(
-            `Call graph index not found: ${indexPath}\n\n` +
-            `Set callGraph.indexPath to a probe extract, or run ` +
-            `"Call Graph: Regenerate Index" for a Rust project.`
-        );
-    }
-    
-    const index = readIndex(indexPath);
-    cachedIndex = index;
-    setupFileWatcher(workspaceRoot, indexPath);
-    console.log(`[IndexLoader] Loaded ${index.graph.nodes.length} nodes from ${indexPath}`);
-    return index;
-}
-
-function readIndex(indexPath: string): CallGraphIndex {
     let raw: unknown;
     try {
-        raw = JSON.parse(fs.readFileSync(indexPath, 'utf8'));
+        raw = JSON.parse(text);
     } catch (error: any) {
-        throw new Error(`Could not read ${indexPath}: ${error.message}`);
+        throw new Error(`${indexPath} is not JSON: ${error.message}`);
     }
     const graph = parseAndNormalizeGraph(raw);
     const problems = validateGraph(graph);
@@ -99,9 +94,21 @@ function readIndex(indexPath: string): CallGraphIndex {
         throw new Error(`${indexPath} is not a graph probegraph can show: ${problems.join('; ')}`);
     }
     const extractedAt = graph.metadata?.extracted_at ? new Date(graph.metadata.extracted_at) : undefined;
+    const paths = new Set<string>();
+    for (const node of graph.nodes) {
+        if (node.relative_path) {
+            paths.add(node.relative_path);
+        }
+    }
+    for (const node of graph.blueprintLayer?.nodes ?? []) {
+        if (node.blueprint?.sourcePath) {
+            paths.add(node.blueprint.sourcePath);
+        }
+    }
     return {
         graph,
         locations: buildLocationIndex(graph),
+        paths,
         metadata: {
             indexPath,
             loadedAt: new Date(),
@@ -111,41 +118,65 @@ function readIndex(indexPath: string): CallGraphIndex {
     };
 }
 
-/**
- * Reload when the file changes. A rewrite that fails to parse or validate
- * (including one caught half-written) keeps the previous index.
- */
-function setupFileWatcher(workspaceRoot: string, indexPath: string): void {
-    if (indexWatcher) {
-        indexWatcher.dispose();
-    }
-    
-    const pattern = new vscode.RelativePattern(path.dirname(indexPath), path.basename(indexPath));
-    indexWatcher = vscode.workspace.createFileSystemWatcher(pattern);
-    
-    const reload = async () => {
-        try {
-            await loadIndex(workspaceRoot, true);
-            vscode.window.showInformationMessage('Call graph index reloaded');
-        } catch (error: any) {
-            console.error('[IndexLoader] Keeping the previous index:', error.message);
-        }
-    };
-    indexWatcher.onDidChange(reload);
-    indexWatcher.onDidCreate(reload);
-    indexWatcher.onDidDelete(() => {
-        cachedIndex = null;
-    });
-}
+const LAKEFILES = ['lakefile.lean', 'lakefile.toml'];
 
 /**
- * Clear the cached index
+ * The directory the graph's paths are relative to:
+ *
+ * 1. `callGraph.projectRoot`, relative to the folder, if set.
+ * 2. The index's `metadata.project_root` if it is an existing directory
+ *    inside the folder (a root from another machine is ignored).
+ * 3. For a Lean graph, the Lake root containing the index file's folder, if
+ *    there is exactly one between it and the workspace folder.
+ * 4. The workspace folder.
  */
-export function clearCache(): void {
-    cachedIndex = null;
-    if (indexWatcher) {
-        indexWatcher.dispose();
-        indexWatcher = null;
+export function resolveProjectRoot(folder: vscode.WorkspaceFolder, indexPath: string, graph: D3Graph): string {
+    const root = folder.uri.fsPath;
+    const configured = vscode.workspace.getConfiguration('callGraph', folder).get<string>('projectRoot');
+    if (configured) {
+        return path.resolve(root, configured);
+    }
+
+    const declared = graph.metadata?.project_root;
+    if (declared) {
+        const candidate = path.resolve(root, declared);
+        if (isInside(root, candidate) && isDirectory(candidate)) {
+            return candidate;
+        }
+    }
+
+    if (isLeanGraph(graph)) {
+        const lakeRoots: string[] = [];
+        let dir = path.dirname(indexPath);
+        while (isInside(root, dir)) {
+            if (LAKEFILES.some(f => fs.existsSync(path.join(dir, f)))) {
+                lakeRoots.push(dir);
+            }
+            const parent = path.dirname(dir);
+            if (parent === dir) {
+                break;
+            }
+            dir = parent;
+        }
+        if (lakeRoots.length === 1) {
+            return lakeRoots[0];
+        }
+    }
+
+    return root;
+}
+
+/** True when the graph has Lean nodes or was extracted from a Lean source. */
+export function isLeanGraph(graph: D3Graph): boolean {
+    return graph.nodes.some(n => n.language === 'lean')
+        || (graph.metadata?.source_configs ?? []).some(s => s.language === 'lean');
+}
+
+function isDirectory(p: string): boolean {
+    try {
+        return fs.statSync(p).isDirectory();
+    } catch {
+        return false;
     }
 }
 

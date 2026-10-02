@@ -1,24 +1,28 @@
 # Editor → graph: open the call graph from a Rust, Verus or Lean construct
 
-Status (2026-10-02): Phases 0 to 2 are on `main`. Phase 0 merged in #67
+Status (2026-10-02): Phases 0 to 3 are implemented. Phase 0 merged in #67
 and Phase 2 in #70; the protocol is in `docs/guides/vscode-extension.md`.
 Phase 1 is done, with fixtures cut from secure-messaging's extracts. The
-old repo was archived on 2026-10-02 with a pointer README. To try the
-extension on secure-messaging before Phase 2, parts of Phase 3 came
-forward: the extension loads through `parseAndNormalizeGraph` +
-`validateGraph`, resolves the cursor with `resolveCursor` (symbols from the
-document symbol provider, exact workspace-relative paths), reloads only
-valid files, and runs in `lean4` as well as `rust`. Phase 3 is the current
-work; what remains is listed at the start of that phase. Revised on
-2026-10-01 after a Codex review; see "Review decisions" at the end, and
-"Decisions" before that.
+old repo was archived on 2026-10-02 with a pointer README. Phase 3 (the
+extension's first release) is in #72: the
+session, the host side of the protocol, project-root and containment
+rules, the watcher, "Show at Cursor" with its keybinding and menus, the
+panel beside the editor, the status bar, and the integration tests listed
+in that phase. The performance numbers are at the end of Phase 3. What is
+left before a release is tagging a VSIX. Revised on 2026-10-01 after a
+Codex review; see "Review decisions" at the end, and "Decisions" before
+that.
 
 Goal: with the cursor on a declaration in a Rust, Verus or Lean file, one
 keystroke shows that declaration's neighbourhood in a graph panel beside the
 code, and clicking a node jumps back to the source without hiding the graph.
 Later: CodeLens, following the cursor, and fetching graphs built in CI.
 
-## Where we are
+## Where we were
+
+The seven points below were found on 2026-10-01 and are all addressed by
+Phases 0 to 3 (see each phase for where). Kept as the record of what the
+design answers.
 
 Tested on 2026-10-01 against probegraph `main` (6fd5708) and
 `call_graph_vs_code_extension` `main` (de17d69):
@@ -203,6 +207,7 @@ loads) and every selection a `requestId`:
 // host → webview
 { type: 'loadGraph', revision: number, graph: unknown, selection?: Selection, requestId?: number }
 { type: 'selectNode', revision: number, requestId: number, selection: Selection }
+{ type: 'relaxFilters', revision: number, keys: string[] }
 type Selection = { nodeId: string; direction: 'both' | 'callees' | 'callers' | 'none'; depth: number };
 
 // webview → host
@@ -210,6 +215,8 @@ type Selection = { nodeId: string; direction: 'both' | 'callees' | 'callers' | '
 { type: 'graphLoaded', revision: number, nodes: number }
 { type: 'selectResult', revision: number, requestId: number,
   status: 'shown' | 'filtered' | 'missing', filteredBy?: string[] }
+{ type: 'navigate', revision: number, relativePath: string, startLine?: number, endLine?: number, displayName: string }
+{ type: 'requestRefresh' }
 ```
 
 - On `ready`, the host sends the session's current graph and latest
@@ -218,9 +225,13 @@ type Selection = { nodeId: string; direction: 'both' | 'callees' | 'callers' | '
   current revision arrives, then sends it. Newer selections replace it.
 - The webview ignores `selectNode` for a revision other than the one it has
   loaded. The host ignores results for an old revision or a superseded
-  request.
-- A selection equal to the last one shown (same revision, node, direction
-  and depth) is not resent.
+  request, and `navigate` for a revision other than its current graph's
+  (the path would resolve against the new graph's root). `requestRefresh`
+  is about the session, not a graph: no revision, and it is acted on even
+  when no graph is loaded, since regenerating is how one gets a graph.
+- A selection equal to the last one is sent again: the viewer may have
+  moved away from it on its own (node hidden, depth changed, filter
+  ticked), and a `selectNode` costs ~44 ms.
 - On disposal the session drops the pending selection; a new panel starts
   from `ready`.
 
@@ -240,9 +251,12 @@ Viewer side, a selection from the editor:
 A selection in `loadGraph` is answered like a `selectNode` when it carries a
 `requestId`, after `graphLoaded`.
 
-`filteredBy` names the `FilterOptions` keys that each, relaxed on its own,
-would draw the node (`showSpecFunctions`, `excludeNamePatterns`, ...); it is
-empty when no single filter is responsible.
+`filteredBy` names the `FilterOptions` keys to relax so that the node is
+drawn: those that each do it on their own (`showSpecFunctions`,
+`excludeNamePatterns`, ...), or, when none does alone, a set that does
+together, found greedily in filter order (every node filter relaxed, then
+each put back while the node stays drawn); it suffices but is not
+necessarily the smallest. It is empty when no node filter is responsible.
 
 ### Index updates
 
@@ -351,46 +365,93 @@ A local file at `indexPath`, in any format the viewer reads:
 
 ### Phase 3: extension, first release
 
-Done so far: `indexLoader.ts` parses with `parseAndNormalizeGraph` +
-`validateGraph` and looks up with `resolveCursor`; the watcher handles
-create and reloads only valid files; commands, menus and activation cover
-`rust` and `lean4`.
-Still to do: `webviewLoader.ts` sends `loadGraph` without a `revision` and
-never `selectNode`, so every "Show Call Graph" resends the graph and
-nothing reads `selectResult`; the panel and `navigate` both use
-`ViewColumn.One`; and everything else below.
+Implemented in #72. Where things ended up:
 
-1. Session object (folder, graph source, revision, pending selection) and
-   the protocol; replace `indexLoader.ts` parsing with
-   `parseAndNormalizeGraph` + `validateGraph` and its lookup with
-   `resolveCursor` (done). Async reads.
-2. Project root rules; `navigate` and `indexPath` containment.
-3. Watcher with create, debounce, validate-then-replace; temp-file-and-
-   rename for "Regenerate"; workspace trust for generators.
-4. Commands, keybinding, menus and title icon for `rust` and `lean4`;
-   activation on both languages (done except the keybinding and icon).
-5. Panel beside the editor, navigation column rule, status bar, quick pick
-   and not-indexed messages.
+1. `session.ts`: `GraphSession` (one folder, one graph file, revision per
+   read, last good graph kept) and `Sessions` (the one active session, the
+   switch prompt, the status bar). `indexLoader.ts` reads asynchronously
+   and holds the `indexPath` and project-root rules. `webviewLoader.ts` is
+   the host side of the protocol: `loadGraph` only for an unconfirmed
+   revision, one pending selection until `graphLoaded`, stale results and
+   stale `navigate`s dropped, everything reset on disposal. A session is
+   rebound only when `callGraph.indexPath` or `callGraph.projectRoot`
+   changes, and reads its file right away.
+2. Project root rules as designed; `navigate` paths must be in the graph's
+   path set and under the root (lexically); `indexPath` must be inside the
+   folder. `callGraph.projectRoot` moves the `navigate` boundary, so it is
+   a restricted configuration: in Restricted Mode the workspace value is
+   ignored.
+3. The watcher handles create, change and delete with a 500 ms debounce,
+   plus a 2 s `fs.watchFile` stat poll because `fs.watch` fails where
+   inotify watches run out (it did on the development machine). Each read
+   records the file's `mtimeMs`, `ctimeMs`, `size` and `ino` (`ctimeMs`
+   catches a rewrite that kept its mtime); a notification for a file with
+   the same stamp is not read again, so a write reported by both watchers
+   is read once, and a file that goes and comes back unchanged is read
+   because the stamp of a missing file is null, including when it went
+   missing between the stat and the read.
+   "Regenerate" writes `.<index>.<pid>.tmp` beside the index and renames it
+   over on success; generators need `workspace.isTrusted`
+   (`capabilities.untrustedWorkspaces: limited`). The `pipeline` binary is
+   looked up under `CARGO_TARGET_DIR`, then `<repo>/target`, then
+   `cargo metadata`'s `target_directory`. On a Lean graph (or, before one
+   is loaded, with a `lean4` editor in the folder) "Regenerate" says to run
+   `probe-lean extract` and spawns nothing; when neither the graph nor an
+   editor in the folder says what the project is, it asks for a file of the
+   project rather than guessing Rust.
+4. "Call Graph: Show at Cursor" with `ctrl+alt+g` / `cmd+alt+g`, at the top
+   of the editor context menu and as an editor-title icon for `rust` and
+   `lean4`. The `lean4` language ID comes from vscode-lean4; the extension
+   does not contribute it, so a user without vscode-lean4 is not shown a
+   "Lean 4" mode with no language support behind it. The Lean test suite
+   loads a fixture extension (`test-fixtures/lean4-language/`) that
+   contributes only the ID.
+5. Panel with `ViewColumn.Beside` and `preserveFocus`; `navigate` opens in
+   the last text editor's group unless the panel is there. A `filtered`
+   result shows which filters hide the node with a "Show it" button that
+   sends the new `relaxFilters` message to the viewer.
 
-Integration tests (real VS Code):
+Integration tests (real VS Code), all in `vscode/src/test/`:
 
 - Rust and Lean fixtures resolve the cursor; the Lean test runs once
   without a symbol provider (line evidence) and once with symbols supplied
   by a stub provider registered in the test.
-- A second "Show at Cursor" sends `selectNode`, not `loadGraph`.
+- A second "Show at Cursor" sends `selectNode`, not `loadGraph`; an equal
+  one is sent again.
 - Rapid selections: only the last one is shown.
 - Replacing the index file during a lookup: the panel ends on the new
   revision with the latest selection.
+- One write to the index is read once, though two watchers report it.
 - An invalid index file leaves the previous graph loaded.
-- `navigate` with a path outside the graph is refused.
+- `navigate` with a path outside the graph, or for a stale revision, is
+  refused.
+- A settings change that does not name the file keeps the graph loaded.
 - Two workspace folders with the same relative paths: navigation opens the
   session folder's file.
 - Closing and reopening the panel.
+- "Regenerate Index" on a Lean graph does not start the pipeline.
 
-Before release, measure on the SPQR extract (2,907 atoms) and the largest
-graph we have: extension-host blocking during load, memory with the panel
-hidden, time to `graphLoaded`, time from `selectNode` to `selectResult`.
-Record the numbers in this file; they set the budgets for Phase 4.
+Measured on 2026-10-02 (host: node 22 against the compiled loader; webview:
+Chromium through the Playwright harness of `web/e2e/vscode-webview.spec.ts`,
+which is the same renderer as the webview):
+
+| Graph | Size | Nodes / links | Host blocking (parse + normalize + validate + index) | `loadGraph` → `graphLoaded` | `selectNode` → `selectResult` (depth 3) | Page JS heap after load |
+|---|---|---|---|---|---|---|
+| SPQR `lean_Spqr_0.1.0_ec-bridge.json` | 5.1 MB | 2,907 / 13,530 | 53 ms (12 parse, 39 normalize) | 130 ms | 44 ms | 6 MB |
+| secure-messaging `probe-lean-extract.json` | 7.3 MB | 2,313 / 27,706 | 70 ms | not measured | not measured | |
+| `web/public/graph_fixed.json` (libsignal SCIP index) | 32 MB | 22,109 / 48,923 | 82 ms (59 parse, 21 validate) | no `graphLoaded` after 9 min | | |
+
+Cursor lookup (`resolveCursor`) is 1 to 3 µs on every graph. Host-side
+cost is small; the viewer is the limit: its synchronous `loadGraph` on the
+22k-node graph kept Chromium's main thread busy until the run was stopped,
+so graphs of that size are not usable through the panel today. The
+budgets for Phase 4: a graph the size of SPQR stays under 100 ms of host
+blocking and 200 ms to `graphLoaded`; CodeLens and follow mode may issue
+one `selectNode` per cursor move at 50 ms each; anything over ~10k nodes
+needs the viewer's deferred-load path on the `loadGraph` message first.
+"Memory with the panel hidden" was not measured in VS Code itself
+(`retainContextWhenHidden` keeps the page as is, so the page heap is the
+number to watch).
 
 ### Phase 4: later, each behind the protocol and the budgets
 
