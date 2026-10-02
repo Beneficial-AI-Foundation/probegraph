@@ -3,7 +3,7 @@ name = "metrics-cli"
 version = "0.1.0"
 edition = "2021"
 description = "Command-line tools for SCIP analysis and Verus metrics computation"
-license = "MIT OR Apache-2.0"
+license = "MIT"
 
 [dependencies]
 scip-core = { path = "../scip-core" }

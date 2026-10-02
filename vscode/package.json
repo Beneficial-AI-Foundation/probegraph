@@ -4,6 +4,7 @@
   "description": "Interactive call graph explorer for Rust, Verus and Lean projects. Embeds the full probegraph web app with depth slider, Source/Sink queries, and verification status visualization.",
   "version": "0.1.0",
   "publisher": "beneficial-ai-foundation",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/Beneficial-AI-Foundation/probegraph",

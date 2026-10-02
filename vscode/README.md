@@ -309,6 +309,6 @@ webview/                   # Built viewer (not tracked)
 
 ## 📄 License
 
-MIT OR Apache-2.0
+MIT; see [LICENSE](LICENSE).
 
 🤖 Generated with Claude Opus 4.5

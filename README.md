@@ -128,5 +128,4 @@ inputs and steps.
 
 ## License
 
-The crates are licensed `MIT OR Apache-2.0` (per `Cargo.toml`); the repo has
-no LICENSE file yet ([#62](https://github.com/Beneficial-AI-Foundation/probegraph/issues/62)).
+MIT; see [LICENSE](LICENSE).

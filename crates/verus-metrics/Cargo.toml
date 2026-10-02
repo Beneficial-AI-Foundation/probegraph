@@ -3,7 +3,7 @@ name = "verus-metrics"
 version = "0.1.0"
 edition = "2021"
 description = "Halstead metrics computation for Verus specifications and proofs"
-license = "MIT OR Apache-2.0"
+license = "MIT"
 keywords = ["verus", "halstead", "metrics", "formal-verification"]
 
 [dependencies]
