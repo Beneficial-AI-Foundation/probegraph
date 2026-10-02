@@ -102,9 +102,10 @@ A selection switches to the code layer and the call graph view, unhides the
 node if the user hid it, and shows it at `depth`. Other filters stay as the
 user set them. If they still hide the node, the status is `filtered` and
 `filteredBy` lists the `FilterOptions` keys to relax (a kind shown, a
-pattern cleared) so that it is drawn: the keys that each do it on their own
+pattern cleared) so that it is drawn: the key that does it on its own
 (for example `showSpecFunctions` or `excludeNamePatterns`), or, when none
-does alone, a set that does together. It is empty when no node filter is
+does alone, a set that does together, found greedily in filter order and
+not necessarily the smallest. It is empty when no node filter is
 responsible. `missing` means the ID is not in the graph.
 
 **`relaxFilters`** sets the named `FilterOptions` keys to the value that lets
@@ -137,8 +138,9 @@ panel starts again from `ready`.
   when `loadGraph` had one; the extension drops a `navigate` for a revision
   other than its current graph's, since the path would be resolved against
   the wrong root.
-- **`requestRefresh`** — the webview wants fresh graph data. Carries
-  `revision` like `navigate`.
+- **`requestRefresh`** — the webview wants fresh graph data. It is about
+  the session, not a graph, so it carries no revision and the extension
+  acts on it even when no graph is loaded.
 - **`graphLoaded`**, **`selectResult`** — see [Editor selections](#editor-selections).
 
 ## Extension side

@@ -310,21 +310,40 @@ async function reportFiltered(nodeId: string, filteredBy: string[]): Promise<voi
 }
 
 /**
+ * Whether the folder's call graph is a Lean one: its loaded graph says, or,
+ * before one is loaded, a Rust or Lean editor in that folder does. An editor
+ * from another folder says nothing, so the answer is undefined.
+ */
+function isLeanProject(
+    folder: vscode.WorkspaceFolder, graph: GraphRevision | null, editor: vscode.TextEditor | undefined,
+): boolean | undefined {
+    if (graph) {
+        return isLeanGraph(graph.index.graph);
+    }
+    if (!editor || !SUPPORTED_LANGUAGES.has(editor.document.languageId)) {
+        return undefined;
+    }
+    const editorFolder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
+    if (editorFolder?.uri.toString() !== folder.uri.toString()) {
+        return undefined;
+    }
+    return editor.document.languageId === 'lean4';
+}
+
+/**
  * Regenerate the call graph index for the session's folder (or the active
  * editor's). Only Rust graphs have a generator here; for a Lean graph, say
- * how it is produced.
+ * how it is produced; when neither a graph nor an editor in the folder says
+ * which it is, do nothing rather than guess Rust.
  */
 async function regenerateIndex(): Promise<void> {
     const editor = vscode.window.activeTextEditor;
     const folder = sessions.session?.folder ?? (editor && vscode.workspace.getWorkspaceFolder(editor.document.uri));
-    if (!folder) {
+    const lean = folder && isLeanProject(folder, sessions.graph, editor);
+    if (!folder || lean === undefined) {
         vscode.window.showErrorMessage('Open a file in the project to regenerate its call graph');
         return;
     }
-
-    // The loaded graph says what it is; before one is loaded, the editor does
-    const graph = sessions.graph;
-    const lean = graph ? isLeanGraph(graph.index.graph) : editor?.document.languageId === 'lean4';
     if (lean) {
         const indexPath = sessions.session?.indexPath;
         vscode.window.showWarningMessage(

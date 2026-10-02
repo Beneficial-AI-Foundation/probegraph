@@ -197,7 +197,7 @@ test.describe('VS Code webview', () => {
       await expect.poll(() => drawn(page)).toContain('qs/sorted()');
     });
 
-    test('navigate and requestRefresh carry the loaded revision', async ({ page }) => {
+    test('navigate carries the loaded revision; requestRefresh is about the session and does not', async ({ page }) => {
       await load(page, select('qs/partition()'));
       await clickNode(page, 'partition');
       await page.locator('#navigate-to-source-btn').click();
@@ -205,7 +205,7 @@ test.describe('VS Code webview', () => {
         type: 'navigate', revision: 1, relativePath: 'src/lib.rs', startLine: 14, endLine: 26, displayName: 'partition',
       });
       await post(page, { type: 'refresh' });
-      await expect.poll(() => sent(page)).toContainEqual({ type: 'requestRefresh', revision: 1 });
+      await expect.poll(() => sent(page)).toContainEqual({ type: 'requestRefresh' });
     });
   });
 

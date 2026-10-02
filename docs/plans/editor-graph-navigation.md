@@ -216,7 +216,7 @@ type Selection = { nodeId: string; direction: 'both' | 'callees' | 'callers' | '
 { type: 'selectResult', revision: number, requestId: number,
   status: 'shown' | 'filtered' | 'missing', filteredBy?: string[] }
 { type: 'navigate', revision: number, relativePath: string, startLine?: number, endLine?: number, displayName: string }
-{ type: 'requestRefresh', revision: number }
+{ type: 'requestRefresh' }
 ```
 
 - On `ready`, the host sends the session's current graph and latest
@@ -225,8 +225,10 @@ type Selection = { nodeId: string; direction: 'both' | 'callees' | 'callers' | '
   current revision arrives, then sends it. Newer selections replace it.
 - The webview ignores `selectNode` for a revision other than the one it has
   loaded. The host ignores results for an old revision or a superseded
-  request, and `navigate` / `requestRefresh` for a revision other than its
-  current graph's (the path would resolve against the new graph's root).
+  request, and `navigate` for a revision other than its current graph's
+  (the path would resolve against the new graph's root). `requestRefresh`
+  is about the session, not a graph: no revision, and it is acted on even
+  when no graph is loaded, since regenerating is how one gets a graph.
 - A selection equal to the last one is sent again: the viewer may have
   moved away from it on its own (node hidden, depth changed, filter
   ticked), and a `selectNode` costs ~44 ms.
@@ -252,8 +254,9 @@ A selection in `loadGraph` is answered like a `selectNode` when it carries a
 `filteredBy` names the `FilterOptions` keys to relax so that the node is
 drawn: those that each do it on their own (`showSpecFunctions`,
 `excludeNamePatterns`, ...), or, when none does alone, a set that does
-together (every node filter relaxed, then each put back while the node
-stays drawn). It is empty when no node filter is responsible.
+together, found greedily in filter order (every node filter relaxed, then
+each put back while the node stays drawn); it suffices but is not
+necessarily the smallest. It is empty when no node filter is responsible.
 
 ### Index updates
 
@@ -381,17 +384,21 @@ Implemented in #72. Where things ended up:
 3. The watcher handles create, change and delete with a 500 ms debounce,
    plus a 2 s `fs.watchFile` stat poll because `fs.watch` fails where
    inotify watches run out (it did on the development machine). Each read
-   records the file's `mtimeMs`, `size` and `ino`; a notification for a
-   file with the same stamp is not read again, so one write costs one read
-   whichever watcher reports it, and a file that goes and comes back
-   unchanged is read because the stamp of a missing file is null.
+   records the file's `mtimeMs`, `ctimeMs`, `size` and `ino` (`ctimeMs`
+   catches a rewrite that kept its mtime); a notification for a file with
+   the same stamp is not read again, so a write reported by both watchers
+   is read once, and a file that goes and comes back unchanged is read
+   because the stamp of a missing file is null, including when it went
+   missing between the stat and the read.
    "Regenerate" writes `.<index>.<pid>.tmp` beside the index and renames it
    over on success; generators need `workspace.isTrusted`
    (`capabilities.untrustedWorkspaces: limited`). The `pipeline` binary is
    looked up under `CARGO_TARGET_DIR`, then `<repo>/target`, then
    `cargo metadata`'s `target_directory`. On a Lean graph (or, before one
-   is loaded, in a `lean4` editor) "Regenerate" says to run
-   `probe-lean extract` and spawns nothing.
+   is loaded, with a `lean4` editor in the folder) "Regenerate" says to run
+   `probe-lean extract` and spawns nothing; when neither the graph nor an
+   editor in the folder says what the project is, it asks for a file of the
+   project rather than guessing Rust.
 4. "Call Graph: Show at Cursor" with `ctrl+alt+g` / `cmd+alt+g`, at the top
    of the editor context menu and as an editor-title icon for `rust` and
    `lean4`. The `lean4` language ID comes from vscode-lean4; the extension

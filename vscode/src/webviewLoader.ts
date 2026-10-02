@@ -193,9 +193,9 @@ export class GraphPanel implements vscode.Disposable {
                 }
                 break;
             case 'requestRefresh':
-                if (this.isCurrent(message)) {
-                    await vscode.commands.executeCommand('callGraph.regenerateIndex');
-                }
+                // About the session, not a graph: the command decides what to
+                // regenerate, and must stay reachable when there is no graph
+                await vscode.commands.executeCommand('callGraph.regenerateIndex');
                 break;
         }
     }

@@ -34,25 +34,30 @@ const POLL_INTERVAL_MS = 2000;
 // webview loaded from an earlier session cannot be mistaken for a current one
 let lastRevision = 0;
 
-/** What a read saw of the file, to tell a changed file from a re-notified one. */
+/**
+ * What a read saw of the file, to tell a changed file from a re-notified
+ * one. `ctimeMs` catches a rewrite that kept its mtime (`cp -p`, `rsync -t`):
+ * it moves on every inode write and cannot be set from user space.
+ */
 interface FileStamp {
     mtimeMs: number;
+    ctimeMs: number;
     size: number;
     ino: number;
 }
 
-/** The file's stamp, or null when it does not exist. */
+/** The file's stamp, or null when it could not be stat'ed (missing, or unreadable). */
 async function stampOf(filePath: string): Promise<FileStamp | null> {
     try {
-        const { mtimeMs, size, ino } = await fs.promises.stat(filePath);
-        return { mtimeMs, size, ino };
+        const { mtimeMs, ctimeMs, size, ino } = await fs.promises.stat(filePath);
+        return { mtimeMs, ctimeMs, size, ino };
     } catch {
         return null;
     }
 }
 
 const sameStamp = (a: FileStamp | null, b: FileStamp | null) =>
-    a === b || (!!a && !!b && a.mtimeMs === b.mtimeMs && a.size === b.size && a.ino === b.ino);
+    a === b || (!!a && !!b && a.mtimeMs === b.mtimeMs && a.ctimeMs === b.ctimeMs && a.size === b.size && a.ino === b.ino);
 
 export class GraphSession implements vscode.Disposable {
     readonly folder: vscode.WorkspaceFolder;
@@ -65,6 +70,7 @@ export class GraphSession implements vscode.Disposable {
     /** The file as the last read found it (null: missing), whether or not it was a graph */
     private readStamp: FileStamp | null = null;
     private debounce: NodeJS.Timeout | null = null;
+    private disposed = false;
     private readonly disposables: vscode.Disposable[] = [];
 
     private readonly graphChanged = new vscode.EventEmitter<GraphRevision>();
@@ -86,9 +92,10 @@ export class GraphSession implements vscode.Disposable {
         watcher.onDidCreate(() => this.scheduleReload());
         watcher.onDidDelete(() => this.scheduleReload());
         // Both fire for one write, the poll up to POLL_INTERVAL_MS after the
-        // watcher; `reloadIfChanged` reads the file once. The poll is not
-        // filtered on its own stats: when a file disappears and comes back
-        // unchanged, Node passes the stats from before it went as `previous`
+        // watcher; `reloadIfChanged` skips a file whose stamp the last read
+        // recorded. The poll is not filtered on its own stats: when a file
+        // disappears and comes back unchanged, Node passes the stats from
+        // before it went as `previous`
         const onStat = () => this.scheduleReload();
         fs.watchFile(this.indexPath, { interval: POLL_INTERVAL_MS, persistent: false }, onStat);
         this.disposables.push(
@@ -132,7 +139,8 @@ export class GraphSession implements vscode.Disposable {
         this.setState('loading');
         this.reading = (async () => {
             try {
-                // Stamped before the read: a write in between is seen by the next check
+                // Stamped before the read: a write in between leaves the stamp
+                // older than the content, and the next check reads again
                 this.readStamp = await stampOf(this.indexPath);
                 const index = await readIndex(this.indexPath);
                 const projectRoot = resolveProjectRoot(this.folder, this.indexPath, index.graph);
@@ -145,6 +153,11 @@ export class GraphSession implements vscode.Disposable {
                 return next;
             } catch (error: any) {
                 this.error = error.message;
+                if (isNotFound(error)) {
+                    // Gone between the stat and the read: the stamp is of a
+                    // file that is not there, and must not match it coming back
+                    this.readStamp = null;
+                }
                 this.setState(isNotFound(error) ? 'none' : 'invalid');
                 throw error;
             } finally {
@@ -160,7 +173,8 @@ export class GraphSession implements vscode.Disposable {
             // Compare against what that read saw, not against the read before it
             await this.reading.catch(() => undefined);
         }
-        if (sameStamp(await stampOf(this.indexPath), this.readStamp)) {
+        const stamp = await stampOf(this.indexPath);
+        if (this.disposed || sameStamp(stamp, this.readStamp)) {
             return;
         }
         try {
@@ -186,6 +200,7 @@ export class GraphSession implements vscode.Disposable {
     }
 
     dispose(): void {
+        this.disposed = true;
         if (this.debounce) {
             clearTimeout(this.debounce);
         }

@@ -11,7 +11,8 @@ All notable changes to the Call Graph Visualizer extension will be documented in
   vscode-lean4 installed), the Lake project containing the index as the default
   project root; "Regenerate Index" on a Lean graph says how extracts are made
   instead of running the Rust pipeline
-- `callGraph.projectRoot` for graphs whose paths are relative to another directory
+- `callGraph.projectRoot` for graphs whose paths are relative to another directory;
+  it, `callGraph.indexPath` and `callGraph.depth` can be set per workspace folder
 - Status bar with the index state and extraction time
 - When a viewer filter hides the selected declaration, the warning names it and offers to turn it off
 

@@ -136,6 +136,7 @@
       "title": "Call Graph Visualizer",
       "properties": {
         "callGraph.depth": {
+          "scope": "resource",
           "type": "number",
           "default": 3,
           "minimum": 1,
@@ -143,11 +144,13 @@
           "description": "Maximum depth for call graph traversal"
         },
         "callGraph.indexPath": {
+          "scope": "resource",
           "type": "string",
           "default": ".vscode/call_graph_index.json",
           "description": "Path to the graph file, relative to the workspace folder and inside it: a pipeline index or a probe extract (for example .verilib/probes/probe-lean-extract.json)"
         },
         "callGraph.projectRoot": {
+          "scope": "resource",
           "type": "string",
           "default": "",
           "description": "Directory the graph's paths are relative to, relative to the workspace folder. Empty: the index's project root if it is inside the folder, else the Lake root containing the index file, else the folder. \"Open in Editor\" opens files under this directory only, so in Restricted Mode the workspace value is ignored."

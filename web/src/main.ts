@@ -3743,8 +3743,8 @@ function handleResize(): void {
 let vscodeRevision: number | null = null;
 
 /**
- * `{ revision }` for messages about the loaded graph, so a host that numbers
- * graphs can drop a click on one it has replaced. Empty for other hosts.
+ * `{ revision }` for a `navigate`, so a host that numbers graphs can drop a
+ * click on one it has replaced. Empty for other hosts.
  */
 function revisionField(): { revision?: number } {
   return vscodeRevision === null ? {} : { revision: vscodeRevision };
@@ -3867,7 +3867,7 @@ function handleVSCodeMessage(event: MessageEvent): void {
       
     case 'refresh':
       // Reload the graph (extension will send new data)
-      postMessageToExtension({ type: 'requestRefresh', ...revisionField() });
+      postMessageToExtension({ type: 'requestRefresh' });
       break;
   }
 }

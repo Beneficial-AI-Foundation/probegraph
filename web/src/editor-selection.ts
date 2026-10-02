@@ -65,11 +65,13 @@ export function relaxations(keys: string[]): Partial<FilterOptions> {
 }
 
 /**
- * The node filters to relax so that the node is drawn under these filters:
- * the ones that each, relaxed on its own, would draw it; or, when none does
- * alone, a set that together does (every node filter relaxed, then each put
- * back while the node stays drawn). Empty when the node is drawn already or
- * when no node filter is responsible.
+ * Node filters to relax so that the node is drawn under these filters: the
+ * ones that each, relaxed on their own, would draw it (at most one, since
+ * the node filters are conjunctive); or, when none does alone, a set that
+ * together does, found greedily in `NODE_FILTER_RELAXATIONS` order (every
+ * node filter relaxed, then each put back while the node stays drawn). The
+ * set suffices; it is not necessarily the smallest. Empty when the node is
+ * drawn already or when no node filter is responsible.
  */
 export function filtersHiding(
   graph: D3Graph, filters: FilterOptions, language: ProjectLanguage, nodeId: string,
