@@ -16,6 +16,14 @@ A VS Code extension that provides **interactive call graph exploration** for Ver
 
 ## 🚀 Quick Start
 
+### 0. Install the Extension
+
+The extension is not on the Marketplace yet. Download
+`call-graph-visualizer-<version>.vsix` from the latest `vscode-v*`
+[release](https://github.com/Beneficial-AI-Foundation/probegraph/releases),
+then in VS Code run **Extensions: Install from VSIX…** from the Command
+Palette (`Ctrl+Shift+P`) and pick the file.
+
 ### 1. Install Prerequisites
 
 **verus-analyzer** (for SCIP generation):
@@ -272,6 +280,15 @@ npm run compile
 npm test        # runs in a downloaded VS Code
 npm run vsix    # call-graph-visualizer-<version>.vsix
 ```
+
+### Releasing
+
+Set the version in `package.json` and add a `## [<version>] - <date>` section
+to `CHANGELOG.md` (CI fails the PR without it), then merge. On the push to
+`main`, `.github/workflows/vscode-release.yml` sees that no `vscode-v<version>`
+release exists, runs the tests, packages the VSIX and creates the release and
+its tag from the merge commit, with that changelog section as the notes. A
+merge that leaves the version alone releases nothing.
 
 ### Running in Development
 

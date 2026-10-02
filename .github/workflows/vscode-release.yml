@@ -1,0 +1,111 @@
+name: VS Code Extension Release
+
+# Merging a change to vscode/package.json releases the version it names, unless
+# that version is already released. The release and its vscode-v<version> tag
+# are created here, from the tested commit; nobody pushes the tag by hand.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'vscode/package.json'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: vscode-release
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Is this version released?
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      released: ${{ steps.version.outputs.released }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Refuse to release from anything but main
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "Releases are cut from main, not $GITHUB_REF"
+          exit 1
+
+      - name: Read the version and look for its release
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="$(node -p "require('./vscode/package.json').version")"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if gh release view "vscode-v$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "vscode-v$VERSION is already released; nothing to do"
+            echo "released=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "released=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check the changelog has a section for it
+        if: steps.version.outputs.released == 'false'
+        run: vscode/scripts/release-notes.sh "${{ steps.version.outputs.version }}" >/dev/null
+
+  release:
+    name: Package and release
+    needs: check
+    if: needs.check.outputs.released == 'false'
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.check.outputs.version }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: |
+            web/package-lock.json
+            vscode/package-lock.json
+
+      - name: Install dependencies
+        run: |
+          npm ci --prefix web
+          npm ci --prefix vscode
+
+      - name: Lint, compile and test in VS Code
+        working-directory: vscode
+        run: xvfb-run -a npm test
+
+      - name: Package VSIX
+        working-directory: vscode
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            git status --porcelain
+            echo "Working tree is dirty; the VSIX would not match a commit"
+            exit 1
+          fi
+          npx vsce package
+
+      - name: Create the GitHub release and its tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          vscode/scripts/release-notes.sh "$VERSION" > release_notes.md
+          cat >> release_notes.md <<EOF
+
+          ## Install
+
+          Download \`call-graph-visualizer-$VERSION.vsix\`, then in VS Code run
+          **Extensions: Install from VSIX…** from the Command Palette and pick the file.
+          EOF
+          gh release create "vscode-v$VERSION" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "VS Code extension $VERSION" \
+            --notes-file release_notes.md \
+            vscode/call-graph-visualizer-"$VERSION".vsix
