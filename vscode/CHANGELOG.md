@@ -2,6 +2,39 @@
 
 All notable changes to the Call Graph Visualizer extension will be documented in this file.
 
+## [0.2.0] - 2026-10-02
+
+"Regenerate Index" runs `probe-verus extract` instead of probegraph's
+`pipeline` binary, so the extension no longer needs a checkout and build of
+probegraph. It needs a probe-verus with `extract -o`
+([probe-verus#51](https://github.com/Beneficial-AI-Foundation/probe-verus/pull/51),
+newer than v8.0.1).
+
+### Added
+- `callGraph.probeVerusPath`: the probe-verus binary, `probe-verus` on PATH
+  by default; `callGraph.useRustAnalyzer` for plain Rust projects
+  (`--rust-analyzer`); `callGraph.package` for workspaces with several
+  members (`--package`)
+- "Check Prerequisites" reports `probe-verus setup --status` and offers to
+  install missing tools with `probe-verus setup --from-project`; "Regenerate
+  Index" offers the same when tools are missing
+- A Rust extract's paths are resolved against the Cargo package probe-verus
+  ran on: the package containing the index file, or the single (or named)
+  member when that is a workspace root, as a Lean one's are against its Lake
+  project
+
+### Changed
+- The status bar item for a run says "probe-verus: …"; "Cancel Pipeline" is
+  "Cancel Regenerate"
+- `callGraph.skipVerification` maps to `--skip-verify`
+- "Show at Cursor" no longer waits for the "not in the graph" warning to be
+  dismissed
+
+### Removed
+- `callGraph.defaultScipCallgraphPath` (deprecated, no longer read) and
+  `callGraph.skipSimilarLemmas`: similar-lemmas enrichment is not part of the
+  extract; a language-agnostic probe for it is planned
+
 ## [0.1.0] - 2026-10-02
 
 First release from the probegraph repo, as a VSIX attached to the
