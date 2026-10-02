@@ -2,7 +2,7 @@
   "name": "call-graph-visualizer",
   "displayName": "Call Graph Visualizer",
   "description": "Interactive call graph explorer for Rust, Verus and Lean projects. Embeds the full probegraph web app with depth slider, Source/Sink queries, and verification status visualization.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "beneficial-ai-foundation",
   "license": "MIT",
   "repository": {
@@ -32,8 +32,9 @@
   "capabilities": {
     "untrustedWorkspaces": {
       "supported": "limited",
-      "description": "Graph files are read and shown in any workspace. Regenerating the index runs the probegraph pipeline, which needs a trusted workspace; callGraph.projectRoot, which sets where \"Open in Editor\" may open files, is taken from user settings only.",
+      "description": "Graph files are read and shown in any workspace. Regenerating the index runs probe-verus, which needs a trusted workspace; callGraph.probeVerusPath names that binary and callGraph.projectRoot sets where \"Open in Editor\" may open files, so both are taken from user settings only.",
       "restrictedConfigurations": [
+        "callGraph.probeVerusPath",
         "callGraph.defaultScipCallgraphPath",
         "callGraph.projectRoot"
       ]
@@ -69,7 +70,7 @@
       },
       {
         "command": "callGraph.cancelPipeline",
-        "title": "Cancel Pipeline",
+        "title": "Cancel Regenerate",
         "category": "Call Graph"
       },
       {
@@ -148,18 +149,24 @@
           "scope": "resource",
           "type": "string",
           "default": ".vscode/call_graph_index.json",
-          "description": "Path to the graph file, relative to the workspace folder and inside it: a pipeline index or a probe extract (for example .verilib/probes/probe-lean-extract.json)"
+          "description": "Path to the graph file, relative to the workspace folder and inside it. \"Regenerate Index\" writes a probe-verus extract here; it may also point at an extract made outside the extension (for example .verilib/probes/verus_<pkg>_<ver>.json or .verilib/probes/probe-lean-extract.json)."
         },
         "callGraph.projectRoot": {
           "scope": "resource",
           "type": "string",
           "default": "",
-          "description": "Directory the graph's paths are relative to, relative to the workspace folder. Empty: the index's project root if it is inside the folder, else the Lake root containing the index file, else the folder. \"Open in Editor\" opens files under this directory only, so in Restricted Mode the workspace value is ignored."
+          "description": "Directory the graph's paths are relative to, relative to the workspace folder. Empty: the index's project root if it is inside the folder, else the Lake project (Lean) or Cargo package (Rust) the index file belongs to, else the folder. \"Open in Editor\" opens files under this directory only, so in Restricted Mode the workspace value is ignored."
+        },
+        "callGraph.probeVerusPath": {
+          "scope": "resource",
+          "type": "string",
+          "default": "probe-verus",
+          "description": "The probe-verus binary \"Regenerate Index\" runs: a name on PATH, or a path (~ is expanded). Install it from https://github.com/Beneficial-AI-Foundation/probe-verus/releases."
         },
         "callGraph.defaultScipCallgraphPath": {
           "type": "string",
           "default": "",
-          "description": "Path to the probegraph repository (for running the pipeline)"
+          "markdownDeprecationMessage": "No longer read. \"Regenerate Index\" runs `probe-verus extract` (see `#callGraph.probeVerusPath#`) instead of probegraph's pipeline binary."
         },
         "callGraph.autoRegenerateOnSave": {
           "type": "boolean",
@@ -174,14 +181,22 @@
           "description": "Delay in milliseconds before auto-regenerating after a save"
         },
         "callGraph.skipVerification": {
+          "scope": "resource",
           "type": "boolean",
           "default": false,
-          "description": "Skip Verus verification when regenerating (faster, but no verification status)"
+          "description": "Skip Verus verification when regenerating (probe-verus extract --skip-verify: much faster, but no verification status)"
         },
-        "callGraph.skipSimilarLemmas": {
+        "callGraph.useRustAnalyzer": {
+          "scope": "resource",
           "type": "boolean",
           "default": false,
-          "description": "Skip similar lemmas enrichment (no Python required)"
+          "description": "Index with rust-analyzer instead of verus-analyzer when regenerating (probe-verus extract --rust-analyzer), for plain Rust projects"
+        },
+        "callGraph.package": {
+          "scope": "resource",
+          "type": "string",
+          "default": "",
+          "description": "In a Cargo workspace with several members, the package to extract (probe-verus extract --package). Empty: the single member, or probe-verus asks for one."
         }
       }
     }
