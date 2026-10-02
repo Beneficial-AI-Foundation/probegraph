@@ -3,7 +3,8 @@ name: Release
 on:
   push:
     tags:
-      - 'v*.*.*'
+      # Digit after the v, so that the extension's vscode-v* tags never match
+      - 'v[0-9]*.*.*'
   workflow_dispatch:
     inputs:
       version:

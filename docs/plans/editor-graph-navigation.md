@@ -1,17 +1,19 @@
 # Editor → graph: open the call graph from a Rust, Verus or Lean construct
 
-Status (2026-10-02): Phases 0 to 3 are implemented. Phase 0 merged in #67
+Status (2026-10-02): Phases 0 to 3 are merged. Phase 0 merged in #67
 and Phase 2 in #70; the protocol is in `docs/guides/vscode-extension.md`.
 Phase 1 is done, with fixtures cut from secure-messaging's extracts. The
-old repo was archived on 2026-10-02 with a pointer README. Phase 3 (the
-extension's first release) is in #72: the
-session, the host side of the protocol, project-root and containment
-rules, the watcher, "Show at Cursor" with its keybinding and menus, the
-panel beside the editor, the status bar, and the integration tests listed
-in that phase. The performance numbers are at the end of Phase 3. What is
-left before a release is tagging a VSIX. Revised on 2026-10-01 after a
-Codex review; see "Review decisions" at the end, and "Decisions" before
-that.
+old repo was archived on 2026-10-02 with a pointer README. Phase 3 merged
+in #72: the session, the host side of the protocol, project-root and
+containment rules, the watcher, "Show at Cursor" with its keybinding and
+menus, the panel beside the editor, the status bar, and the integration
+tests listed in that phase. The performance numbers are at the end of
+Phase 3. The release path from Decision 2 and the MIT licence followed:
+`vscode-release.yml` creates the `vscode-v<version>` release, its tag and
+the VSIX when a merge to `main` changes the version in `vscode/package.json`;
+the first release is `vscode-v0.1.0`. Revised on
+2026-10-01 after a Codex review; see "Review decisions" at the end, and
+"Decisions" before that.
 
 Goal: with the cursor on a declaration in a Rust, Verus or Lean file, one
 keystroke shows that declaration's neighbourhood in a graph panel beside the
@@ -499,8 +501,8 @@ Decided 2026-10-01:
    Extension releases are tagged `vscode-v<version>`.
 2. **First release is a VSIX** attached to a GitHub release by CI,
    installed with "Extensions: Install from VSIX…". Open VSX after Phase 3
-   has been in use for a while; it needs a licence, the
-   `beneficial-ai-foundation` namespace and a CI token. The VS Code
+   has been in use for a while; it needs the `beneficial-ai-foundation`
+   namespace and a CI token (the licence is MIT, added 2026-10-02). The VS Code
    Marketplace stays in Phase 4.
 3. Follow mode is off by default; CodeLens and downloads are not in the
    first release.

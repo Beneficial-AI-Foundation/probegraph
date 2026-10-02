@@ -2,7 +2,10 @@
 
 All notable changes to the Call Graph Visualizer extension will be documented in this file.
 
-## [Unreleased]
+## [0.1.0] - 2026-10-02
+
+First release from the probegraph repo, as a VSIX attached to the
+`vscode-v0.1.0` GitHub release.
 
 ### Added
 - "Call Graph: Show at Cursor" (`Ctrl+Alt+G` / `Cmd+Alt+G`), at the top of the editor
