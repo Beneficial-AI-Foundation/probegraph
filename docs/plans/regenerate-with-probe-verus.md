@@ -1,7 +1,9 @@
 # Regenerate with `probe-verus extract` instead of `pipeline`
 
-Status (2026-10-02): decided, see "Decisions" at the end. Phase 0 is the
-probe-verus `--output` PR; Phase 1 follows against it.
+Status (2026-10-02): decided, see "Decisions" at the end. Phase 0 is
+[probe-verus#51](https://github.com/Beneficial-AI-Foundation/probe-verus/pull/51);
+Phase 1 is [#75](https://github.com/Beneficial-AI-Foundation/probegraph/pull/75),
+written against it.
 
 Goal: "Regenerate Index" in the extension and the reusable
 `generate-callgraph.yml` produce a probe-verus extract (the schema-2
@@ -98,10 +100,19 @@ with `@main` by `libsignal_focus_dalek_lite`, `pmemlog_with_callgraph` and
   only after an explicit click and in a trusted workspace, and its output
   goes to the output channel.
 - Project root rule for a Rust/Verus extract, inserted as rule 3 beside
-  the Lean one: the topmost directory with a `Cargo.toml` between the
-  index file and the workspace folder. probe-verus writes paths relative
-  to the workspace root (`resolve_workspace_root`), which is the topmost
-  one, and puts the index under that root's `.verilib/probes/`.
+  the Lean one. probe-verus runs on a Cargo *package*: given a workspace
+  root, `resolve_workspace_root` moves to its single member, or to the one
+  `--package` names, writes paths relative to that and records nothing
+  about it in the extract (`metadata.project_root` is the viewer's "Probe
+  atom dict" placeholder). The pipeline hid this by making paths relative
+  to the folder it was given and recording it. So: from the nearest
+  directory with a `Cargo.toml` between the index file and the workspace
+  folder, apply probe-verus's rule, reading `Cargo.toml` alone (literal
+  `members` only, as probe-verus does not expand globs either), with the
+  package name from the extract's `source` when there are several
+  members. On dalek-verus (a one-member workspace, index in `.vscode/`)
+  this gives `curve25519-dalek/`. A `callGraph.package` setting passes
+  `--package` for workspaces with several members.
 - `hasGenerator` is true for `rust` when `probe-verus` resolves (configured
   path exists, or `which` finds it). The "not in graph" message keeps its
   **Regenerate** button under that condition.
@@ -167,8 +178,11 @@ fallback if this is not released first, and drop the fallback when it is.
    as one argument, `-o` is a temp file beside the index, `--skip-verify`
    follows the setting) and writes an envelope; the index is replaced
    only when the script exits 0; the Lean test still shows that no
-   generator is started on a Lean graph; a workspace fixture with a
-   member crate checks the Cargo root rule picks the workspace root.
+   generator is started on a Lean graph; a member crate under the folder
+   checks the Cargo rule picks it both when the extract sits in the
+   member's `.verilib/probes/` and when it sits in the folder's `.vscode/`
+   with the folder a one-member workspace; unit tests for the `Cargo.toml`
+   reading.
 3. Manual check on `dalek-verus`: Regenerate, status bar shows the extract
    time and commit, "Show at Cursor" resolves, verification colours match
    `probe-verus extract` run by hand.
