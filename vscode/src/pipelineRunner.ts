@@ -346,7 +346,8 @@ export function hasGenerator(folder: vscode.WorkspaceFolder, languageId: string)
 }
 
 /**
- * Update the status bar item
+ * Update the status bar item. It sits next to the session's "Call Graph: …"
+ * item, which says what is loaded; this one says what the pipeline is doing.
  */
 function updateStatusBar(): void {
     if (!statusBarItem) {
@@ -355,15 +356,15 @@ function updateStatusBar(): void {
     
     switch (currentStatus) {
         case 'running':
-            statusBarItem.text = '$(sync~spin) Call Graph: Updating...';
+            statusBarItem.text = '$(sync~spin) Pipeline: running';
             statusBarItem.tooltip = 'Click to view pipeline output';
             statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
             statusBarItem.show();
             break;
             
         case 'success':
-            statusBarItem.text = '$(check) Call Graph: Ready';
-            statusBarItem.tooltip = 'Call graph index is up to date';
+            statusBarItem.text = '$(check) Pipeline: done';
+            statusBarItem.tooltip = 'The call graph index was replaced';
             statusBarItem.backgroundColor = undefined;
             statusBarItem.show();
             
@@ -376,7 +377,7 @@ function updateStatusBar(): void {
             break;
             
         case 'error':
-            statusBarItem.text = '$(error) Call Graph: Error';
+            statusBarItem.text = '$(error) Pipeline: failed';
             statusBarItem.tooltip = 'Click to view error details';
             statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
             statusBarItem.show();

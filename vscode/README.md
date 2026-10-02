@@ -73,11 +73,18 @@ and point `callGraph.indexPath` at the extract instead:
 { "callGraph.indexPath": ".verilib/probes/probe-lean-extract.json" }
 ```
 
+Lean graphs are produced by `probe-lean extract`, not by the extension;
+"Regenerate Index" on one says so. Lean files need the
+[vscode-lean4](https://marketplace.visualstudio.com/items?itemName=leanprover.lean4)
+extension, which gives them the `lean4` language ID the commands key on.
+
 The graph file must be inside the workspace folder. Its paths are read
 relative to the project root: `callGraph.projectRoot` if set, else the
 index's own project root when that is a directory inside the folder, else
 (for a Lean graph) the Lake project containing the index file, else the
-folder itself. The status bar shows what is loaded and when it was
+folder itself. "Open in Editor" opens files under the project root only, so
+in Restricted Mode `callGraph.projectRoot` is read from user settings, not
+the workspace's. The status bar shows what is loaded and when it was
 extracted.
 
 ### 5. Explore Call Graphs
@@ -286,7 +293,7 @@ src/
 └── test/
     ├── unit/              # Plain mocha
     ├── workspace/         # In VS Code, on test-fixtures/quicksort
-    ├── lean/              # In VS Code, on test-fixtures/lean-ws
+    ├── lean/              # In VS Code, on test-fixtures/lean-ws, with test-fixtures/lean4-language for the language ID
     └── multiroot/         # In VS Code, on two copies of quicksort
 
 scripts/build-webview.mjs  # Builds ../web and copies it to webview/

@@ -34,6 +34,26 @@ const POLL_INTERVAL_MS = 2000;
 // webview loaded from an earlier session cannot be mistaken for a current one
 let lastRevision = 0;
 
+/** What a read saw of the file, to tell a changed file from a re-notified one. */
+interface FileStamp {
+    mtimeMs: number;
+    size: number;
+    ino: number;
+}
+
+/** The file's stamp, or null when it does not exist. */
+async function stampOf(filePath: string): Promise<FileStamp | null> {
+    try {
+        const { mtimeMs, size, ino } = await fs.promises.stat(filePath);
+        return { mtimeMs, size, ino };
+    } catch {
+        return null;
+    }
+}
+
+const sameStamp = (a: FileStamp | null, b: FileStamp | null) =>
+    a === b || (!!a && !!b && a.mtimeMs === b.mtimeMs && a.size === b.size && a.ino === b.ino);
+
 export class GraphSession implements vscode.Disposable {
     readonly folder: vscode.WorkspaceFolder;
     readonly indexPath: string;
@@ -42,6 +62,8 @@ export class GraphSession implements vscode.Disposable {
     private state: IndexState = 'none';
     private error: string | null = null;
     private reading: Promise<GraphRevision> | null = null;
+    /** The file as the last read found it (null: missing), whether or not it was a graph */
+    private readStamp: FileStamp | null = null;
     private debounce: NodeJS.Timeout | null = null;
     private readonly disposables: vscode.Disposable[] = [];
 
@@ -63,12 +85,11 @@ export class GraphSession implements vscode.Disposable {
         watcher.onDidChange(() => this.scheduleReload());
         watcher.onDidCreate(() => this.scheduleReload());
         watcher.onDidDelete(() => this.scheduleReload());
-        // Both fire for one write; the debounce folds them into one read
-        const onStat = (current: fs.Stats, previous: fs.Stats) => {
-            if (current.mtimeMs !== previous.mtimeMs || current.size !== previous.size) {
-                this.scheduleReload();
-            }
-        };
+        // Both fire for one write, the poll up to POLL_INTERVAL_MS after the
+        // watcher; `reloadIfChanged` reads the file once. The poll is not
+        // filtered on its own stats: when a file disappears and comes back
+        // unchanged, Node passes the stats from before it went as `previous`
+        const onStat = () => this.scheduleReload();
         fs.watchFile(this.indexPath, { interval: POLL_INTERVAL_MS, persistent: false }, onStat);
         this.disposables.push(
             watcher,
@@ -111,6 +132,8 @@ export class GraphSession implements vscode.Disposable {
         this.setState('loading');
         this.reading = (async () => {
             try {
+                // Stamped before the read: a write in between is seen by the next check
+                this.readStamp = await stampOf(this.indexPath);
                 const index = await readIndex(this.indexPath);
                 const projectRoot = resolveProjectRoot(this.folder, this.indexPath, index.graph);
                 const next = { revision: ++lastRevision, index, projectRoot };
@@ -131,15 +154,29 @@ export class GraphSession implements vscode.Disposable {
         return this.reading;
     }
 
+    /** Read the file again unless it is the one the last read saw. */
+    private async reloadIfChanged(): Promise<void> {
+        if (this.reading) {
+            // Compare against what that read saw, not against the read before it
+            await this.reading.catch(() => undefined);
+        }
+        if (sameStamp(await stampOf(this.indexPath), this.readStamp)) {
+            return;
+        }
+        try {
+            await this.reload();
+        } catch (error: any) {
+            console.warn('[Session] Keeping the previous graph:', error.message);
+        }
+    }
+
     private scheduleReload(): void {
         if (this.debounce) {
             clearTimeout(this.debounce);
         }
         this.debounce = setTimeout(() => {
             this.debounce = null;
-            this.reload().catch((error) => {
-                console.warn('[Session] Keeping the previous graph:', error.message);
-            });
+            void this.reloadIfChanged();
         }, WATCHER_DEBOUNCE_MS);
     }
 
@@ -183,9 +220,17 @@ export class Sessions implements vscode.Disposable {
             this.statusBar,
             this.graphChanged,
             vscode.workspace.onDidChangeConfiguration((e) => {
-                if (this.current && e.affectsConfiguration('callGraph', this.current.folder.uri)) {
-                    // A new index path or project root: start over in the same folder
-                    this.bind(this.current.folder);
+                const folder = this.current?.folder;
+                if (!folder) {
+                    return;
+                }
+                // Only these two settings change which file is read or what its
+                // paths mean; the pipeline settings are read when a run starts
+                const affects = (setting: string) => e.affectsConfiguration(`callGraph.${setting}`, folder.uri);
+                if (affects('indexPath') || affects('projectRoot')) {
+                    this.bind(folder)?.load().catch((error) => {
+                        console.warn('[Session] No graph after the settings change:', error.message);
+                    });
                 }
             }),
             vscode.workspace.onDidChangeWorkspaceFolders((e) => {

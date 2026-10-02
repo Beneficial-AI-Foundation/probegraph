@@ -166,7 +166,8 @@ export function resolveProjectRoot(folder: vscode.WorkspaceFolder, indexPath: st
     return root;
 }
 
-function isLeanGraph(graph: D3Graph): boolean {
+/** True when the graph has Lean nodes or was extracted from a Lean source. */
+export function isLeanGraph(graph: D3Graph): boolean {
     return graph.nodes.some(n => n.language === 'lean')
         || (graph.metadata?.source_configs ?? []).some(s => s.language === 'lean');
 }

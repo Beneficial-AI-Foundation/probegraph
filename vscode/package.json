@@ -31,24 +31,14 @@
   "capabilities": {
     "untrustedWorkspaces": {
       "supported": "limited",
-      "description": "Graph files are read and shown in any workspace. Regenerating the index runs the probegraph pipeline, which needs a trusted workspace.",
+      "description": "Graph files are read and shown in any workspace. Regenerating the index runs the probegraph pipeline, which needs a trusted workspace; callGraph.projectRoot, which sets where \"Open in Editor\" may open files, is taken from user settings only.",
       "restrictedConfigurations": [
-        "callGraph.defaultScipCallgraphPath"
+        "callGraph.defaultScipCallgraphPath",
+        "callGraph.projectRoot"
       ]
     }
   },
   "contributes": {
-    "languages": [
-      {
-        "id": "lean4",
-        "aliases": [
-          "Lean 4"
-        ],
-        "extensions": [
-          ".lean"
-        ]
-      }
-    ],
     "commands": [
       {
         "command": "callGraph.showAtCursor",
@@ -160,7 +150,7 @@
         "callGraph.projectRoot": {
           "type": "string",
           "default": "",
-          "description": "Directory the graph's paths are relative to, relative to the workspace folder. Empty: the index's project root if it is inside the folder, else the Lake root containing the index file, else the folder."
+          "description": "Directory the graph's paths are relative to, relative to the workspace folder. Empty: the index's project root if it is inside the folder, else the Lake root containing the index file, else the folder. \"Open in Editor\" opens files under this directory only, so in Restricted Mode the workspace value is ignored."
         },
         "callGraph.defaultScipCallgraphPath": {
           "type": "string",
@@ -205,13 +195,9 @@
     "lint": "eslint src",
     "test": "vscode-test"
   },
-  "dependencies": {
-    "node-fetch": "^3.3.2"
-  },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
     "@types/node": "20.x",
-    "@types/node-fetch": "^2.6.7",
     "@types/vscode": "^1.102.0",
     "@typescript-eslint/eslint-plugin": "^8.31.1",
     "@typescript-eslint/parser": "^8.31.1",

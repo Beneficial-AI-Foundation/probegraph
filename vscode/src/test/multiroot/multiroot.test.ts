@@ -36,7 +36,9 @@ suite('Extension with two workspace folders', () => {
 
         // The same relative path exists in the second folder, which is now active
         await openFile(second, 'src', 'lib.rs');
-        await api.deliverWebviewMessage({ type: 'navigate', relativePath: 'src/lib.rs', startLine: 4, displayName: 'quicksort' });
+        await api.deliverWebviewMessage({
+            type: 'navigate', revision: load.revision, relativePath: 'src/lib.rs', startLine: 4, displayName: 'quicksort',
+        });
         const opened = await waitFor('navigation', () => {
             const active = vscode.window.activeTextEditor;
             return active?.selection.active.line === 3 ? active : undefined;

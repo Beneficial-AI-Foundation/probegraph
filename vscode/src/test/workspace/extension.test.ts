@@ -84,7 +84,7 @@ suite('Extension in a Rust workspace', () => {
         assert.strictEqual(result.status, 'shown');
     });
 
-    test('a second Show at Cursor sends selectNode, and an equal one nothing', async () => {
+    test('a second Show at Cursor sends selectNode, and an equal one is sent again', async () => {
         const load = await showAndSettle(IN_PARTITION);
 
         const mark = protocol.posted.length;
@@ -96,8 +96,13 @@ suite('Extension in a Rust workspace', () => {
         const result = await protocol.result(next[0].requestId!);
         assert.strictEqual(result.status, 'shown');
 
+        // The viewer may have moved away from the selection on its own (the
+        // node hidden, the depth changed), so the host does not skip it
         await showAt(IN_QUICKSORT);
-        assert.strictEqual(protocol.since(mark).length, 1, 'the same selection was sent again');
+        const again = protocol.since(mark);
+        assert.deepStrictEqual(again.map(m => m.type), ['selectNode', 'selectNode']);
+        assert.deepStrictEqual(again[1].selection, again[0].selection);
+        assert.strictEqual((await protocol.result(again[1].requestId!)).status, 'shown');
     });
 
     test('rapid selections: only the last one is shown', async () => {
@@ -158,6 +163,18 @@ suite('Extension in a Rust workspace', () => {
         assert.strictEqual(result.status, 'shown');
     });
 
+    test('one write to the index is read once, though two watchers report it', async () => {
+        const first = await showAndSettle(IN_PARTITION);
+
+        const rewritten = JSON.parse(originalIndex);
+        rewritten.metadata.generated_at = new Date().toISOString();
+        fs.writeFileSync(indexPath(), JSON.stringify(rewritten));
+        // Longer than the debounce and the stat poll together
+        await sleep(4000);
+        assert.deepStrictEqual(protocol.loads.map(l => l.revision > first.revision), [false, true],
+            'the write was read more than once');
+    });
+
     test('an invalid index file leaves the previous graph loaded', async () => {
         const load = await showAndSettle(IN_PARTITION);
 
@@ -178,19 +195,40 @@ suite('Extension in a Rust workspace', () => {
         await protocol.loaded(reload.revision);
     });
 
-    test('navigate opens only files the graph names, under the project root', async () => {
-        await showAndSettle(IN_PARTITION);
+    test('navigate opens only files the graph names, under the project root, for the current revision', async () => {
+        const { revision } = await showAndSettle(IN_PARTITION);
         await closeAll();
 
-        await api.deliverWebviewMessage({ type: 'navigate', relativePath: 'src/other.rs', startLine: 1, displayName: 'x' });
-        await api.deliverWebviewMessage({ type: 'navigate', relativePath: '../quicksort/src/lib.rs', startLine: 1, displayName: 'x' });
+        const navigate = (relativePath: string, startLine: number, rev = revision) =>
+            api.deliverWebviewMessage({ type: 'navigate', revision: rev, relativePath, startLine, displayName: 'x' });
+        await navigate('src/other.rs', 1);
+        await navigate('../quicksort/src/lib.rs', 1);
+        // A click on a graph the host has since replaced
+        await navigate('src/lib.rs', 1, revision - 1);
         await sleep(300);
         assert.strictEqual(vscode.window.activeTextEditor, undefined, 'a refused path was opened');
 
-        await api.deliverWebviewMessage({ type: 'navigate', relativePath: 'src/lib.rs', startLine: 14, displayName: 'partition' });
+        await navigate('src/lib.rs', 14);
         const editor = await waitFor('the editor', () => vscode.window.activeTextEditor);
         assert.strictEqual(editor.document.uri.fsPath, path.join(folder().uri.fsPath, 'src', 'lib.rs'));
         assert.strictEqual(editor.selection.active.line, 13);
+    });
+
+    test('a settings change that does not name the file keeps the graph, so navigate still works', async () => {
+        const { revision } = await showAndSettle(IN_PARTITION);
+        await closeAll();
+
+        const config = vscode.workspace.getConfiguration('callGraph');
+        await config.update('depth', 5, vscode.ConfigurationTarget.Workspace);
+        try {
+            await sleep(300);
+            assert.strictEqual(protocol.loads.length, 1, 'the graph was reloaded for an unrelated setting');
+            await api.deliverWebviewMessage({ type: 'navigate', revision, relativePath: 'src/lib.rs', startLine: 14, displayName: 'partition' });
+            const editor = await waitFor('the editor', () => vscode.window.activeTextEditor);
+            assert.strictEqual(editor.selection.active.line, 13);
+        } finally {
+            await config.update('depth', undefined, vscode.ConfigurationTarget.Workspace);
+        }
     });
 
     test('closing and reopening the panel starts from ready', async () => {

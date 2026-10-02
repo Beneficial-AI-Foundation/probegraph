@@ -55,11 +55,12 @@ export interface HostMessage {
     keys?: string[];
 }
 
-const sameSelection = (a: Selection, b: Selection) =>
-    a.nodeId === b.nodeId && a.direction === b.direction && a.depth === b.depth;
+const NO_GRAPH = 'No call graph is loaded. Use "Call Graph: Show at Cursor" in a file of the project.';
 
 export class GraphPanel implements vscode.Disposable {
     private panel: vscode.WebviewPanel | null = null;
+    /** Subscriptions on the current panel, dropped with it */
+    private panelDisposables: vscode.Disposable[] = [];
     /** The webview has posted `ready` for this panel */
     private ready = false;
     /** Revision of the last `loadGraph` sent, confirmed or not */
@@ -68,7 +69,7 @@ export class GraphPanel implements vscode.Disposable {
     private loadedRevision: number | null = null;
     /** The one selection waiting for `graphLoaded` */
     private pending: { selection: Selection; requestId: number } | null = null;
-    /** The last selection sent for `loadedRevision`, not resent when equal */
+    /** The selection the latest request carried, reported with its result */
     private lastSent: Selection | null = null;
     /** The latest selection the user asked for, sent to a fresh webview */
     private lastSelection: Selection | null = null;
@@ -109,7 +110,9 @@ export class GraphPanel implements vscode.Disposable {
 
     /**
      * Show a selection in the panel, opening the panel beside the editor if
-     * needed, on the source's current graph.
+     * needed, on the source's current graph. A selection equal to the last
+     * one is sent again: the viewer may have moved away from it on its own
+     * (the node hidden, the depth changed, a filter ticked off).
      */
     show(selection: Selection): void {
         this.lastSelection = selection;
@@ -120,6 +123,7 @@ export class GraphPanel implements vscode.Disposable {
         }
         const graph = this.source();
         if (!graph) {
+            vscode.window.showWarningMessage(NO_GRAPH);
             return;
         }
         if (this.loadedRevision !== graph.revision) {
@@ -129,9 +133,6 @@ export class GraphPanel implements vscode.Disposable {
                 // The graph is on its way; this selection replaces any earlier one
                 this.pending = { selection, requestId: ++this.requestIds };
             }
-            return;
-        }
-        if (this.lastSent && sameSelection(this.lastSent, selection)) {
             return;
         }
         this.sendSelect(graph.revision, selection, ++this.requestIds);
@@ -187,12 +188,30 @@ export class GraphPanel implements vscode.Disposable {
                 }
                 break;
             case 'navigate':
-                await this.navigate(message);
+                if (this.isCurrent(message)) {
+                    await this.navigate(message);
+                }
                 break;
             case 'requestRefresh':
-                await vscode.commands.executeCommand('callGraph.regenerateIndex');
+                if (this.isCurrent(message)) {
+                    await vscode.commands.executeCommand('callGraph.regenerateIndex');
+                }
                 break;
         }
+    }
+
+    /**
+     * True when the message is about the source's current graph. A click on
+     * a graph the host has already replaced is dropped: its paths would be
+     * resolved against the new graph's root.
+     */
+    private isCurrent(message: WebviewMessage): boolean {
+        const graph = this.source();
+        if (!graph) {
+            vscode.window.showWarningMessage(NO_GRAPH);
+            return false;
+        }
+        return message.revision === graph.revision;
     }
 
     private createPanel(): vscode.WebviewPanel {
@@ -208,16 +227,19 @@ export class GraphPanel implements vscode.Disposable {
         );
         this.panel = panel;
         panel.webview.html = getWebviewContent(this.context, panel.webview);
-        panel.webview.onDidReceiveMessage((m) => this.deliver(m), undefined, this.disposables);
+        panel.webview.onDidReceiveMessage((m) => this.deliver(m), undefined, this.panelDisposables);
         panel.onDidDispose(() => {
             // A new panel starts from `ready`; nothing from this one carries over
+            for (const d of this.panelDisposables.splice(0)) {
+                d.dispose();
+            }
             this.panel = null;
             this.ready = false;
             this.sentRevision = null;
             this.loadedRevision = null;
             this.pending = null;
             this.lastSent = null;
-        }, null, this.disposables);
+        }, null, this.panelDisposables);
         return panel;
     }
 
@@ -242,7 +264,8 @@ export class GraphPanel implements vscode.Disposable {
 
     /**
      * Open a node's file. The path must be one the graph names and resolve
-     * under the project root.
+     * under the project root. The containment is lexical (`path.relative`
+     * on the joined path): a symlink inside the root may point outside it.
      */
     private async navigate(message: WebviewMessage): Promise<void> {
         const graph = this.source();

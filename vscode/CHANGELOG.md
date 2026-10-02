@@ -7,8 +7,10 @@ All notable changes to the Call Graph Visualizer extension will be documented in
 ### Added
 - "Call Graph: Show at Cursor" (`Ctrl+Alt+G` / `Cmd+Alt+G`), at the top of the editor
   context menu and as an editor-title icon, for Rust and Lean files
-- Lean support: probe-lean extracts as the graph file, `lean4` files, the Lake
-  project containing the index as the default project root
+- Lean support: probe-lean extracts as the graph file, `lean4` files (with
+  vscode-lean4 installed), the Lake project containing the index as the default
+  project root; "Regenerate Index" on a Lean graph says how extracts are made
+  instead of running the Rust pipeline
 - `callGraph.projectRoot` for graphs whose paths are relative to another directory
 - Status bar with the index state and extraction time
 - When a viewer filter hides the selected declaration, the warning names it and offers to turn it off
@@ -23,7 +25,10 @@ All notable changes to the Call Graph Visualizer extension will be documented in
   only in trusted workspaces, and finds the `pipeline` binary through
   `CARGO_TARGET_DIR` and `cargo metadata`
 - `callGraph.indexPath` must be inside the workspace folder; "Open in Editor" opens
-  only files the graph names, under the project root
+  only files the graph names, under the project root; `callGraph.projectRoot` is
+  read from user settings only in Restricted Mode
+- The pipeline's status bar item is labelled "Pipeline: …", next to the
+  "Call Graph: …" item for the loaded graph
 
 ### Removed
 - The "Call Graph" context submenu; the direction commands stay in the palette

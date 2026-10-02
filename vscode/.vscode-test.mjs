@@ -37,6 +37,9 @@ export default defineConfig([
 		label: 'lean',
 		files: 'out/vscode/src/test/lean/**/*.test.js',
 		workspaceFolder: lean,
+		// The extension does not contribute the lean4 language ID (vscode-lean4
+		// does); with extensions disabled, a fixture extension stands in for it
+		extensionDevelopmentPath: ['.', 'test-fixtures/lean4-language'],
 		launchArgs: ['--disable-extensions'],
 		mocha,
 	},
