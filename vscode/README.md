@@ -77,9 +77,11 @@ the Lake project (Lean) or Cargo package (Rust) the index file belongs to,
 else the folder itself. probe-verus runs on a Cargo package, so on a
 workspace folder that is a Cargo workspace it moves to the single member, or
 to the one `callGraph.package` names, and writes paths relative to that; the
-extension follows the same rule when reading the extract. "Open in Editor" opens files under the project root only, so
-in Restricted Mode `callGraph.projectRoot` is read from user settings, not
-the workspace's. The status bar shows what is loaded and when it was
+extension follows the same rule when reading the extract, as long as the
+member is inside the folder (one outside it, `../other`, needs
+`callGraph.projectRoot`). "Open in Editor" opens files under the project
+root only, so in Restricted Mode `callGraph.projectRoot` is read from user
+settings, not the workspace's. The status bar shows what is loaded and when it was
 extracted.
 
 ### 3. Explore Call Graphs

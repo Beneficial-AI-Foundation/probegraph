@@ -7,7 +7,9 @@ import * as vscode from 'vscode';
 import type { CallGraphApi } from '../../extension';
 // The bundled extension has its own instance of this module; a run started
 // here can only be cancelled here
-import { cancelGenerator, getGeneratorStatus, runGenerator } from '../../generator';
+import { cancelGenerator, getGeneratorStatus, probeVerusCommand, runGenerator } from '../../generator';
+import { cargoPackageRoot } from '../../cargoRoot';
+import { readIndex, resolveProjectRoot } from '../../indexLoader';
 import {
     EXTENSION_ID, Protocol, activated, closeAll, explorerTab, folderAt, openFile, placeCursor, sleep, waitFor,
 } from '../helpers';
@@ -436,6 +438,20 @@ suite('Extension in a Rust workspace', () => {
         }
     });
 
+    test('callGraph.probeVerusPath: a leading ~ is the home directory, with either separator', async () => {
+        const config = vscode.workspace.getConfiguration('callGraph');
+        try {
+            for (const configured of ['~/bin/probe-verus', '~\\bin\\probe-verus.exe']) {
+                await config.update('probeVerusPath', configured, vscode.ConfigurationTarget.Workspace);
+                assert.strictEqual(probeVerusCommand(folder()), path.join(os.homedir(), configured.slice(2)));
+            }
+            await config.update('probeVerusPath', ' probe-verus ', vscode.ConfigurationTarget.Workspace);
+            assert.strictEqual(probeVerusCommand(folder()), 'probe-verus', 'a bare name is left to PATH');
+        } finally {
+            await config.update('probeVerusPath', undefined, vscode.ConfigurationTarget.Workspace);
+        }
+    });
+
     test('Regenerate runs probe-verus extract, writes beside the index and renames over it', async () => {
         const fake = fakeProbeVerus();
         const config = vscode.workspace.getConfiguration('callGraph');
@@ -546,6 +562,32 @@ suite('Extension in a Rust workspace', () => {
             await config.update('indexPath', undefined, vscode.ConfigurationTarget.Workspace);
             fs.writeFileSync(manifest, original);
             cleanup();
+        }
+    });
+
+    test('a workspace member outside the folder is not a project root the folder can choose', async () => {
+        // A Cargo.toml under the folder can name `../outside`; probe-verus
+        // would run there, but "Open in Editor" opens files under the project
+        // root only, so files the folder controls must not move the root out
+        // of it. The extract's paths then do not resolve; that layout needs
+        // `callGraph.projectRoot`, which Restricted Mode takes from user settings.
+        const root = folder().uri.fsPath;
+        const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'outside-member-'));
+        const cleanup = writeSubCrate('.vscode/outside-extract.json');
+        const extract = path.join(root, '.vscode', 'outside-extract.json');
+        const manifest = path.join(root, 'Cargo.toml');
+        const original = fs.readFileSync(manifest, 'utf8');
+        try {
+            fs.writeFileSync(path.join(outside, 'Cargo.toml'), '[package]\nname = "sub"\nversion = "0.1.0"\n');
+            const member = path.relative(root, outside).split(path.sep).join('/');
+            fs.writeFileSync(manifest, `[workspace]\nmembers = ["${member}"]\n`);
+            assert.strictEqual(cargoPackageRoot(root, 'sub'), outside, 'the Cargo rule alone would pick the member');
+            const { graph } = await readIndex(extract);
+            assert.strictEqual(resolveProjectRoot(folder(), extract, graph), root);
+        } finally {
+            fs.writeFileSync(manifest, original);
+            cleanup();
+            fs.rmSync(outside, { recursive: true, force: true });
         }
     });
 });

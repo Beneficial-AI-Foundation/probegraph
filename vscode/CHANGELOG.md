@@ -22,8 +22,9 @@ newer than v8.0.1).
   status report asks GitHub for the current Verus release
 - A Rust extract's paths are resolved against the Cargo package probe-verus
   ran on: the package containing the index file, or the single (or named)
-  member when that is a workspace root, as a Lean one's are against its Lake
-  project. `Cargo.toml` is read with a TOML parser (smol-toml)
+  member when that is a workspace root and the member is inside the folder,
+  as a Lean one's are against its Lake project. `Cargo.toml` is read with a
+  TOML parser (smol-toml)
 - A probe-verus that rejects `extract -o` (v8.0.1 and older) gets its own
   message, and one that skipped verification because `cargo verus` is not
   installed (it exits 0 then) gets a warning instead of the success message

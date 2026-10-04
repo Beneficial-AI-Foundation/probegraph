@@ -132,7 +132,8 @@ const LAKEFILES = ['lakefile.lean', 'lakefile.toml'];
  *    graph, the Cargo package probe-verus would run on from the nearest
  *    directory with a `Cargo.toml` between the index file and the workspace
  *    folder: that directory, or, when it is a workspace root, its one
- *    member or the member whose package the extract names (`cargoRoot.ts`).
+ *    member or the member whose package the extract names (`cargoRoot.ts`),
+ *    if that member is inside the folder.
  * 4. The workspace folder.
  */
 export function resolveProjectRoot(folder: vscode.WorkspaceFolder, indexPath: string, graph: D3Graph): string {
@@ -170,7 +171,14 @@ export function resolveProjectRoot(folder: vscode.WorkspaceFolder, indexPath: st
         const cargoDir = nearestCargoDir(root, path.dirname(indexPath));
         if (cargoDir) {
             const pkg = graph.metadata?.source_configs?.find(s => s.language === 'rust')?.package;
-            return cargoPackageRoot(cargoDir, pkg);
+            const packageRoot = cargoPackageRoot(cargoDir, pkg);
+            // A workspace's Cargo.toml can name a member outside the folder
+            // (`../outside`); "Open in Editor" opens files under the project
+            // root only, so a root the folder's own files chose stays inside
+            // it. Such a layout needs `callGraph.projectRoot`.
+            if (isInside(root, packageRoot)) {
+                return packageRoot;
+            }
         }
     }
 

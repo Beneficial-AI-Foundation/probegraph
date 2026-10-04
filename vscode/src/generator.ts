@@ -136,13 +136,17 @@ function triggerDebounced(uri: vscode.Uri): void {
 
 /**
  * The probe-verus command for a folder: `callGraph.probeVerusPath`, with a
- * leading `~` expanded. A bare name is looked up on PATH by the spawn.
+ * leading `~` expanded (`~/bin/probe-verus`, or `~\bin\probe-verus.exe` on
+ * Windows). A bare name is looked up on PATH by the spawn.
  */
 export function probeVerusCommand(folder: vscode.WorkspaceFolder): string {
     const configured = vscode.workspace.getConfiguration('callGraph', folder)
         .get<string>('probeVerusPath', 'probe-verus').trim() || 'probe-verus';
-    if (configured === '~' || configured.startsWith('~/')) {
-        return path.join(os.homedir(), configured.slice(1));
+    if (configured === '~') {
+        return os.homedir();
+    }
+    if (configured.startsWith('~/') || configured.startsWith('~\\')) {
+        return path.join(os.homedir(), configured.slice(2));
     }
     return configured;
 }
