@@ -7,7 +7,7 @@ import * as vscode from 'vscode';
 import type { CallGraphApi } from '../../extension';
 // The bundled extension has its own instance of this module; a run started
 // here can only be cancelled here
-import { cancelGenerator, runGenerator } from '../../generator';
+import { cancelGenerator, getGeneratorStatus, runGenerator } from '../../generator';
 import {
     EXTENSION_ID, Protocol, activated, closeAll, explorerTab, folderAt, openFile, placeCursor, sleep, waitFor,
 } from '../helpers';
@@ -306,21 +306,31 @@ suite('Extension in a Rust workspace', () => {
 
     /**
      * A probe-verus stand-in at a path with a space and a `;`: records its
-     * arguments, and on `extract` copies the current index to the `-o` path
-     * (so the test can see the rename) unless `exitCode` says to fail. With
-     * `hang`, `extract` instead starts a `sleep` (standing in for `cargo
-     * verus`), records its pid in `childPid` and waits for it.
+     * arguments, and on `extract` does what `mode` says:
+     * - `copy`: copies the current index to the `-o` path (so the test can
+     *   see the rename) and exits 0
+     * - `fail`: exits 3 without writing
+     * - `partial`: writes `{` to the `-o` path and exits 0, as probe-verus
+     *   does when its own write fails (it only warns)
+     * - `hang`: writes `{`, then starts a `sleep` (standing in for `cargo
+     *   verus`), records its pid in `childPid` and waits for it
+     * - `stubborn`: `hang`, ignoring SIGTERM (the sleep inherits that)
      */
-    function fakeProbeVerus(exitCode = 0, hang = false): {
+    function fakeProbeVerus(mode: 'copy' | 'fail' | 'partial' | 'hang' | 'stubborn' = 'copy'): {
         dir: string; binary: string; childPid: string; args: () => string[];
     } {
         const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'fake probe-verus; '));
         const binary = path.join(dir, 'probe-verus');
         const argsFile = path.join(dir, 'args.txt');
         const childPid = path.join(dir, 'child.pid');
-        const extract = hang
-            ? `sleep 60 & echo $! > '${childPid}'; wait`
-            : `cat '${indexPath()}' > "$4"; exit ${exitCode}`;
+        const hang = `printf '{' > "$4"; sleep 60 & echo $! > '${childPid}'; wait`;
+        const extract = {
+            copy: `cat '${indexPath()}' > "$4"`,
+            fail: 'exit 3',
+            partial: `printf '{' > "$4"`,
+            hang,
+            stubborn: `trap '' TERM; ${hang}`,
+        }[mode];
         fs.writeFileSync(binary, [
             '#!/bin/sh',
             `printf '%s\\n' "$@" >> '${argsFile}'`,
@@ -337,35 +347,91 @@ suite('Extension in a Rust workspace', () => {
         };
     }
 
+    /** The pid the hanging fake recorded, once it has. */
+    async function grandchildPid(fake: { childPid: string }): Promise<number> {
+        await waitFor('the fake to start its child', () => fs.existsSync(fake.childPid) || undefined);
+        const pid = Number(fs.readFileSync(fake.childPid, 'utf8').trim());
+        assert.ok(pid > 0);
+        return pid;
+    }
+
+    /** Resolves once the pid is gone (reaped, or a zombie: `kill -0` says ESRCH either way). */
+    function waitForExit(pid: number): Promise<true> {
+        return waitFor('the grandchild to be gone', () => {
+            try {
+                process.kill(pid, 0);
+                return undefined;
+            } catch (error: any) {
+                if (error.code === 'ESRCH') {
+                    return true;
+                }
+                throw error;
+            }
+        });
+    }
+
+    /** Kill the recorded grandchild if the test left it running. */
+    function reap(pid: number | undefined): void {
+        if (pid === undefined) {
+            return;
+        }
+        try {
+            process.kill(pid, 'SIGKILL');
+        } catch (error: any) {
+            if (error.code !== 'ESRCH') {
+                throw error;
+            }
+        }
+    }
+
     test('Cancel Regenerate stops probe-verus and what it spawned', async function () {
         if (process.platform === 'win32') {
             this.skip();
         }
-        const fake = fakeProbeVerus(0, true);
+        const fake = fakeProbeVerus('hang');
         const config = vscode.workspace.getConfiguration('callGraph');
         await config.update('probeVerusPath', fake.binary, vscode.ConfigurationTarget.Workspace);
         const before = fs.readFileSync(indexPath(), 'utf8');
+        let pid: number | undefined;
         try {
             const run = runGenerator(folder());
-            await waitFor('the fake to start its child', () => fs.existsSync(fake.childPid) || undefined);
-            const pid = Number(fs.readFileSync(fake.childPid, 'utf8').trim());
-            assert.ok(pid > 0);
+            pid = await grandchildPid(fake);
             cancelGenerator();
             await run;
-            // A killed process may linger as a zombie until reaped, but is not
-            // runnable; `kill -0` on a reaped pid throws ESRCH
-            await waitFor('the grandchild to be gone', () => {
-                try {
-                    process.kill(pid, 0);
-                    return undefined;
-                } catch {
-                    return true;
-                }
-            });
+            await waitForExit(pid);
             assert.ok(!fs.existsSync(fake.args()[3]), 'the temporary file was left behind');
             assert.strictEqual(fs.readFileSync(indexPath(), 'utf8'), before);
         } finally {
             await config.update('probeVerusPath', undefined, vscode.ConfigurationTarget.Workspace);
+            reap(pid);
+            fs.rmSync(fake.dir, { recursive: true, force: true });
+        }
+    });
+
+    test('a second Cancel Regenerate kills a probe-verus that ignored the first', async function () {
+        if (process.platform === 'win32') {
+            this.skip();
+        }
+        const fake = fakeProbeVerus('stubborn');
+        const config = vscode.workspace.getConfiguration('callGraph');
+        await config.update('probeVerusPath', fake.binary, vscode.ConfigurationTarget.Workspace);
+        const before = fs.readFileSync(indexPath(), 'utf8');
+        let pid: number | undefined;
+        try {
+            const run = runGenerator(folder());
+            pid = await grandchildPid(fake);
+            cancelGenerator();
+            await sleep(500);
+            assert.strictEqual(getGeneratorStatus(), 'running', 'SIGTERM was not ignored by the fake');
+            cancelGenerator();
+            await run;
+            await waitForExit(pid);
+            assert.strictEqual(getGeneratorStatus(), 'idle');
+            assert.ok(!fs.existsSync(fake.args()[3]), 'the temporary file was left behind');
+            assert.strictEqual(fs.readFileSync(indexPath(), 'utf8'), before);
+        } finally {
+            await config.update('probeVerusPath', undefined, vscode.ConfigurationTarget.Workspace);
+            reap(pid);
             fs.rmSync(fake.dir, { recursive: true, force: true });
         }
     });
@@ -393,21 +459,25 @@ suite('Extension in a Rust workspace', () => {
         }
     });
 
-    test('a failed probe-verus run leaves the index and no temporary file behind', async () => {
-        const fake = fakeProbeVerus(3);
-        const config = vscode.workspace.getConfiguration('callGraph');
-        await config.update('probeVerusPath', fake.binary, vscode.ConfigurationTarget.Workspace);
-        const before = fs.readFileSync(indexPath(), 'utf8');
-        try {
-            await runGenerator(folder());
-            const temp = fake.args()[3];
-            assert.ok(!fs.existsSync(temp), 'the temporary file was left behind');
-            assert.strictEqual(fs.readFileSync(indexPath(), 'utf8'), before);
-        } finally {
-            await config.update('probeVerusPath', undefined, vscode.ConfigurationTarget.Workspace);
-            fs.rmSync(fake.dir, { recursive: true, force: true });
-        }
-    });
+    for (const mode of ['fail', 'partial'] as const) {
+        const what = mode === 'fail' ? 'a failed probe-verus run' : 'an exit 0 with a truncated output';
+        test(`${what} leaves the index and no temporary file behind`, async () => {
+            const fake = fakeProbeVerus(mode);
+            const config = vscode.workspace.getConfiguration('callGraph');
+            await config.update('probeVerusPath', fake.binary, vscode.ConfigurationTarget.Workspace);
+            const before = fs.readFileSync(indexPath(), 'utf8');
+            try {
+                await runGenerator(folder());
+                assert.strictEqual(getGeneratorStatus(), 'error');
+                const temp = fake.args()[3];
+                assert.ok(!fs.existsSync(temp), 'the temporary file was left behind');
+                assert.strictEqual(fs.readFileSync(indexPath(), 'utf8'), before);
+            } finally {
+                await config.update('probeVerusPath', undefined, vscode.ConfigurationTarget.Workspace);
+                fs.rmSync(fake.dir, { recursive: true, force: true });
+            }
+        });
+    }
 
     /**
      * A second crate `sub/` in the workspace folder, and a probe-verus

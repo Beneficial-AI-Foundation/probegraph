@@ -384,9 +384,11 @@ async function regenerateIndex(): Promise<void> {
     }
     
     // probe-verus must be there. Whether it has its tools is not checked
-    // here: `setup --status` goes to GitHub for the current Verus release,
-    // and the extract fails with a clear message for a missing tool anyway,
-    // after which the failure toast offers "Check Prerequisites".
+    // here: `setup --status` goes to GitHub for the current Verus release.
+    // A missing verus-analyzer or scip fails the extract with a clear
+    // message, and a missing `cargo verus` only skips verification, which
+    // `runGenerator` spots in the output; both toasts offer "Check
+    // Prerequisites".
     if (await probeVerusVersion(folder) === undefined) {
         await reportNoProbeVerus(probeVerusCommand(folder));
         return;
@@ -427,6 +429,16 @@ async function showPrerequisiteStatus(): Promise<void> {
     const check = await checkPrerequisites(folder);
     if (!check.version) {
         await reportNoProbeVerus(check.command);
+        return;
+    }
+    if (check.missingTools === undefined) {
+        const action = await vscode.window.showErrorMessage(
+            `${check.version} found, but \`probe-verus setup --status\` failed, so whether its tools are installed is unknown.`,
+            'Show output'
+        );
+        if (action === 'Show output') {
+            vscode.commands.executeCommand('callGraph.showPipelineOutput');
+        }
         return;
     }
     if (check.missingTools.length === 0) {

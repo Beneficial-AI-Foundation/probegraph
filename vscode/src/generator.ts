@@ -15,7 +15,7 @@ import * as cp from 'child_process';
 import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs';
-import { resolveIndexPath } from './indexLoader';
+import { readIndex, resolveIndexPath } from './indexLoader';
 
 /**
  * Status of the generator
@@ -30,10 +30,12 @@ export interface ProbeVerusCheck {
     version?: string;
     /**
      * What `probe-verus setup --status` reports as missing: tools by name,
-     * and `Rust toolchain <channel>` when the one Verus needs is not installed
+     * and `Rust toolchain <channel>` when the one Verus needs is not
+     * installed. Undefined when the report could not be read, so whether
+     * the tools are there is unknown; `report` then says why.
      */
-    missingTools: string[];
-    /** The full `setup --status` report, for the output channel */
+    missingTools?: string[];
+    /** The full `setup --status` report, or why there is none */
     report?: string;
 }
 
@@ -48,6 +50,12 @@ interface Run {
 
 const OUTPUT_CHANNEL = 'Call Graph Pipeline';
 const RELEASES_URL = 'https://github.com/Beneficial-AI-Foundation/probe-verus/releases';
+/**
+ * What probe-verus prints (`run_verify_step`) when `cargo verus` is not
+ * installed: it skips verification, still merges whatever `_proofs.json` an
+ * earlier run left, and exits 0.
+ */
+const VERIFICATION_SKIPPED = /'cargo verus' not found; skipping verification/;
 
 /**
  * Singleton state for the generator
@@ -121,7 +129,7 @@ function triggerDebounced(uri: vscode.Uri): void {
 
         // Only run if not already running
         if (currentStatus !== 'running') {
-            runGenerator(folder);
+            runGenerator(folder).catch(console.error);
         }
     }, debounceMs);
 }
@@ -161,6 +169,7 @@ export async function runGenerator(folder: vscode.WorkspaceFolder): Promise<void
     let indexPath: string;
     try {
         indexPath = resolveIndexPath(folder);
+        fs.mkdirSync(path.dirname(indexPath), { recursive: true });
     } catch (error: any) {
         vscode.window.showErrorMessage(error.message);
         return;
@@ -171,12 +180,6 @@ export async function runGenerator(folder: vscode.WorkspaceFolder): Promise<void
     const tempPath = path.join(
         path.dirname(indexPath), `.${path.basename(indexPath)}.${process.pid}.${++runCount}.tmp`,
     );
-
-    // Ensure output directory exists
-    const indexDir = path.dirname(indexPath);
-    if (!fs.existsSync(indexDir)) {
-        fs.mkdirSync(indexDir, { recursive: true });
-    }
 
     const config = vscode.workspace.getConfiguration('callGraph', folder);
     const command = probeVerusCommand(folder);
@@ -202,18 +205,30 @@ export async function runGenerator(folder: vscode.WorkspaceFolder): Promise<void
     channel.appendLine(`Working directory: ${workspaceRoot}`);
     channel.appendLine('---');
     console.log(`[Generator] ${command} ${JSON.stringify(args)} in ${workspaceRoot}`);
+    const startTime = Date.now();
+
+    // probe-verus runs verus-analyzer and `cargo verus` as children of its
+    // own. In its own process group they can be killed with it; Windows
+    // has taskkill /T for that instead (see `killTree`).
+    let child: cp.ChildProcess;
+    try {
+        child = cp.spawn(command, args, { cwd: workspaceRoot, detached: process.platform !== 'win32' });
+    } catch (error: any) {
+        // Synchronous, for an argument spawn refuses (a NUL in
+        // `callGraph.package`, say); a missing binary comes as `error` below
+        currentStatus = 'error';
+        updateStatusBar();
+        channel.appendLine('---');
+        reportStartError(command, error);
+        return;
+    }
 
     return new Promise((resolve) => {
-        const startTime = Date.now();
-
-        // probe-verus runs verus-analyzer and `cargo verus` as children of its
-        // own. In its own process group they can be killed with it; Windows
-        // has taskkill /T for that instead (see `killTree`).
-        const child = cp.spawn(command, args, { cwd: workspaceRoot, detached: process.platform !== 'win32' });
         const run: Run = { child, cancelled: false, settled: false };
         currentRun = run;
         // The end of stderr, to recognise a probe-verus without `extract -o`
         let stderrTail = '';
+        let verificationSkipped = false;
 
         child.stdout?.on('data', (data) => {
             channel.append(data.toString());
@@ -223,7 +238,28 @@ export async function runGenerator(folder: vscode.WorkspaceFolder): Promise<void
             const text = data.toString();
             channel.append(text);
             stderrTail = (stderrTail + text).slice(-16 * 1024);
+            // Checked on the tail, so a line split across chunks is still
+            // seen; remembered, since later warnings can push it out
+            verificationSkipped ||= VERIFICATION_SKIPPED.test(stderrTail);
         });
+
+        const discardTemp = () => fs.promises.rm(tempPath, { force: true }).catch(() => undefined);
+
+        /**
+         * Read the output and rename it over the index. probe-verus treats a
+         * failed write of its output as a warning and still exits 0, so the
+         * file can be truncated; it has to load before it replaces anything.
+         * Returns what went wrong, or nothing.
+         */
+        const replaceIndex = async (): Promise<string | undefined> => {
+            try {
+                await readIndex(tempPath);
+                await fs.promises.rename(tempPath, indexPath);
+                return undefined;
+            } catch (error: any) {
+                return error.message;
+            }
+        };
 
         /**
          * The one place the run ends: sets the status, removes the temp file
@@ -242,41 +278,47 @@ export async function runGenerator(folder: vscode.WorkspaceFolder): Promise<void
             console.log(`[Generator] exited with ${code} after ${duration}s`);
             channel.appendLine('---');
 
-            if (run.cancelled) {
-                await fs.promises.rm(tempPath, { force: true }).catch(() => undefined);
+            if (startError) {
+                // Before `cancelled`: a cancel just after a failed spawn is
+                // still a failed spawn
+                currentStatus = 'error';
+                reportStartError(command, startError);
+            } else if (run.cancelled) {
+                await discardTemp();
                 currentStatus = 'idle';
                 channel.appendLine(`probe-verus cancelled after ${duration}s`);
                 vscode.window.showInformationMessage('probe-verus cancelled');
-            } else if (startError) {
+            } else if (code !== 0 || !fs.existsSync(tempPath)) {
                 currentStatus = 'error';
-                console.error(`[Generator] failed to start: ${startError.message}`);
-                channel.appendLine(`✗ Failed to start probe-verus: ${startError.message}`);
-                if (startError.message.includes('ENOENT')) {
-                    channel.appendLine('');
-                    channel.appendLine(`${command} was not found.`);
-                    channel.appendLine(`Install probe-verus from ${RELEASES_URL} (the installer puts it on PATH),`);
-                    channel.appendLine('or set "callGraph.probeVerusPath" to the binary.');
-                }
-                vscode.window.showErrorMessage('Failed to start probe-verus. See output for details.');
-            } else if (code === 0 && fs.existsSync(tempPath)) {
-                try {
-                    await fs.promises.rename(tempPath, indexPath);
-                    currentStatus = 'success';
-                    channel.appendLine(`✓ probe-verus extract completed in ${duration}s`);
-                    channel.appendLine(`Output: ${indexPath}`);
-                    vscode.window.showInformationMessage(`Call graph index updated (${duration}s)`);
-                } catch (error: any) {
-                    currentStatus = 'error';
-                    channel.appendLine(`✗ Could not replace ${indexPath}: ${error.message}`);
-                    vscode.window.showErrorMessage('Could not replace the call graph index. See output for details.');
-                }
-            } else {
-                currentStatus = 'error';
-                await fs.promises.rm(tempPath, { force: true }).catch(() => undefined);
+                await discardTemp();
                 channel.appendLine(code === 0
                     ? `✗ probe-verus exited without writing ${tempPath}`
                     : `✗ probe-verus failed with exit code ${code}`);
                 reportFailure(stderrTail);
+            } else {
+                const problem = await replaceIndex();
+                if (problem) {
+                    currentStatus = 'error';
+                    await discardTemp();
+                    channel.appendLine(`✗ Keeping the previous index: ${problem}`);
+                    vscode.window.showErrorMessage(
+                        'probe-verus did not produce a usable index; the previous one is kept. See output for details.',
+                    );
+                } else {
+                    currentStatus = 'success';
+                    channel.appendLine(`✓ probe-verus extract completed in ${duration}s`);
+                    channel.appendLine(`Output: ${indexPath}`);
+                    if (verificationSkipped) {
+                        channel.appendLine('Verification was skipped: cargo verus was not found. The verification ' +
+                            'statuses in the index are from an earlier run, if there was one.');
+                        offerPrerequisites(vscode.window.showWarningMessage(
+                            `Index updated (${duration}s), but verification was skipped: cargo verus was not found.`,
+                            'Check Prerequisites',
+                        ));
+                    } else {
+                        vscode.window.showInformationMessage(`Call graph index updated (${duration}s)`);
+                    }
+                }
             }
 
             updateStatusBar();
@@ -284,8 +326,39 @@ export async function runGenerator(folder: vscode.WorkspaceFolder): Promise<void
         };
 
         child.on('close', (code) => { settle(code); });
-        child.on('error', (error) => { settle(null, error); });
+        child.on('error', (error) => {
+            if (run.cancelled && child.pid !== undefined) {
+                // The child did start, so this is the kill failing: it is
+                // still running, and `close` is still to come
+                channel.appendLine(`✗ Could not kill probe-verus: ${error.message}`);
+                return;
+            }
+            settle(null, error);
+        });
     });
+}
+
+/** probe-verus could not be started; the toast and the output channel say so. */
+function reportStartError(command: string, error: Error): void {
+    const channel = output();
+    console.error(`[Generator] failed to start: ${error.message}`);
+    channel.appendLine(`✗ Failed to start probe-verus: ${error.message}`);
+    if (error.message.includes('ENOENT')) {
+        channel.appendLine('');
+        channel.appendLine(`${command} was not found.`);
+        channel.appendLine(`Install probe-verus from ${RELEASES_URL} (the installer puts it on PATH),`);
+        channel.appendLine('or set "callGraph.probeVerusPath" to the binary.');
+    }
+    vscode.window.showErrorMessage('Failed to start probe-verus. See output for details.');
+}
+
+/** Run "Check Prerequisites" if that is what the toast's user chose. */
+function offerPrerequisites(toast: Thenable<string | undefined>): void {
+    toast.then((action) => {
+        if (action === 'Check Prerequisites') {
+            return vscode.commands.executeCommand('callGraph.checkPrerequisites');
+        }
+    }).then(undefined, console.error);
 }
 
 /**
@@ -306,48 +379,60 @@ function reportFailure(stderrTail: string): void {
         }, console.error);
         return;
     }
-    vscode.window.showErrorMessage(
+    offerPrerequisites(vscode.window.showErrorMessage(
         'probe-verus extract failed. See output for details.',
         'Check Prerequisites',
-    ).then((action) => {
-        if (action === 'Check Prerequisites') {
-            return vscode.commands.executeCommand('callGraph.checkPrerequisites');
-        }
-    }).then(undefined, console.error);
+    ));
 }
 
 /**
- * Cancel the running generator. The run is finalised when probe-verus has
- * exited, by the same `close` handler as any other exit.
+ * Cancel the running generator: SIGTERM to its process tree, and SIGKILL
+ * when called again for a tree that has not gone. The run is finalised when
+ * probe-verus has exited and its pipes have closed, by the same `close`
+ * handler as any other exit.
  */
 export function cancelGenerator(): void {
     const run = currentRun;
-    if (!run || run.settled || run.cancelled) {
+    if (!run || run.settled) {
+        return;
+    }
+    if (run.cancelled) {
+        output().appendLine('probe-verus has not exited; killing it');
+        killTree(run.child, 'SIGKILL');
         return;
     }
     run.cancelled = true;
-    killTree(run.child);
+    output().appendLine('Cancelling probe-verus (cancel again to force it)');
+    killTree(run.child, 'SIGTERM');
 }
 
 /**
- * Kill a child spawned by `runGenerator` and the processes it spawned:
- * the process group on POSIX (`detached` made the child its leader), the
- * tree by taskkill on Windows. Falls back to killing the child alone.
+ * Kill a detached child and the processes it spawned: the process group on
+ * POSIX (`detached` made the child its leader), the tree by taskkill on
+ * Windows (always forced; there is no gentler taskkill for a console
+ * process). Falls back to killing the child alone.
  */
-function killTree(child: cp.ChildProcess): void {
+function killTree(child: cp.ChildProcess, signal: 'SIGTERM' | 'SIGKILL'): void {
     if (child.pid === undefined) {
-        child.kill();
+        child.kill(signal);
         return;
     }
     if (process.platform === 'win32') {
+        // A taskkill that cannot run closes with a non-zero code too, so one
+        // handler covers it; the `error` listener only keeps it from throwing
         cp.spawn('taskkill', ['/T', '/F', '/PID', String(child.pid)], { stdio: 'ignore' })
-            .on('error', () => child.kill());
+            .on('error', () => undefined)
+            .on('close', (code) => {
+                if (code !== 0) {
+                    child.kill();
+                }
+            });
         return;
     }
     try {
-        process.kill(-child.pid, 'SIGTERM');
+        process.kill(-child.pid, signal);
     } catch {
-        child.kill();
+        child.kill(signal);
     }
 }
 
@@ -431,22 +516,24 @@ function updateStatusBar(): void {
  */
 export async function checkPrerequisites(folder: vscode.WorkspaceFolder): Promise<ProbeVerusCheck> {
     const command = probeVerusCommand(folder);
-    const check: ProbeVerusCheck = { command, missingTools: [] };
+    const check: ProbeVerusCheck = { command };
     check.version = await probeVerusVersion(folder);
     if (check.version === undefined) {
         return check;
     }
+    const channel = output();
+    channel.appendLine(`${check.version} (${command})`);
     try {
         const report = await executeCommand(command, ['setup', '--status'], folder.uri.fsPath);
         check.report = report;
         check.missingTools = missingFromStatus(report);
-        const channel = output();
-        channel.appendLine(`${check.version} (${command})`);
         channel.append(report.endsWith('\n') ? report : report + '\n');
-        channel.appendLine('---');
     } catch (error: any) {
+        // execFile's message carries the exit code and stderr
         check.report = `probe-verus setup --status failed: ${error.message}`;
+        channel.appendLine(`✗ ${check.report}`);
     }
+    channel.appendLine('---');
     return check;
 }
 
@@ -494,8 +581,9 @@ export async function installTools(folder: vscode.WorkspaceFolder): Promise<bool
     return vscode.window.withProgress(
         { location: vscode.ProgressLocation.Notification, title: 'probe-verus setup', cancellable: true },
         (_progress, token) => new Promise<boolean>((resolve) => {
-            const child = cp.spawn(command, args, { cwd: folder.uri.fsPath });
-            token.onCancellationRequested(() => child.kill());
+            // setup runs rustup and downloads under it; cancel kills those too
+            const child = cp.spawn(command, args, { cwd: folder.uri.fsPath, detached: process.platform !== 'win32' });
+            token.onCancellationRequested(() => killTree(child, 'SIGTERM'));
             child.stdout?.on('data', (d) => channel.append(d.toString()));
             child.stderr?.on('data', (d) => channel.append(d.toString()));
             child.on('error', (error) => {

@@ -113,7 +113,7 @@ and offers to turn it off.
 | `Call Graph: Show Dependencies` | Open graph explorer showing callees |
 | `Call Graph: Show Dependents` | Open graph explorer showing callers |
 | `Call Graph: Regenerate Index` | Run `probe-verus extract` (trusted workspaces only; the index is replaced only when the run succeeds) |
-| `Call Graph: Cancel Regenerate` | Stop the running probe-verus, with the verus-analyzer and `cargo verus` it started |
+| `Call Graph: Cancel Regenerate` | Stop the running probe-verus, with the verus-analyzer and `cargo verus` it started; a second cancel kills what did not exit |
 | `Call Graph: Check Prerequisites` | Find probe-verus and check its tools (`probe-verus setup --status`); offers to install the missing ones |
 
 ### Graph Explorer UI
@@ -240,6 +240,12 @@ probe-verus extract . -o /tmp/graph.json
 ### "This probe-verus predates `extract -o`"
 Releases up to v8.0.1 have no `-o`; install a newer one from the
 [releases](https://github.com/Beneficial-AI-Foundation/probe-verus/releases).
+
+### "Index updated, but verification was skipped"
+probe-verus skips verification when `cargo verus` is not installed and
+still exits 0, so the index is current but its verification statuses are
+whatever an earlier run left (or none). **Check Prerequisites** in the
+message offers to install it; then regenerate.
 
 ### Graph shows but no nodes visible
 - Check that the index was generated successfully

@@ -25,12 +25,16 @@ newer than v8.0.1).
   member when that is a workspace root, as a Lean one's are against its Lake
   project. `Cargo.toml` is read with a TOML parser (smol-toml)
 - A probe-verus that rejects `extract -o` (v8.0.1 and older) gets its own
-  message
+  message, and one that skipped verification because `cargo verus` is not
+  installed (it exits 0 then) gets a warning instead of the success message
+- The extract's output is read before it replaces the index; probe-verus
+  only warns when its write fails, so a truncated file is discarded and the
+  previous index kept
 
 ### Changed
 - The status bar item for a run says "probe-verus: …"; "Cancel Pipeline" is
   "Cancel Regenerate", and it stops `cargo verus` and verus-analyzer too, not
-  only probe-verus
+  only probe-verus; cancelling again kills what did not exit
 - `callGraph.skipVerification` maps to `--skip-verify`
 - "Show at Cursor" no longer waits for the "not in the graph" warning to be
   dismissed
