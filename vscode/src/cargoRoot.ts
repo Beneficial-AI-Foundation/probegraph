@@ -6,12 +6,15 @@
  * member `--package` names, and writes paths relative to that
  * (`resolve_workspace_root` in probe-verus). The extract itself does not
  * record the directory, so this mirrors the rule from `Cargo.toml` alone.
- * Only the shapes probe-verus handles are read here: literal member paths
- * (it does not expand globs either) and a `name = "…"` under `[package]`.
+ * The manifest is parsed as TOML (smol-toml), as probe-verus's `toml` crate
+ * does; of it, only `package.name` and `workspace.members` are read, and
+ * member paths are taken literally, as probe-verus takes them (it does not
+ * expand globs either).
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { parse as parseToml } from 'smol-toml';
 
 /**
  * The directory probe-verus would write paths relative to when run on `dir`,
@@ -62,39 +65,27 @@ interface Manifest {
     members: string[];
 }
 
-/** The parts of a `Cargo.toml` the root rule reads. */
+/**
+ * The parts of a `Cargo.toml` the root rule reads. Throws on text that is
+ * not TOML, as probe-verus would fail on it.
+ */
 export function parseManifest(text: string): Manifest {
-    const lines = text.split(/\r?\n/).map(stripComment);
-    const manifest: Manifest = { hasPackage: false, members: [] };
-    let table = '';
-    for (let i = 0; i < lines.length; i++) {
-        const line = lines[i].trim();
-        const header = /^\[\s*([^\]]+?)\s*\]$/.exec(line);
-        if (header) {
-            table = header[1];
-            if (table === 'package') {
-                manifest.hasPackage = true;
-            }
-            continue;
-        }
-        if (table === 'package') {
-            const name = /^name\s*=\s*"([^"]*)"/.exec(line);
-            if (name) {
-                manifest.packageName = name[1];
-            }
-        } else if (table === 'workspace') {
-            const members = /^members\s*=\s*(\[.*)$/.exec(line);
-            if (members) {
-                // The array may run over several lines
-                let array = members[1];
-                while (!array.includes(']') && i + 1 < lines.length) {
-                    array += lines[++i];
-                }
-                manifest.members = [...array.matchAll(/"([^"]*)"/g)].map(m => m[1]);
-            }
-        }
+    const toml = parseToml(text);
+    const pkg = isTable(toml.package) ? toml.package : undefined;
+    const workspace = isTable(toml.workspace) ? toml.workspace : undefined;
+    const members = Array.isArray(workspace?.members) ? workspace.members : [];
+    const manifest: Manifest = {
+        hasPackage: pkg !== undefined,
+        members: members.filter((m): m is string => typeof m === 'string'),
+    };
+    if (typeof pkg?.name === 'string') {
+        manifest.packageName = pkg.name;
     }
     return manifest;
+}
+
+function isTable(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function readManifest(file: string): Manifest | undefined {
@@ -103,18 +94,4 @@ function readManifest(file: string): Manifest | undefined {
     } catch {
         return undefined;
     }
-}
-
-/** The line without a `#` comment, leaving `#` inside a string alone. */
-function stripComment(line: string): string {
-    let inString = false;
-    for (let i = 0; i < line.length; i++) {
-        const c = line[i];
-        if (c === '"' && line[i - 1] !== '\\') {
-            inString = !inString;
-        } else if (c === '#' && !inString) {
-            return line.slice(0, i);
-        }
-    }
-    return line;
 }

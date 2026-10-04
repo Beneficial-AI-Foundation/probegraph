@@ -15,24 +15,32 @@ newer than v8.0.1).
   by default; `callGraph.useRustAnalyzer` for plain Rust projects
   (`--rust-analyzer`); `callGraph.package` for workspaces with several
   members (`--package`)
-- "Check Prerequisites" reports `probe-verus setup --status` and offers to
-  install missing tools with `probe-verus setup --from-project`; "Regenerate
-  Index" offers the same when tools are missing
+- "Check Prerequisites" reports `probe-verus setup --status` (tools and the
+  Rust toolchain Verus needs) and offers to install what is missing with
+  `probe-verus setup --from-project`; a failed "Regenerate Index" offers to
+  run it. Regenerate itself only checks that probe-verus runs, since the
+  status report asks GitHub for the current Verus release
 - A Rust extract's paths are resolved against the Cargo package probe-verus
   ran on: the package containing the index file, or the single (or named)
   member when that is a workspace root, as a Lean one's are against its Lake
-  project
+  project. `Cargo.toml` is read with a TOML parser (smol-toml)
+- A probe-verus that rejects `extract -o` (v8.0.1 and older) gets its own
+  message
 
 ### Changed
 - The status bar item for a run says "probe-verus: …"; "Cancel Pipeline" is
-  "Cancel Regenerate"
+  "Cancel Regenerate", and it stops `cargo verus` and verus-analyzer too, not
+  only probe-verus
 - `callGraph.skipVerification` maps to `--skip-verify`
 - "Show at Cursor" no longer waits for the "not in the graph" warning to be
   dismissed
 
+### Deprecated
+- `callGraph.defaultScipCallgraphPath`: no longer read; the settings UI says
+  so
+
 ### Removed
-- `callGraph.defaultScipCallgraphPath` (deprecated, no longer read) and
-  `callGraph.skipSimilarLemmas`: similar-lemmas enrichment is not part of the
+- `callGraph.skipSimilarLemmas`: similar-lemmas enrichment is not part of the
   extract; a language-agnostic probe for it is planned
 
 ## [0.1.0] - 2026-10-02

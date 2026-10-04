@@ -21,6 +21,8 @@ import {
     hasGenerator,
     initializeGenerator,
     installTools,
+    probeVerusCommand,
+    probeVerusVersion,
     runGenerator,
 } from './generator';
 
@@ -258,7 +260,7 @@ async function reportNotIndexed(message: string, languageId: string): Promise<vo
             if (action === 'Regenerate') {
                 return regenerateIndex();
             }
-        });
+        }).then(undefined, console.error);
     } else {
         vscode.window.showWarningMessage(message);
     }
@@ -359,6 +361,13 @@ async function regenerateIndex(): Promise<void> {
         );
         return;
     }
+    // Before probe-verus is run at all, even for its version
+    if (!vscode.workspace.isTrusted) {
+        vscode.window.showErrorMessage(
+            'Regenerating the index runs probe-verus, which needs a trusted workspace.'
+        );
+        return;
+    }
     
     // Check if already running
     if (getGeneratorStatus() === 'running') {
@@ -374,27 +383,13 @@ async function regenerateIndex(): Promise<void> {
         return;
     }
     
-    // probe-verus must be there; its tools can be installed on the spot
-    const check = await checkPrerequisites(folder);
-    if (!check.version) {
-        await reportNoProbeVerus(check.command);
+    // probe-verus must be there. Whether it has its tools is not checked
+    // here: `setup --status` goes to GitHub for the current Verus release,
+    // and the extract fails with a clear message for a missing tool anyway,
+    // after which the failure toast offers "Check Prerequisites".
+    if (await probeVerusVersion(folder) === undefined) {
+        await reportNoProbeVerus(probeVerusCommand(folder));
         return;
-    }
-    if (check.missingTools.length > 0) {
-        const action = await vscode.window.showWarningMessage(
-            `probe-verus is missing ${check.missingTools.join(', ')}. ` +
-            'Install them with probe-verus setup, or continue and let the run fail?',
-            'Install tools',
-            'Continue Anyway',
-            'Cancel'
-        );
-        if (action === 'Install tools') {
-            if (!await installTools(folder)) {
-                return;
-            }
-        } else if (action !== 'Continue Anyway') {
-            return;
-        }
     }
     
     // Run probe-verus; the session's watcher picks up the new file

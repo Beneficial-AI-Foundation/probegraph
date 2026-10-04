@@ -5,7 +5,9 @@ import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import type { CallGraphApi } from '../../extension';
-import { runGenerator } from '../../generator';
+// The bundled extension has its own instance of this module; a run started
+// here can only be cancelled here
+import { cancelGenerator, runGenerator } from '../../generator';
 import {
     EXTENSION_ID, Protocol, activated, closeAll, explorerTab, folderAt, openFile, placeCursor, sleep, waitFor,
 } from '../helpers';
@@ -305,27 +307,68 @@ suite('Extension in a Rust workspace', () => {
     /**
      * A probe-verus stand-in at a path with a space and a `;`: records its
      * arguments, and on `extract` copies the current index to the `-o` path
-     * (so the test can see the rename) unless `exitCode` says to fail.
+     * (so the test can see the rename) unless `exitCode` says to fail. With
+     * `hang`, `extract` instead starts a `sleep` (standing in for `cargo
+     * verus`), records its pid in `childPid` and waits for it.
      */
-    function fakeProbeVerus(exitCode = 0): { dir: string; binary: string; args: () => string[] } {
+    function fakeProbeVerus(exitCode = 0, hang = false): {
+        dir: string; binary: string; childPid: string; args: () => string[];
+    } {
         const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'fake probe-verus; '));
         const binary = path.join(dir, 'probe-verus');
         const argsFile = path.join(dir, 'args.txt');
+        const childPid = path.join(dir, 'child.pid');
+        const extract = hang
+            ? `sleep 60 & echo $! > '${childPid}'; wait`
+            : `cat '${indexPath()}' > "$4"; exit ${exitCode}`;
         fs.writeFileSync(binary, [
             '#!/bin/sh',
             `printf '%s\\n' "$@" >> '${argsFile}'`,
             'case "$1" in',
             '  --version) echo "probe-verus 0.0.0-fake" ;;',
             '  setup) printf "Tool  Status  Location\\nverus-analyzer  PATH  /x\\nscip  PATH  /x\\nverus  managed  /x\\n" ;;',
-            `  extract) cat '${indexPath()}' > "$4"; exit ${exitCode} ;;`,
+            `  extract) ${extract} ;;`,
             'esac',
             '',
         ].join('\n'), { mode: 0o755 });
         return {
-            dir, binary,
+            dir, binary, childPid,
             args: () => fs.readFileSync(argsFile, 'utf8').split('\n'),
         };
     }
+
+    test('Cancel Regenerate stops probe-verus and what it spawned', async function () {
+        if (process.platform === 'win32') {
+            this.skip();
+        }
+        const fake = fakeProbeVerus(0, true);
+        const config = vscode.workspace.getConfiguration('callGraph');
+        await config.update('probeVerusPath', fake.binary, vscode.ConfigurationTarget.Workspace);
+        const before = fs.readFileSync(indexPath(), 'utf8');
+        try {
+            const run = runGenerator(folder());
+            await waitFor('the fake to start its child', () => fs.existsSync(fake.childPid) || undefined);
+            const pid = Number(fs.readFileSync(fake.childPid, 'utf8').trim());
+            assert.ok(pid > 0);
+            cancelGenerator();
+            await run;
+            // A killed process may linger as a zombie until reaped, but is not
+            // runnable; `kill -0` on a reaped pid throws ESRCH
+            await waitFor('the grandchild to be gone', () => {
+                try {
+                    process.kill(pid, 0);
+                    return undefined;
+                } catch {
+                    return true;
+                }
+            });
+            assert.ok(!fs.existsSync(fake.args()[3]), 'the temporary file was left behind');
+            assert.strictEqual(fs.readFileSync(indexPath(), 'utf8'), before);
+        } finally {
+            await config.update('probeVerusPath', undefined, vscode.ConfigurationTarget.Workspace);
+            fs.rmSync(fake.dir, { recursive: true, force: true });
+        }
+    });
 
     test('Regenerate runs probe-verus extract, writes beside the index and renames over it', async () => {
         const fake = fakeProbeVerus();

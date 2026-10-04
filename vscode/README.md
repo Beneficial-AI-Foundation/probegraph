@@ -52,8 +52,11 @@ is needed.
 
 The extract is written to `callGraph.indexPath` (default
 `.vscode/call_graph_index.json`), replacing it only when the run succeeds.
-An extract made outside the extension works too: run
-`probe-verus extract .` in the project and point `callGraph.indexPath` at
+probe-verus also leaves its intermediate files (`_atoms`, `_specs`,
+`_proofs`) under `<package>/.verilib/probes/`, whatever `-o` says, so
+`.verilib/` is worth adding to the project's `.gitignore`. An extract made
+outside the extension works too: run `probe-verus extract .` in the project
+and point `callGraph.indexPath` at
 `.verilib/probes/verus_<package>_<version>.json`.
 
 For a Lean project, point `callGraph.indexPath` at the probe-lean extract:
@@ -110,7 +113,7 @@ and offers to turn it off.
 | `Call Graph: Show Dependencies` | Open graph explorer showing callees |
 | `Call Graph: Show Dependents` | Open graph explorer showing callers |
 | `Call Graph: Regenerate Index` | Run `probe-verus extract` (trusted workspaces only; the index is replaced only when the run succeeds) |
-| `Call Graph: Cancel Regenerate` | Stop the running probe-verus |
+| `Call Graph: Cancel Regenerate` | Stop the running probe-verus, with the verus-analyzer and `cargo verus` it started |
 | `Call Graph: Check Prerequisites` | Find probe-verus and check its tools (`probe-verus setup --status`); offers to install the missing ones |
 
 ### Graph Explorer UI
@@ -220,23 +223,23 @@ or point `callGraph.probeVerusPath` at the binary (user settings, not the
 workspace's, in Restricted Mode). VS Code may need a restart to see a new
 PATH entry.
 
-### "probe-verus is missing verus-analyzer, scip, …"
-Choose **Install tools** in the message, or run **Call Graph: Check
-Prerequisites**; both run `probe-verus setup --from-project <folder>`. The
-same from a terminal:
-```bash
-probe-verus setup --status
-probe-verus setup --from-project .
-```
-
 ### "probe-verus extract failed"
 The "Call Graph Pipeline" output channel has probe-verus's output. A
 verification failure in the project is not a failure of the extract; the
-affected functions are shown red. Running the same command in a terminal
-narrows it down:
+affected functions are shown red. When a tool is missing, probe-verus says
+so there; **Check Prerequisites** in the message (or **Call Graph: Check
+Prerequisites**) runs `probe-verus setup --status` and offers to install
+what is missing with `probe-verus setup --from-project <folder>`. The same
+from a terminal:
 ```bash
+probe-verus setup --status
+probe-verus setup --from-project .
 probe-verus extract . -o /tmp/graph.json
 ```
+
+### "This probe-verus predates `extract -o`"
+Releases up to v8.0.1 have no `-o`; install a newer one from the
+[releases](https://github.com/Beneficial-AI-Foundation/probe-verus/releases).
 
 ### Graph shows but no nodes visible
 - Check that the index was generated successfully

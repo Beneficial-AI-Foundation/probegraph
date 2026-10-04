@@ -35,7 +35,6 @@
       "description": "Graph files are read and shown in any workspace. Regenerating the index runs probe-verus, which needs a trusted workspace; callGraph.probeVerusPath names that binary and callGraph.projectRoot sets where \"Open in Editor\" may open files, so both are taken from user settings only.",
       "restrictedConfigurations": [
         "callGraph.probeVerusPath",
-        "callGraph.defaultScipCallgraphPath",
         "callGraph.projectRoot"
       ]
     }
@@ -196,7 +195,7 @@
           "scope": "resource",
           "type": "string",
           "default": "",
-          "description": "In a Cargo workspace with several members, the package to extract (probe-verus extract --package). Empty: the single member, or probe-verus asks for one."
+          "description": "In a Cargo workspace with several members, the package to extract (probe-verus extract --package). Empty: the single member, or probe-verus fails and lists them."
         }
       }
     }
@@ -213,6 +212,9 @@
     "pretest": "npm run compile-tests && npm run compile && npm run lint",
     "lint": "eslint src",
     "test": "vscode-test"
+  },
+  "dependencies": {
+    "smol-toml": "^1.9.0"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",

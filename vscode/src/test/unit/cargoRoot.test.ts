@@ -36,6 +36,29 @@ suite('parseManifest', () => {
         const m = parseManifest('[package]\nversion = "1"\n[dependencies.serde]\nname = "x"\n');
         assert.strictEqual(m.packageName, undefined);
     });
+
+    test('a [[bin]] target after [package] does not rename the package', () => {
+        const m = parseManifest([
+            '[package]',
+            'name = "mycrate"',
+            'version = "0.1.0"',
+            '',
+            '[[bin]]',
+            'name = "mybin"',
+            'path = "src/main.rs"',
+        ].join('\n'));
+        assert.deepStrictEqual(m, { hasPackage: true, packageName: 'mycrate', members: [] });
+    });
+
+    test('single-quoted strings, dotted keys and inline tables are TOML too', () => {
+        assert.strictEqual(parseManifest("[package]\nname = 'quoted'\n").packageName, 'quoted');
+        assert.deepStrictEqual(parseManifest("workspace.members = ['a', \"b\"]\n").members, ['a', 'b']);
+        assert.deepStrictEqual(parseManifest('workspace = { members = ["c"], resolver = "2" }\n').members, ['c']);
+    });
+
+    test('text that is not TOML throws, as probe-verus would fail on it', () => {
+        assert.throws(() => parseManifest('[package\nname = "x"\n'));
+    });
 });
 
 suite('cargoPackageRoot', () => {
