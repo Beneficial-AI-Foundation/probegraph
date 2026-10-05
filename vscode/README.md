@@ -285,7 +285,8 @@ to `CHANGELOG.md` (CI fails the PR without it), then merge. On the push to
 `main`, `.github/workflows/vscode-release.yml` sees that no `vscode-v<version>`
 release exists, runs the tests, packages the VSIX and creates the release and
 its tag from the merge commit, with that changelog section as the notes. A
-merge that leaves the version alone releases nothing.
+merge that leaves the version alone releases nothing, so changes that should
+not ship yet go under `## [Unreleased]` and the bump comes later.
 
 ### Running in Development
 

@@ -2,13 +2,15 @@
 
 All notable changes to the Call Graph Visualizer extension will be documented in this file.
 
-## [0.2.0] - 2026-10-02
+## [Unreleased]
 
 "Regenerate Index" runs `probe-verus extract` instead of probegraph's
 `pipeline` binary, so the extension no longer needs a checkout and build of
 probegraph. It needs a probe-verus with `extract -o`
 ([probe-verus#51](https://github.com/Beneficial-AI-Foundation/probe-verus/pull/51),
-newer than v8.0.1).
+newer than v8.0.1). The version bump to 0.2.0, which publishes the VSIX,
+waits for the probe-verus release that has it; until then `package.json`
+stays at 0.1.0 and merging releases nothing.
 
 ### Added
 - `callGraph.probeVerusPath`: the probe-verus binary, `probe-verus` on PATH
