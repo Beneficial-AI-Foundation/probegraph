@@ -14,6 +14,7 @@ import * as path from 'path';
 import { parseAndNormalizeGraph, validateGraph } from '../../web/src/graph-loader';
 import { buildLocationIndex, LocationIndex } from '../../web/src/editor-lookup';
 import type { D3Graph, D3Node } from '../../web/src/types';
+import { cargoPackageRoot, nearestCargoDir } from './cargoRoot';
 
 export type { D3Graph, D3Node };
 
@@ -127,7 +128,12 @@ const LAKEFILES = ['lakefile.lean', 'lakefile.toml'];
  * 2. The index's `metadata.project_root` if it is an existing directory
  *    inside the folder (a root from another machine is ignored).
  * 3. For a Lean graph, the Lake root containing the index file's folder, if
- *    there is exactly one between it and the workspace folder.
+ *    there is exactly one between it and the workspace folder. For a Rust
+ *    graph, the Cargo package probe-verus would run on from the nearest
+ *    directory with a `Cargo.toml` between the index file and the workspace
+ *    folder: that directory, or, when it is a workspace root, its one
+ *    member or the member whose package the extract names (`cargoRoot.ts`),
+ *    if that member is inside the folder.
  * 4. The workspace folder.
  */
 export function resolveProjectRoot(folder: vscode.WorkspaceFolder, indexPath: string, graph: D3Graph): string {
@@ -161,6 +167,19 @@ export function resolveProjectRoot(folder: vscode.WorkspaceFolder, indexPath: st
         if (lakeRoots.length === 1) {
             return lakeRoots[0];
         }
+    } else if (isRustGraph(graph)) {
+        const cargoDir = nearestCargoDir(root, path.dirname(indexPath));
+        if (cargoDir) {
+            const pkg = graph.metadata?.source_configs?.find(s => s.language === 'rust')?.package;
+            const packageRoot = cargoPackageRoot(cargoDir, pkg);
+            // A workspace's Cargo.toml can name a member outside the folder
+            // (`../outside`); "Open in Editor" opens files under the project
+            // root only, so a root the folder's own files chose stays inside
+            // it. Such a layout needs `callGraph.projectRoot`.
+            if (isInside(root, packageRoot)) {
+                return packageRoot;
+            }
+        }
     }
 
     return root;
@@ -170,6 +189,12 @@ export function resolveProjectRoot(folder: vscode.WorkspaceFolder, indexPath: st
 export function isLeanGraph(graph: D3Graph): boolean {
     return graph.nodes.some(n => n.language === 'lean')
         || (graph.metadata?.source_configs ?? []).some(s => s.language === 'lean');
+}
+
+/** True when the graph has Rust or Verus nodes or was extracted from a Rust source. */
+export function isRustGraph(graph: D3Graph): boolean {
+    return graph.nodes.some(n => n.language === 'rust' || n.language === 'verus')
+        || (graph.metadata?.source_configs ?? []).some(s => s.language === 'rust');
 }
 
 function isDirectory(p: string): boolean {

@@ -2,7 +2,8 @@
  * Call Graph Visualizer Extension
  * 
  * Shows the probegraph call graph around the Rust, Verus or Lean declaration
- * at the cursor, from a pipeline index or a probe extract.
+ * at the cursor, from a probe extract (probe-verus, probe-lean) or a legacy
+ * pipeline index.
  */
 
 import * as vscode from 'vscode';
@@ -12,14 +13,18 @@ import { resolveCursor } from '../../web/src/editor-lookup';
 import { enclosingSymbol } from './cursorSymbol';
 import { GraphPanel, Direction, HostMessage, WebviewMessage } from './webviewLoader';
 import { GraphRevision, GraphSession, Sessions } from './session';
-import { 
-    initializePipelineRunner, 
-    runPipeline, 
-    cancelPipeline, 
+import {
+    PROBE_VERUS_INSTALL_HINT,
+    cancelGenerator,
     checkPrerequisites,
-    getPipelineStatus,
+    getGeneratorStatus,
     hasGenerator,
-} from './pipelineRunner';
+    initializeGenerator,
+    installTools,
+    probeVerusCommand,
+    probeVerusVersion,
+    runGenerator,
+} from './generator';
 
 /**
  * API returned from activate(), for the integration tests
@@ -57,8 +62,8 @@ export function activate(context: vscode.ExtensionContext): CallGraphApi {
         }),
     );
 
-    // Initialize the pipeline runner
-    initializePipelineRunner(context);
+    // Initialize the generator
+    initializeGenerator(context);
     
     // Register commands
     registerCommands(context);
@@ -95,14 +100,14 @@ function registerCommands(context: vscode.ExtensionContext): void {
         })
     );
     
-    // Cancel pipeline
+    // Cancel a running probe-verus
     context.subscriptions.push(
         vscode.commands.registerCommand('callGraph.cancelPipeline', () => {
-            cancelPipeline();
+            cancelGenerator();
         })
     );
     
-    // Show pipeline output (for status bar click)
+    // Show the generator's output (for status bar click)
     context.subscriptions.push(
         vscode.commands.registerCommand('callGraph.showPipelineOutput', () => {
             // Focus the output channel
@@ -244,14 +249,18 @@ function describeIndex(graph: GraphRevision): string {
         `commit ${sourceCommit ? sourceCommit.slice(0, 7) : 'unknown'}.`;
 }
 
-/** A warning with a Regenerate button when a generator is configured. */
+/**
+ * A warning with a Regenerate button when a generator can run here. The
+ * command does not wait for the toast to be answered.
+ */
 async function reportNotIndexed(message: string, languageId: string): Promise<void> {
     const folder = sessions.session?.folder;
-    if (folder && hasGenerator(folder, languageId)) {
-        const action = await vscode.window.showWarningMessage(message, 'Regenerate');
-        if (action === 'Regenerate') {
-            await regenerateIndex();
-        }
+    if (folder && await hasGenerator(folder, languageId)) {
+        vscode.window.showWarningMessage(message, 'Regenerate').then((action) => {
+            if (action === 'Regenerate') {
+                return regenerateIndex();
+            }
+        }).then(undefined, console.error);
     } else {
         vscode.window.showWarningMessage(message);
     }
@@ -352,60 +361,101 @@ async function regenerateIndex(): Promise<void> {
         );
         return;
     }
+    // Before probe-verus is run at all, even for its version
+    if (!vscode.workspace.isTrusted) {
+        vscode.window.showErrorMessage(
+            'Regenerating the index runs probe-verus, which needs a trusted workspace.'
+        );
+        return;
+    }
     
     // Check if already running
-    if (getPipelineStatus() === 'running') {
+    if (getGeneratorStatus() === 'running') {
         const action = await vscode.window.showWarningMessage(
-            'Pipeline is already running. Would you like to cancel it?',
-            'Cancel Pipeline',
+            'probe-verus is already running. Would you like to cancel it?',
+            'Cancel',
             'Wait'
         );
         
-        if (action === 'Cancel Pipeline') {
-            cancelPipeline();
+        if (action === 'Cancel') {
+            cancelGenerator();
         }
         return;
     }
     
-    // Check prerequisites first
-    const prereqs = await checkPrerequisites();
-    if (!prereqs.ok) {
-        const detail = prereqs.missing.join('\n');
-        const action = await vscode.window.showWarningMessage(
-            `Some prerequisites are missing:\n${detail}`,
-            'Continue Anyway',
-            'Cancel'
-        );
-        
-        if (action !== 'Continue Anyway') {
-            return;
-        }
+    // probe-verus must be there. Whether it has its tools is not checked
+    // here: `setup --status` goes to GitHub for the current Verus release.
+    // A missing verus-analyzer or scip fails the extract with a clear
+    // message, and a missing `cargo verus` only skips verification, which
+    // `runGenerator` spots in the output; both toasts offer "Check
+    // Prerequisites".
+    if (await probeVerusVersion(folder) === undefined) {
+        await reportNoProbeVerus(probeVerusCommand(folder));
+        return;
     }
     
-    // Run the pipeline; the session's watcher picks up the new file
-    await runPipeline(folder);
+    // Run probe-verus; the session's watcher picks up the new file
+    await runGenerator(folder);
+}
+
+/** probe-verus itself was not found. */
+async function reportNoProbeVerus(command: string): Promise<void> {
+    const action = await vscode.window.showErrorMessage(
+        `${command} was not found. ${PROBE_VERUS_INSTALL_HINT}`,
+        'Open releases',
+        'Open Settings'
+    );
+    if (action === 'Open releases') {
+        vscode.env.openExternal(vscode.Uri.parse('https://github.com/Beneficial-AI-Foundation/probe-verus/releases'));
+    } else if (action === 'Open Settings') {
+        vscode.commands.executeCommand('workbench.action.openSettings', 'callGraph.probeVerusPath');
+    }
 }
 
 /**
- * Show prerequisite status
+ * Show prerequisite status: probe-verus's version and what `probe-verus
+ * setup --status` says about its tools (the full report is in the output
+ * channel)
  */
 async function showPrerequisiteStatus(): Promise<void> {
-    const prereqs = await checkPrerequisites();
-    
-    if (prereqs.ok) {
-        vscode.window.showInformationMessage('All prerequisites are met! ✅');
-    } else {
-        const detail = prereqs.missing.join('\n• ');
-        vscode.window.showWarningMessage(
-            `Missing prerequisites:\n• ${detail}`,
-            'Show Documentation'
-        ).then((action) => {
-            if (action === 'Show Documentation') {
-                vscode.env.openExternal(
-                    vscode.Uri.parse('https://github.com/Beneficial-AI-Foundation/probegraph')
-                );
-            }
-        });
+    const editor = vscode.window.activeTextEditor;
+    const folder = sessions.session?.folder
+        ?? (editor && vscode.workspace.getWorkspaceFolder(editor.document.uri))
+        ?? vscode.workspace.workspaceFolders?.[0];
+    if (!folder) {
+        vscode.window.showErrorMessage('Open a folder to check its prerequisites');
+        return;
+    }
+    const check = await checkPrerequisites(folder);
+    if (!check.version) {
+        await reportNoProbeVerus(check.command);
+        return;
+    }
+    if (check.missingTools === undefined) {
+        const action = await vscode.window.showErrorMessage(
+            `${check.version} found, but \`probe-verus setup --status\` failed, so whether its tools are installed is unknown.`,
+            'Show output'
+        );
+        if (action === 'Show output') {
+            vscode.commands.executeCommand('callGraph.showPipelineOutput');
+        }
+        return;
+    }
+    if (check.missingTools.length === 0) {
+        vscode.window.showInformationMessage(
+            `${check.version} found; its tools are installed. Details in the Call Graph Pipeline output.`
+        );
+        return;
+    }
+    const action = await vscode.window.showWarningMessage(
+        `${check.version} found, but ${check.missingTools.join(', ')} ${check.missingTools.length > 1 ? 'are' : 'is'} missing.`,
+        'Install tools',
+        'Show output'
+    );
+    if (action === 'Install tools') {
+        await installTools(folder);
+    } else if (action === 'Show output') {
+        vscode.commands.executeCommand('callGraph.showPipelineOutput');
     }
 }
 

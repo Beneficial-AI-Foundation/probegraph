@@ -240,7 +240,7 @@ export class Sessions implements vscode.Disposable {
                     return;
                 }
                 // Only these two settings change which file is read or what its
-                // paths mean; the pipeline settings are read when a run starts
+                // paths mean; the probe-verus settings are read when a run starts
                 const affects = (setting: string) => e.affectsConfiguration(`callGraph.${setting}`, folder.uri);
                 if (affects('indexPath') || affects('projectRoot')) {
                     this.bind(folder)?.load().catch((error) => {

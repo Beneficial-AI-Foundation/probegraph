@@ -2,6 +2,54 @@
 
 All notable changes to the Call Graph Visualizer extension will be documented in this file.
 
+## [Unreleased]
+
+"Regenerate Index" runs `probe-verus extract` instead of probegraph's
+`pipeline` binary, so the extension no longer needs a checkout and build of
+probegraph. It needs a probe-verus with `extract -o`
+([probe-verus#51](https://github.com/Beneficial-AI-Foundation/probe-verus/pull/51),
+newer than v8.0.1). The version bump to 0.2.0, which publishes the VSIX,
+waits for the probe-verus release that has it; until then `package.json`
+stays at 0.1.0 and merging releases nothing.
+
+### Added
+- `callGraph.probeVerusPath`: the probe-verus binary, `probe-verus` on PATH
+  by default; `callGraph.useRustAnalyzer` for plain Rust projects
+  (`--rust-analyzer`); `callGraph.package` for workspaces with several
+  members (`--package`)
+- "Check Prerequisites" reports `probe-verus setup --status` (tools and the
+  Rust toolchain Verus needs) and offers to install what is missing with
+  `probe-verus setup --from-project`; a failed "Regenerate Index" offers to
+  run it. Regenerate itself only checks that probe-verus runs, since the
+  status report asks GitHub for the current Verus release
+- A Rust extract's paths are resolved against the Cargo package probe-verus
+  ran on: the package containing the index file, or the single (or named)
+  member when that is a workspace root and the member is inside the folder,
+  as a Lean one's are against its Lake project. `Cargo.toml` is read with a
+  TOML parser (smol-toml)
+- A probe-verus that rejects `extract -o` (v8.0.1 and older) gets its own
+  message, and one that skipped verification because `cargo verus` is not
+  installed (it exits 0 then) gets a warning instead of the success message
+- The extract's output is read before it replaces the index; probe-verus
+  only warns when its write fails, so a truncated file is discarded and the
+  previous index kept
+
+### Changed
+- The status bar item for a run says "probe-verus: …"; "Cancel Pipeline" is
+  "Cancel Regenerate", and it stops `cargo verus` and verus-analyzer too, not
+  only probe-verus; cancelling again kills what did not exit
+- `callGraph.skipVerification` maps to `--skip-verify`
+- "Show at Cursor" no longer waits for the "not in the graph" warning to be
+  dismissed
+
+### Deprecated
+- `callGraph.defaultScipCallgraphPath`: no longer read; the settings UI says
+  so
+
+### Removed
+- `callGraph.skipSimilarLemmas`: similar-lemmas enrichment is not part of the
+  extract; a language-agnostic probe for it is planned
+
 ## [0.1.0] - 2026-10-02
 
 First release from the probegraph repo, as a VSIX attached to the
