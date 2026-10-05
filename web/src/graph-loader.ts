@@ -231,6 +231,15 @@ function convertBlueprintNodes(
 }
 
 /**
+ * The language an edge is judged cross-language against. probe-verus tags
+ * exec atoms `rust` and spec/proof atoms `verus`, so an exec function's
+ * requires/ensures edges are not translations and must keep their location.
+ */
+function languageFamily(language: string | undefined): string | undefined {
+  return language === 'verus' ? 'rust' : language;
+}
+
+/**
  * Convert probe atom dict format (probe-verus / probe-lean atoms.json) to D3Graph format.
  * probe-leanblueprint node atoms (`language: "blueprint"`) are left out of
  * the result and returned as its `blueprintLayer`.
@@ -338,10 +347,10 @@ function convertCodeAtoms(atoms: Record<string, ProbeAtom>): D3Graph {
   const roleOf = new Map(Object.entries(atoms).map(([name, a]) => [name, atomRoleClassifier(a)]));
   const links: D3Link[] = [];
   for (const [atomName, atom] of Object.entries(atoms)) {
-    const srcLang = atom.language;
+    const srcLang = languageFamily(atom.language);
     const depRole = roleOf.get(atomName)!;
     const isCrossLang = (dep: string) => {
-      const tgtLang = atoms[dep]?.language;
+      const tgtLang = languageFamily(atoms[dep]?.language);
       return Boolean(srcLang && tgtLang && srcLang !== tgtLang);
     };
 

@@ -65,6 +65,51 @@ describe('convertAtomDictToD3Graph external dependencies', () => {
   });
 });
 
+describe('convertAtomDictToD3Graph edge types across languages', () => {
+  const rustExec = (over: Partial<ProbeAtom>) => atom({
+    kind: 'exec', language: 'rust', "code-path": 'src/edwards.rs', ...over,
+  });
+  const verusSpec = (over: Partial<ProbeAtom>) => atom({
+    kind: 'spec', language: 'verus', "code-path": 'src/specs.rs', ...over,
+  });
+
+  it('keeps requires/ensures locations between rust exec and verus spec atoms', () => {
+    const atoms: Record<string, ProbeAtom> = {
+      'probe:neg': rustExec({
+        dependencies: ['probe:well_formed', 'probe:edwards_neg'],
+        "dependencies-with-locations": [
+          { "code-name": 'probe:well_formed', line: 1, location: 'precondition' },
+          { "code-name": 'probe:well_formed', line: 2, location: 'postcondition' },
+          { "code-name": 'probe:edwards_neg', line: 3, location: 'inner' },
+        ],
+      }),
+      'probe:well_formed': verusSpec({}),
+      'probe:edwards_neg': verusSpec({}),
+    };
+    const types = convertAtomDictToD3Graph(atoms).links
+      .map(l => `${l.target} ${l.type}`)
+      .sort();
+    expect(types).toEqual([
+      'probe:edwards_neg inner',
+      'probe:well_formed postcondition',
+      'probe:well_formed precondition',
+    ]);
+  });
+
+  it('still maps rust exec atoms to lean translations', () => {
+    const atoms: Record<string, ProbeAtom> = {
+      'probe:neg': rustExec({
+        dependencies: ['probe:Lean.neg'],
+        "dependencies-with-locations": [
+          { "code-name": 'probe:Lean.neg', line: 1, location: 'inner' },
+        ],
+      }),
+      'probe:Lean.neg': atom({ kind: 'def', language: 'lean' }),
+    };
+    expect(convertAtomDictToD3Graph(atoms).links.map(l => l.type)).toEqual(['mapping']);
+  });
+});
+
 describe('convertAtomDictToD3Graph entry points', () => {
   const atoms: Record<string, ProbeAtom> = {
     // Public-API Rust atom with a Lean translation: both are entry points
