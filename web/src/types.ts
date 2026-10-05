@@ -67,8 +67,15 @@ export type DeclKind = string;
 /** `language` of probe-leanblueprint node atoms. */
 export const BLUEPRINT_LANGUAGE = 'blueprint';
 
-/** Detected project language based on kind values in the graph */
+/**
+ * Detected project language. `verus` covers the Rust side whether or not
+ * the extract has Verus annotations (probe-rust and probe-aeneas emit
+ * `language: "rust"`, probe-verus `"verus"`); `mixed` is Rust plus Lean.
+ */
 export type ProjectLanguage = 'verus' | 'lean' | 'mixed' | 'blueprint' | 'unknown';
+
+/** Atom `language` values that belong to the Rust side of a project. */
+const RUST_LANGUAGES = new Set(['rust', 'verus']);
 
 const VERUS_KINDS = new Set(['exec', 'proof', 'spec']);
 const LEAN_KINDS = new Set([
@@ -87,10 +94,10 @@ export function detectProjectLanguage(graph: D3Graph): ProjectLanguage {
   }
 
   if (langs.size > 0) {
-    const hasVerus = langs.has('verus');
+    const hasRust = [...langs].some(l => RUST_LANGUAGES.has(l));
     const hasLean = langs.has('lean');
-    if (hasVerus && hasLean) return 'mixed';
-    if (hasVerus) return 'verus';
+    if (hasRust && hasLean) return 'mixed';
+    if (hasRust) return 'verus';
     if (hasLean) return 'lean';
     // The blueprint layer is its own graph (see graph-loader.ts)
     if (langs.size === 1 && langs.has(BLUEPRINT_LANGUAGE)) return 'blueprint';
@@ -301,6 +308,7 @@ export interface D3Link {
 export interface SourceConfig {
   github_url: string;
   ref: string;
+  /** Repo-relative directory prepended to atom paths; see `sourcePathPrefix`. */
   path_prefix: string;
   language: string;
   /** Package name of the envelope input, used to disambiguate several same-language inputs. */
@@ -467,6 +475,13 @@ export interface Schema2Source {
   language: string;
   package: string;
   "package-version": string;
+  /**
+   * Directory of the package inside the repo (`git rev-parse --show-prefix`
+   * where the extractor ran), e.g. `curve25519-dalek` or `rust/protocol`;
+   * empty or absent for a package at the repo root. Atom `code-path`s are
+   * relative to it. Optional: not every producer emits it yet.
+   */
+  "package-path"?: string;
 }
 
 export interface Schema2Envelope {

@@ -433,9 +433,23 @@ function convertCodeAtoms(atoms: Record<string, ProbeAtom>): D3Graph {
  * and Schema 2.0 envelopes.
  */
 /**
+ * Directory of a source's package inside its repo, prepended to atom paths
+ * when linking to GitHub. The envelope's `package-path` is authoritative.
+ * Without it, a Rust package is assumed to be a workspace member named
+ * after itself (`curve25519-dalek/src/...`); that guess is wrong for a
+ * crate at the repo root or in a differently named directory, so producers
+ * should emit `package-path`. Lean paths are relative to the Lake root,
+ * which is taken to be the repo root.
+ */
+export function sourcePathPrefix(src: Schema2Source): string {
+  const declared = src['package-path'];
+  if (typeof declared === 'string') return declared.replace(/^\/|\/$/g, '');
+  return src.language === 'rust' ? src.package : '';
+}
+
+/**
  * Extract per-language GitHub source configs from a Schema 2.0 envelope.
  * Uses the commit hash as the git ref (always valid on GitHub).
- * For Rust workspace crates the package name becomes the path prefix.
  */
 function extractSourceConfigs(envelope: Schema2Envelope): SourceConfig[] {
   const entries: Schema2Source[] = [];
@@ -448,7 +462,7 @@ function extractSourceConfigs(envelope: Schema2Envelope): SourceConfig[] {
   return entries.map(src => ({
     github_url: src.repo.replace(/\.git$/, ''),
     ref: src.commit,
-    path_prefix: src.language === 'rust' ? src.package : '',
+    path_prefix: sourcePathPrefix(src),
     language: src.language,
     package: src.package,
   }));

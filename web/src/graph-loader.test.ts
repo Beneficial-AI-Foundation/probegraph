@@ -1,8 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { convertAtomDictToD3Graph, parseAndNormalizeGraph, pickSourceConfig, validateGraph } from './graph-loader';
-import { D3Graph, ProbeAtom, SourceConfig } from './types';
+import {
+  convertAtomDictToD3Graph, parseAndNormalizeGraph, pickSourceConfig, sourcePathPrefix, validateGraph,
+} from './graph-loader';
+import { D3Graph, ProbeAtom, Schema2Source, SourceConfig, detectProjectLanguage } from './types';
 
 const fixture = (name: string): unknown =>
   JSON.parse(readFileSync(resolve(__dirname, 'test-data', name), 'utf8'));
@@ -216,6 +218,37 @@ describe('pickSourceConfig', () => {
   });
 });
 
+describe('sourcePathPrefix', () => {
+  const source = (over: Partial<Schema2Source>): Schema2Source => ({
+    repo: 'https://github.com/org/repo.git', commit: 'abc', language: 'rust',
+    package: 'spqr', "package-version": '1.5.0', ...over,
+  });
+
+  it('uses the declared package-path, trimming slashes', () => {
+    expect(sourcePathPrefix(source({ "package-path": 'rust/protocol/' }))).toBe('rust/protocol');
+    expect(sourcePathPrefix(source({ "package-path": '' }))).toBe('');
+    expect(sourcePathPrefix(source({ language: 'lean', package: 'Spqr', "package-path": 'lean/' }))).toBe('lean');
+  });
+
+  it('without one, assumes a Rust workspace member named after the package and no Lean prefix', () => {
+    expect(sourcePathPrefix(source({}))).toBe('spqr');
+    expect(sourcePathPrefix(source({ language: 'lean', package: 'Spqr' }))).toBe('');
+  });
+
+  it('reaches the GitHub link through the envelope', () => {
+    const envelope = {
+      schema: 'probe-rust/extract', "schema-version": '3.0',
+      tool: { name: 'probe-rust', version: '0.1.0', command: 'extract' },
+      source: source({ "package-path": '' }),
+      timestamp: '2026-10-05T00:00:00Z',
+      data: { 'probe:a': atom({ language: 'rust', kind: 'exec', "code-path": 'src/lib.rs' }) },
+    };
+    expect(parseAndNormalizeGraph(envelope).metadata.source_configs).toEqual([{
+      github_url: 'https://github.com/org/repo', ref: 'abc', path_prefix: '', language: 'rust', package: 'spqr',
+    }]);
+  });
+});
+
 describe('convertAtomDictToD3Graph statement / body-or-proof roles', () => {
   const roleOf = (g: ReturnType<typeof convertAtomDictToD3Graph>, s: string, t: string) =>
     g.links.filter(l => l.source === s && l.target === t).map(l => l.role);
@@ -405,6 +438,27 @@ describe('parseAndNormalizeGraph flags and provenance', () => {
     expect(merged.metadata.extracted_at).toBeUndefined();
     expect(merged.metadata.source_commit).toBeUndefined();
     expect(merged.metadata.source_configs).toHaveLength(2);
+  });
+});
+
+describe('detectProjectLanguage', () => {
+  const rust = (over: Partial<ProbeAtom> = {}) =>
+    atom({ kind: 'exec', language: 'rust', "code-path": 'src/lib.rs', ...over });
+
+  it('treats probe-rust atoms as the Rust side, like probe-verus ones', () => {
+    expect(detectProjectLanguage(convertAtomDictToD3Graph({ 'probe:a': rust() }))).toBe('verus');
+    expect(detectProjectLanguage(convertAtomDictToD3Graph({ 'probe:a': rust({ language: 'verus' }) })))
+      .toBe('verus');
+  });
+
+  it('is mixed for Rust plus Lean, whichever Rust extractor ran', () => {
+    expect(detectProjectLanguage(convertAtomDictToD3Graph({ 'probe:a': rust(), 'probe:b': atom({}) })))
+      .toBe('mixed');
+    expect(detectProjectLanguage(parseAndNormalizeGraph(mergedExtract))).toBe('mixed');
+  });
+
+  it('is lean for a Lean-only extract', () => {
+    expect(detectProjectLanguage(parseAndNormalizeGraph(leanExtract))).toBe('lean');
   });
 });
 
