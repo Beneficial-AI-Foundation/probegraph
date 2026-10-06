@@ -369,6 +369,9 @@ export class FileMapVisualization {
     const rectLabel = lang === 'verus' ? 'Exec function' : 'Definition';
     const ellipseLabel = lang === 'verus' ? 'Proof / lemma' : 'Theorem';
     const diamondLabel = lang === 'verus' ? 'Spec function' : 'Axiom';
+    // Only Verus contracts produce requires/ensures edges; a plain Rust graph has none
+    const hasContractLinks = this.state.fullGraph?.links.some(
+      l => l.type === 'precondition' || l.type === 'postcondition') ?? false;
 
     const legend = document.createElement('div');
     legend.className = 'bp-legend';
@@ -406,7 +409,7 @@ export class FileMapVisualization {
           <svg width="28" height="10"><line x1="0" y1="5" x2="28" y2="5" stroke="#888" stroke-width="1.5"/></svg>
           <span>${lang === 'lean' ? 'Dependency' : 'Body call'}</span>
         </div>
-        ${(lang === 'verus' || lang === 'mixed') ? `
+        ${hasContractLinks ? `
         <div class="bp-legend-item">
           <svg width="28" height="10"><line x1="0" y1="5" x2="28" y2="5" stroke="${edgeTypeColor('precondition')}" stroke-width="1.5" stroke-dasharray="4,2"/></svg>
           <span>Requires</span>
