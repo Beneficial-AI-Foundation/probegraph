@@ -1967,10 +1967,11 @@ function graphHasLinkRoles(): boolean {
 }
 
 /**
- * Dynamically render Call Type filter checkboxes based on detected language.
- * Verus has precondition/postcondition edges (requires/ensures clauses);
- * Lean graphs split dependencies into statement and body/proof. Other
- * languages only have body calls.
+ * Dynamically render Call Type filter checkboxes for the edge types the
+ * graph has. Verus contracts give precondition/postcondition edges
+ * (requires/ensures clauses); Lean graphs split dependencies into statement
+ * and body/proof; merges add mapping and spec edges. A graph with body
+ * calls only has nothing to filter, and the panel is hidden.
  */
 function renderCallTypeFilters(lang: ProjectLanguage): void {
   const container = document.getElementById('call-types-container');
@@ -1978,23 +1979,25 @@ function renderCallTypeFilters(lang: ProjectLanguage): void {
 
   // Blueprint uses edges split into statement and proof like Lean dependencies
   const isLean = lang === 'lean' || lang === 'blueprint';
-  const isVerus = lang === 'verus' || lang === 'mixed';
-  const hasMappingLinks = state.fullGraph?.links.some(l => l.type === 'mapping') ?? false;
-  const hasSpecLinks = state.fullGraph?.links.some(l => l.type === 'spec') ?? false;
+  const links = state.fullGraph?.links ?? [];
+  const hasContractLinks = links.some(l => l.type === 'precondition' || l.type === 'postcondition');
+  const hasMappingLinks = links.some(l => l.type === 'mapping');
+  const hasSpecLinks = links.some(l => l.type === 'spec');
   const hasRoles = graphHasLinkRoles();
+  const hasFilterableLinks = hasContractLinks || hasMappingLinks || hasSpecLinks || hasRoles;
 
   if (isLean) {
     // Lean dependencies are all body calls; the role boxes split them
     state.filters.showInnerCalls = true;
     state.filters.showPreconditionCalls = true;
     state.filters.showPostconditionCalls = true;
-  } else if (!isVerus && !hasMappingLinks && !hasSpecLinks && !hasRoles) {
+  } else if (!hasFilterableLinks) {
     state.filters.showInnerCalls = true;
     state.filters.showPreconditionCalls = false;
     state.filters.showPostconditionCalls = false;
   }
 
-  if (!isVerus && !hasMappingLinks && !hasSpecLinks && !hasRoles) {
+  if (!hasFilterableLinks) {
     container.style.display = 'none';
     return;
   }
@@ -2011,7 +2014,7 @@ function renderCallTypeFilters(lang: ProjectLanguage): void {
     </label>`;
   }
 
-  if (isVerus) {
+  if (hasContractLinks) {
     html += `
     <label class="checkbox-label">
       <input type="checkbox" id="show-precondition-calls" />
@@ -2054,7 +2057,7 @@ function renderCallTypeFilters(lang: ProjectLanguage): void {
     </label>`;
   }
 
-  if (isVerus && !hasMappingLinks && !hasSpecLinks) {
+  if (hasContractLinks && !hasMappingLinks && !hasSpecLinks) {
     html += `
     <small style="color: var(--pg-text-muted); font-size: 0.75rem; display: block; margin-top: 0.25rem;">
       Requires/Ensures edges typically connect to Spec functions

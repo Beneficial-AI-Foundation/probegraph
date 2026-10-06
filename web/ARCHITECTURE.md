@@ -87,8 +87,12 @@ probe run instead of a single `source`:
 ```
 
 From `source` / `inputs[]` the loader derives per-language GitHub source
-configs (repo, commit as ref, package as path prefix), so nodes link to source
-across a multi-repo merge (`pickSourceConfig`).
+configs (repo, commit as ref, package directory as path prefix), so nodes
+link to source across a multi-repo merge (`pickSourceConfig`). The prefix
+comes from the optional `source.package-path` (the package's directory in
+the repo); without it a Rust package is assumed to sit in a workspace
+member named after itself, which is wrong for crates at the repo root
+(`sourcePathPrefix`).
 
 **3. D3Graph.** `{ nodes, links, metadata }`, the viewer's internal format,
 accepted directly (emitted by the Rust pipeline's `atoms_to_d3_graph` and
