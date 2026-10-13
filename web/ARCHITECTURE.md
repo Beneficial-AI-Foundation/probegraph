@@ -201,7 +201,8 @@ All constants are in `main.ts` unless noted.
   `reachabilityFits` skips the bitsets above `MAX_REACHABILITY_COMPONENTS`
   (20,000) components or `MAX_REACHABILITY_WORDS` (250 million words, about
   0.35 s), and the Guide shows a note in place of the ranked lists. The
-  condensation and the layers are linear and always computed.
+  condensation and the layers are linear and always computed. The Layers
+  strip renders at most `MAX_LAYER_ROWS` (60, `guide/guide-panel.ts`) rows.
 - **Debounced input**: on large graphs only, typing in the query, exclude and
   include fields applies after `SEARCH_DEBOUNCE_MS`.
 - Nodes and links are cloned before D3 mutates them.

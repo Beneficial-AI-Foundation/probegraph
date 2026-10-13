@@ -140,18 +140,51 @@ const LAYER_STATUSES = [
 ] as const;
 
 /** One row per topological level: node count and status shares. */
+/** Most rows the Layers strip shows. The deeper levels share the last row. */
+export const MAX_LAYER_ROWS = 60;
+
+export interface LayerRow {
+  label: string;
+  /** Level range, for the tooltip of a folded row; null for one level. */
+  range: string | null;
+  stat: LayerStat;
+}
+
+/**
+ * The strip's rows: one per level, up to MAX_LAYER_ROWS. A deeper graph
+ * folds its top levels into the last row, so a long chain does not render
+ * one row per node.
+ */
+export function layerRows(layers: LayerStat[]): LayerRow[] {
+  const one = (stat: LayerStat): LayerRow => ({ label: `L${stat.level}`, range: null, stat });
+  if (layers.length <= MAX_LAYER_ROWS) return layers.map(one);
+  const rest = layers.slice(MAX_LAYER_ROWS - 1);
+  const stat: LayerStat = { level: rest[0].level, nodes: 0, verified: 0, transitivelyVerified: 0, trusted: 0 };
+  for (const l of rest) {
+    stat.nodes += l.nodes;
+    stat.verified += l.verified;
+    stat.transitivelyVerified += l.transitivelyVerified;
+    stat.trusted += l.trusted;
+  }
+  const last = rest[rest.length - 1].level;
+  return [
+    ...layers.slice(0, MAX_LAYER_ROWS - 1).map(one),
+    { label: `L${stat.level}+`, range: `Levels ${stat.level} to ${last}`, stat },
+  ];
+}
+
 function layersSection(layers: LayerStat[]): HTMLElement {
   const section = sectionElement('Layers',
     'Cycles condensed, level 0 has no dependencies. Shares of transitively verified, verified and trusted per level.');
   const strip = document.createElement('div');
   strip.className = 'guide-layers';
-  for (const layer of layers) {
+  for (const { label: text, range, stat: layer } of layerRows(layers)) {
     const row = document.createElement('div');
     row.className = 'guide-layer';
     row.dataset.level = String(layer.level);
     const label = document.createElement('span');
     label.className = 'guide-layer-label';
-    label.textContent = `L${layer.level}`;
+    label.textContent = text;
     const count = document.createElement('span');
     count.className = 'guide-layer-count';
     count.textContent = String(layer.nodes);
@@ -166,7 +199,7 @@ function layersSection(layers: LayerStat[]): HTMLElement {
     const shares = document.createElement('span');
     shares.className = 'guide-layer-shares';
     shares.textContent = layerShares(layer);
-    row.title = shares.textContent;
+    row.title = range ? `${range}: ${shares.textContent}` : shares.textContent;
     row.append(label, count, bar, shares);
     strip.appendChild(row);
   }

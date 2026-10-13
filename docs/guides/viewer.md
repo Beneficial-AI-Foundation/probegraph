@@ -319,7 +319,9 @@ involved.
   the time the page is blocked. The Layers strip still shows.
 - The **Layers** strip groups cycles into one node, then gives each
   topological level (level 0 has no dependencies) its node count and the
-  shares of transitively verified, verified and trusted nodes.
+  shares of transitively verified, verified and trusted nodes. It shows
+  at most 60 rows. In a deeper graph, the last row (for example `L59+`)
+  combines the remaining levels.
 - Lists and suggestions only name nodes and edges the current kind and
   edge-type filters show, and update when those filters change. The counts
   always use every node and every dependency.
