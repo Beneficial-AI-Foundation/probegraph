@@ -100,6 +100,9 @@ export interface GuideTransition {
 export interface GuideResult {
   shown: number;           // nodes rendered
   total: number;           // nodes in the result before the render cap
+  anchorsShown?: number;   // anchors kept when there were more than the render cap
+  anchorsTotal?: number;
+  displayRemoved?: number; // nodes the traversal reached that display filters removed
   missingAnchor: boolean;  // the exact target itself is filtered out
   seeded: boolean;         // large graph without a query: the entry-point view
   tooLarge: boolean;       // large graph without a query and no entry-point view: nothing rendered

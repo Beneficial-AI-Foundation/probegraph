@@ -23,6 +23,7 @@ import { ActiveView, Layer, defaultFilters, readURLState, writeURLState } from '
 
 import { GuidePanel, showToast } from './guide/guide-panel';
 import { buildGraphSummary } from './guide/static-analysis';
+import { truncateToBudget, truncationSeeds } from './truncate';
 import type { GuideActions, GuideResult, GuideTransition } from './guide/types';
 
 // ============================================================================
@@ -2591,36 +2592,21 @@ function applyFiltersAndUpdate(): void {
   const missingAnchor = anchors.size > 0 && !isFocusIntent(state.filters.intent)
     && !filtered.nodes.some(n => anchors.has(n.id));
 
-  // Limit rendered nodes for large results to prevent D3 freeze
-  // Crate Map and Hierarchy aggregate into group boxes, so truncation would
-  // distort their results
-  let wasTruncated = false;
-  if (!isAggregatedView(activeView) && filtered.nodes.length > MAX_RENDERED_NODES) {
-    wasTruncated = true;
-    
-    // Keep the query's anchors, then the nodes with highest connectivity
-    const sortedNodes = [...filtered.nodes].sort((a, b) =>
-      Number(anchors.has(b.id)) - Number(anchors.has(a.id)) ||
-      (b.dependents.length + (b.dependencies?.length || 0)) - (a.dependents.length + (a.dependencies?.length || 0))
-    );
-    const keptNodes = sortedNodes.slice(0, MAX_RENDERED_NODES);
-    const keptNodeIds = new Set(keptNodes.map(n => n.id));
-    
-    // Filter links to only include those between kept nodes
-    const keptLinks = filtered.links.filter(link => {
-      const sourceId = typeof link.source === 'string' ? link.source : link.source.id;
-      const targetId = typeof link.target === 'string' ? link.target : link.target.id;
-      return keptNodeIds.has(sourceId) && keptNodeIds.has(targetId);
-    });
-    
-    filtered = { nodes: keptNodes, links: keptLinks, metadata: filtered.metadata };
-  }
-  
+  // Limit rendered nodes for large results to prevent D3 freeze: keep the
+  // nodes nearest to the query's anchors (see truncate.ts). Crate Map and
+  // Hierarchy aggregate into group boxes, so truncation would distort them.
+  const seeds = truncationSeeds(compiled.query, anchors, filtered);
+  const cut = isAggregatedView(activeView) ? null : truncateToBudget(filtered, MAX_RENDERED_NODES, seeds);
+  const wasTruncated = cut !== null && cut.omitted > 0;
+  if (cut) filtered = cut.graph;
+
   state.filteredGraph = filtered;
-  lastRenderResult = isAggregatedView(activeView) ? null
-    : { shown: filtered.nodes.length, total: resultSize, missingAnchor, seeded: false, tooLarge: false };
+  lastRenderResult = cut === null ? null : {
+    shown: filtered.nodes.length, total: resultSize, missingAnchor, seeded: false, tooLarge: false,
+    anchorsShown: cut.anchorsShown, anchorsTotal: cut.anchorsTotal, displayRemoved: filtered.displayRemoved,
+  };
   visualization?.update(state.filteredGraph);
-  updateStats(wasTruncated ? filtered.nodes.length : undefined);
+  updateStats(wasTruncated ? { shown: filtered.nodes.length, byAnchors: cut.anchorsTotal > 0 } : undefined);
   updateNodeInfo();
   updateHiddenNodesUI();
   
@@ -2670,9 +2656,10 @@ function handleStateChange(newState: GraphState, selectionChanged: boolean = fal
 
 /**
  * Update statistics display
- * @param truncatedTo - if provided, indicates results were truncated to this count
+ * @param truncated - if provided, the results were truncated to `shown` nodes,
+ *   nearest to the query's anchors when `byAnchors`, else the most connected
  */
-function updateStats(truncatedTo?: number): void {
+function updateStats(truncated?: { shown: number; byAnchors: boolean }): void {
   const statsDiv = document.getElementById('stats');
   if (!statsDiv) return;
 
@@ -2684,7 +2671,7 @@ function updateStats(truncatedTo?: number): void {
   const filtered = state.filteredGraph || state.fullGraph;
   const isLarge = isLargeGraph(state.fullGraph);
   const needsFilter = isLarge && !hasSearchFilters() && !isAggregatedView(activeView) && !seededViewInfo;
-  const wasTruncated = truncatedTo !== undefined;
+  const wasTruncated = truncated !== undefined;
 
   const seededBanner = seededViewInfo ? `
     <div class="stat-item" style="background: #ecfae8; padding: 8px; border-radius: 4px; margin-bottom: 8px;">
@@ -2719,7 +2706,9 @@ function updateStats(truncatedTo?: number): void {
     <div class="stat-item" style="background: var(--pg-accent-soft); padding: 8px; border-radius: 4px; margin-bottom: 8px;">
       <span style="color: var(--pg-accent); font-weight: bold;">Results Limited</span>
       <p style="margin: 4px 0 0 0; font-size: 0.85rem; color: var(--pg-text-muted);">
-        Showing top ${truncatedTo} nodes by connectivity. Use a more specific query or reduce <strong>Depth</strong> to narrow results.
+        ${truncated?.byAnchors
+          ? `Showing the ${truncated.shown} nodes nearest to the query target.`
+          : `Showing top ${truncated?.shown} nodes by connectivity.`} Use a more specific query or reduce <strong>Depth</strong> to narrow results.
       </p>
     </div>
     ` : ''}

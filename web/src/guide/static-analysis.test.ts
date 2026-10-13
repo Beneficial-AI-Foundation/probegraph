@@ -151,9 +151,19 @@ describe('result toast', () => {
       .toBe('180 nodes: callers of GF16');
   });
 
-  it('notes truncation by the render cap', () => {
+  it('reports the omitted count when the render cap applies', () => {
     expect(resultMessage(sink, 'chip', { shown: 200, total: 950, missingAnchor: false, seeded: false, tooLarge: false }))
-      .toBe('200 nodes: callers of GF16 (truncated from 950)');
+      .toBe('200 nodes: callers of GF16 (750 of 950 not shown)');
+  });
+
+  it('says when only the first targets fit the render cap', () => {
+    const r = { shown: 200, total: 950, anchorsShown: 200, anchorsTotal: 340, missingAnchor: false, seeded: false, tooLarge: false };
+    expect(resultMessage(sink, 'chip', r)).toBe('200 nodes: callers of GF16 (750 of 950 not shown, first 200 of 340 targets)');
+  });
+
+  it('says when display filters removed nodes', () => {
+    const r = { shown: 12, total: 12, displayRemoved: 3, missingAnchor: false, seeded: false, tooLarge: false };
+    expect(resultMessage(sink, 'chip', r)).toBe('12 nodes: callers of GF16 (3 removed by display filters)');
   });
 
   it('names the entry points view on a large graph without a query', () => {

@@ -67,8 +67,18 @@ export function resultMessage(action: SuggestedAction, label: string, result: Gu
     return `${action.label} is hidden by the current filters`;
   }
   const noun = result.shown === 1 ? 'node' : 'nodes';
-  const note = result.seeded ? ' (entry points view)'
-    : result.shown < result.total ? ` (truncated from ${result.total})` : '';
+  const notes: string[] = [];
+  if (result.seeded) {
+    notes.push('entry points view');
+  } else if (result.shown < result.total) {
+    notes.push(`${result.total - result.shown} of ${result.total} not shown`);
+    if (result.anchorsShown !== undefined && result.anchorsTotal !== undefined
+      && result.anchorsShown < result.anchorsTotal) {
+      notes.push(`first ${result.anchorsShown} of ${result.anchorsTotal} targets`);
+    }
+  }
+  if (result.displayRemoved) notes.push(`${result.displayRemoved} removed by display filters`);
+  const note = notes.length > 0 ? ` (${notes.join(', ')})` : '';
   return `${result.shown} ${noun}: ${describeAction(action)}${note}`;
 }
 

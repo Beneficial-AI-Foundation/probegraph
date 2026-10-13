@@ -857,6 +857,7 @@ export function executeQuery(
 
   // -- Step 4: assemble result nodes --
   let resultNodes = fullGraph.nodes.filter(n => traversalResult.nodeIds.has(n.id));
+  const assembled = resultNodes.length;
 
   // -- Step 5: apply display predicates --
   if (!displayPredicates.showLibsignal || !displayPredicates.showNonLibsignal) {
@@ -882,6 +883,8 @@ export function executeQuery(
     });
   }
 
+  let displayRemoved = assembled - resultNodes.length;
+
   // Re-apply kind filter on result nodes (for depthFromSelected, the traversal
   // used the traversableGraph which already has kind-filtered nodes, but we
   // still need kind filtering for the no-traversal case that also post-filters)
@@ -905,9 +908,11 @@ export function executeQuery(
     const seedIds = new Set<string>();
     if (sourceMatchIds) for (const id of sourceMatchIds) seedIds.add(id);
     if (sinkMatchIds) for (const id of sinkMatchIds) seedIds.add(id);
+    const before = resultNodes.length;
     resultNodes = resultNodes.filter(n =>
       seedIds.has(n.id) || nodeMatchesIncludeFilePattern(n, resultFilePatterns),
     );
+    displayRemoved += before - resultNodes.length;
   }
 
   // -- Step 6: filter links --
@@ -977,6 +982,7 @@ export function executeQuery(
       total_edges: resultLinks.length,
     },
     nodeDepths,
+    displayRemoved: query.type === 'noTraversal' ? 0 : displayRemoved,
   };
 }
 
