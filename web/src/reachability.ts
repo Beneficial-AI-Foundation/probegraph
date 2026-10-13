@@ -48,14 +48,14 @@ export class Bitset {
   /** Members in increasing order. */
   forEach(fn: (i: number) => void): void {
     const w = this.words;
-    for (let k = 0; k < w.length; k++) {
-      let word = w[k];
-      while (word !== 0) {
-        const bit = 31 - Math.clz32(word & -word);
-        fn((k << 5) + bit);
-        word &= word - 1;
-      }
-    }
+    for (let k = 0; k < w.length; k++) eachBit(w[k], k, fn);
+  }
+
+  /** Members of both this set and `other` (same size), in increasing order. */
+  forEachShared(other: Bitset, fn: (i: number) => void): void {
+    const w = this.words;
+    const o = other.words;
+    for (let k = 0; k < w.length; k++) eachBit(w[k] & o[k], k, fn);
   }
 
   count(): number {
@@ -66,6 +66,14 @@ export class Bitset {
       n += Math.imul((v + (v >>> 4)) & 0x0f0f0f0f, 0x01010101) >>> 24;
     }
     return n;
+  }
+}
+
+function eachBit(word: number, k: number, fn: (i: number) => void): void {
+  while (word !== 0) {
+    const bit = 31 - Math.clz32(word & -word);
+    fn((k << 5) + bit);
+    word &= word - 1;
   }
 }
 
@@ -213,10 +221,22 @@ export function dependentClosure(c: Condensation): Bitset[] {
   return sets;
 }
 
-/** Number of declarations in a set of components (an SCC of five counts five). */
+const cycleMasks = new WeakMap<Condensation, Bitset>();
+
+/**
+ * Number of declarations in a set of components (an SCC of five counts
+ * five). A popcount, plus the extra members of the cycle components in the
+ * set, so the cost does not grow with the size of the set.
+ */
 export function memberCount(c: Condensation, set: Bitset): number {
-  let n = 0;
-  set.forEach(k => { n += c.members[k].length; });
+  let cycles = cycleMasks.get(c);
+  if (!cycles) {
+    cycles = new Bitset(c.members.length);
+    c.members.forEach((m, k) => { if (m.length > 1) cycles!.add(k); });
+    cycleMasks.set(c, cycles);
+  }
+  let n = set.count();
+  set.forEachShared(cycles, k => { n += c.members[k].length - 1; });
   return n;
 }
 
@@ -242,11 +262,29 @@ export function dependencyLevels(c: Condensation): number[] {
 /**
  * Largest condensed graph (components after merging cycles) that gets
  * dependent counts. The closure keeps one bitset of C bits per component,
- * so memory is 4 * C * ceil(C / 32) bytes (about 50 MB at 20,000) and time
- * grows with C times the condensed edge count. Measured in Node on chain-like
- * graphs: 20,000 components take about 1 s, 50,000 about 6 s.
+ * so memory is 4 * C * ceil(C / 32) bytes, about 50 MB at 20,000.
  */
 export const MAX_REACHABILITY_COMPONENTS = 20_000;
+
+/**
+ * Largest closure work, in 32-bit words: each condensed edge unions one
+ * bitset of ceil(C / 32) words. Measured in Node at about 1.4 ns per word,
+ * so the limit is about 0.35 s (20,000 components with 400,000 condensed
+ * edges). A chain of 20,000 components is 12.5 million words, about 0.1 s.
+ */
+export const MAX_REACHABILITY_WORDS = 250_000_000;
+
+/**
+ * Whether the dependent counts of a condensed graph fit in the limits
+ * (MAX_REACHABILITY_COMPONENTS and MAX_REACHABILITY_WORDS).
+ */
+export function reachabilityFits(c: Condensation): boolean {
+  const components = c.members.length;
+  if (components > MAX_REACHABILITY_COMPONENTS) return false;
+  let edges = 0;
+  for (const deps of c.dependencies) edges += deps.length;
+  return edges * Math.ceil(components / 32) <= MAX_REACHABILITY_WORDS;
+}
 
 export interface GraphReachability {
   condensation: Condensation;
@@ -275,15 +313,15 @@ export function graphCondensation(graph: D3Graph): Condensation {
 
 /**
  * Condensation, reverse-reachability bitsets and dependent counts of a
- * graph, computed once per graph object. Null when the graph has more than
- * MAX_REACHABILITY_COMPONENTS components: the closure would take seconds
- * and hundreds of MB on the main thread.
+ * graph, computed once per graph object. Null when the condensation does
+ * not fit in the limits (reachabilityFits), so the main thread does not
+ * stall.
  */
 export function graphReachability(graph: D3Graph): GraphReachability | null {
   if (reachabilityCache.has(graph)) return reachabilityCache.get(graph)!;
   const condensation = graphCondensation(graph);
   let result: GraphReachability | null = null;
-  if (condensation.members.length <= MAX_REACHABILITY_COMPONENTS) {
+  if (reachabilityFits(condensation)) {
     const dependentSets = dependentClosure(condensation);
     const perComponent = dependentSets.map(set => memberCount(condensation, set));
     const dependentCounts = new Map<string, number>();
@@ -297,7 +335,7 @@ export function graphReachability(graph: D3Graph): GraphReachability | null {
 /**
  * Unique transitive dependents of each node: the nodes that reach it. For
  * A -> B -> C the counts are A 0, B 1, C 2. Members of one SCC share a
- * count and do not count each other. Null above MAX_REACHABILITY_COMPONENTS.
+ * count and do not count each other. Null when reachabilityFits is false.
  */
 export function transitiveDependentCounts(graph: D3Graph): Map<string, number> | null {
   return graphReachability(graph)?.dependentCounts ?? null;
@@ -311,7 +349,7 @@ export interface DependentRank {
 /**
  * Candidates ranked by unique transitive dependents, ties by ID. Counts use
  * every node of the graph; `isCandidate` only selects what is ranked. Null
- * above MAX_REACHABILITY_COMPONENTS.
+ * when reachabilityFits is false.
  */
 export function rankByTransitiveDependents(
   graph: D3Graph,

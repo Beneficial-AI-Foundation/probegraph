@@ -98,7 +98,7 @@ export interface GraphSummary {
   assumptions: RankedList;   // axioms and trusted nodes
   keystones: RankedList;     // lemmas (proof kinds), or every node when the graph has none
   keystonesAreLemmas: boolean;
-  rankingsSkipped: number | null;  // component count when above MAX_REACHABILITY_COMPONENTS (lists empty)
+  rankingsSkipped: { components: number; links: number } | null;  // condensed size when too large (lists empty)
   layers: LayerStat[];
   unverifiedHotspots: NodeRank[];
   failedNodes: NodeRank[];

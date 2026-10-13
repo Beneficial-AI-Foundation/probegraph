@@ -9,7 +9,7 @@ import type { D3Graph, D3Link, D3Node, ProjectLanguage } from '../types';
 import { crateNoun, detectProjectLanguage, getKindSetsForLanguage, isVerifiedStatus } from '../types';
 import { getLinkId } from '../query';
 import {
-  MAX_REACHABILITY_COMPONENTS, dependencyLevels, graphCondensation, rankByTransitiveDependents,
+  dependencyLevels, graphCondensation, rankByTransitiveDependents, reachabilityFits,
 } from '../reachability';
 import type {
   GraphSummary, CrateSummary, GroupBoundary, VerificationBreakdown,
@@ -177,9 +177,9 @@ export function isAssumption(n: D3Node): boolean {
 /**
  * The Guide's ranked lists, by unique transitive dependents over the full
  * graph, ties by ID. `isCandidate` (the kind filters) restricts the rows,
- * never the counts. Above MAX_REACHABILITY_COMPONENTS the counts are not
- * computed: the lists are empty and `rankingsSkipped` gives the component
- * count.
+ * never the counts. When the graph is too large (reachabilityFits), the
+ * counts are not computed: the lists are empty and `rankingsSkipped` gives
+ * the size of the condensed graph.
  */
 function computeRankedLists(
   graph: D3Graph,
@@ -190,8 +190,11 @@ function computeRankedLists(
   // Graphs without proofs (plain Rust) rank every node instead
   const keystonesAreLemmas = graph.nodes.some(n => proofKinds.has(n.kind));
   const isKeystone = keystonesAreLemmas ? (n: D3Node) => proofKinds.has(n.kind) : () => true;
-  const components = graphCondensation(graph).members.length;
-  const rankingsSkipped = components > MAX_REACHABILITY_COMPONENTS ? components : null;
+  const condensation = graphCondensation(graph);
+  const rankingsSkipped = reachabilityFits(condensation) ? null : {
+    components: condensation.members.length,
+    links: condensation.dependencies.reduce((sum, deps) => sum + deps.length, 0),
+  };
   const list = (pred: (n: D3Node) => boolean): RankedList => {
     const select = (n: D3Node) => isCandidate(n) && pred(n);
     const rows: RankedAnswer[] = (rankByTransitiveDependents(graph, select, RANKED_LIST_LENGTH) ?? [])

@@ -13,7 +13,6 @@ import type {
 import { NONE_INTENT, exactIntent, boundaryIntent } from '../intent';
 import { escapeHtml } from '../html';
 import { formatSummaryText } from './static-analysis';
-import { MAX_REACHABILITY_COMPONENTS } from '../reachability';
 
 export class GuidePanel {
   private actions: GuideActions;
@@ -128,11 +127,10 @@ function sectionElement(title: string, description: string): HTMLElement {
 }
 
 /** Replaces the ranked lists on graphs too large for dependent counts. */
-function rankingsSkippedSection(components: number): HTMLElement {
+function rankingsSkippedSection({ components, links }: { components: number; links: number }): HTMLElement {
   return sectionElement('Ranked lists',
-    `Not computed: the graph has ${components.toLocaleString('en-US')} components after merging cycles, `
-    + `above the limit of ${MAX_REACHABILITY_COMPONENTS.toLocaleString('en-US')}. `
-    + 'Counting the dependents would take seconds and hundreds of MB.');
+    `Not computed: after merging cycles the graph has ${components.toLocaleString('en-US')} components `
+    + `and ${links.toLocaleString('en-US')} links, above the size limit for counting dependents in the page.`);
 }
 
 const LAYER_STATUSES = [

@@ -33,8 +33,9 @@ Where the merged work departs from the text below:
   visible links (Phase 4). A display filter can cut the path between a kept
   node and its anchor; a BFS over visible links then kept only the anchor.
   A kept node can therefore show without a visible link to its anchor.
-- Above 20,000 components (cycles merged), the Guide skips the ranked lists
-  and says so: the closure takes seconds and hundreds of MB (Phase 4).
+- Above 20,000 components (cycles merged), or above 250 million words of
+  bitset work, the Guide skips the ranked lists and says so. This limits
+  the memory and the time on the main thread (Phase 4).
 
 Goal: make large graphs navigable without drawing them whole. Two new
 filters shrink the graph; the Guide tab becomes a set of ranked answers

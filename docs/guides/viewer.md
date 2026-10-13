@@ -313,9 +313,10 @@ involved.
   row's node, each counted once. Members of a cycle share one count. Ties
   break by ID. A row opens the callers of its node.
 - The lists need about C²/8 bytes for C groups of declarations (a cycle
-  is one group). Above 20,000 groups, the Guide does not compute them and
-  says so, because the count would take seconds and hundreds of MB. The
-  Layers strip still shows.
+  is one group), and time that grows with C and the links between groups.
+  Above 20,000 groups, or with too many links for that number of groups,
+  the Guide does not compute them and says so. This limits the memory and
+  the time the page is blocked. The Layers strip still shows.
 - The **Layers** strip groups cycles into one node, then gives each
   topological level (level 0 has no dependencies) its node count and the
   shares of transitively verified, verified and trusted nodes.

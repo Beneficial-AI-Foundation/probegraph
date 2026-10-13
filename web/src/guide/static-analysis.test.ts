@@ -276,7 +276,7 @@ describe('component limit', () => {
     expect(graphReachability(g)).toBeNull();
     expect(rankByTransitiveDependents(g, () => true, 5)).toBeNull();
     const s = buildGraphSummary(g);
-    expect(s.rankingsSkipped).toBe(MAX_REACHABILITY_COMPONENTS + 1);
+    expect(s.rankingsSkipped).toEqual({ components: MAX_REACHABILITY_COMPONENTS + 1, links: 0 });
     expect(s.keystones.rows).toEqual([]);
     expect(s.layers.map(l => l.nodes)).toEqual([MAX_REACHABILITY_COMPONENTS + 1]);
   });

@@ -197,9 +197,11 @@ All constants are in `main.ts` unless noted.
   instead.
 - **Guide rankings**: `reachability.ts` condenses cycles and unions bitsets
   on the resulting DAG, about C²/8 bytes for C components, computed once per
-  graph object. Above `MAX_REACHABILITY_COMPONENTS` (20,000) components it
-  skips the bitsets and the Guide shows a note in place of the ranked lists.
-  The condensation and the layers are linear and always computed.
+  graph object. The closure unions ceil(C/32) words per condensed edge.
+  `reachabilityFits` skips the bitsets above `MAX_REACHABILITY_COMPONENTS`
+  (20,000) components or `MAX_REACHABILITY_WORDS` (250 million words, about
+  0.35 s), and the Guide shows a note in place of the ranked lists. The
+  condensation and the layers are linear and always computed.
 - **Debounced input**: on large graphs only, typing in the query, exclude and
   include fields applies after `SEARCH_DEBOUNCE_MS`.
 - Nodes and links are cloned before D3 mutates them.
