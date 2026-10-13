@@ -203,7 +203,14 @@ no intent, no include files and a finite depth. `hiddenNodes`
    anchors and blueprint entries; skipped for an exact status selection
    without a query so every matching node shows. Build `nodeDepths` for
    layout from the traversal depths (minimum when a node has both), and
-   shallow-clone nodes and links so D3 can't mutate the source graph.
+   shallow-clone nodes and links so D3 can't mutate the source graph. The
+   result's `displayRemoved` counts the nodes that steps 5 and 5b removed
+   with display predicates and result file patterns (0 for `noTraversal`).
+
+The render cap is applied after the pipeline, in `main.ts`, by
+`truncateToBudget` (`truncate.ts`): a BFS from the anchors (exact intent
+IDs, or the depth-0 nodes of a text query) in the query direction, ties by
+ID.
 
 ## 5. Operators
 

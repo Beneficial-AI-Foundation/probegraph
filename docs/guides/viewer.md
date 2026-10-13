@@ -103,7 +103,11 @@ slider re-expands from the seeds. `?focus=` takes precedence over
 Only the Call Graph seeds. The File Map on a large graph with no query shows
 a "use filters" message instead, and Crate Map and Hierarchy render the whole
 graph. Filtered results in the Call Graph and File Map are truncated to 200
-rendered nodes; the seeded view is not.
+rendered nodes; the seeded view is not. Truncation keeps the nodes nearest to
+the query's target: a breadth-first search from the target in the query
+direction, ties broken by ID, so every shown node has a shown path to the
+target. Queries without a target (paths, boundaries, no query) keep the most
+connected nodes.
 
 ## Sidebar filters
 
@@ -290,18 +294,33 @@ boxes.
 ## Guide tab
 
 The right sidebar has a **Guide (testing)** tab with a statically computed
-graph overview and suggested queries. No LLM is involved.
+graph overview, ranked lists, a layers strip and suggested queries. No LLM is
+involved.
 
 - Counts use the whole graph, with transitively verified, verified (locally
   only) and trusted reported separately.
-- Suggestions only name nodes and edges the current kind and edge-type
-  filters show, and update when those filters change.
+- Three ranked lists: **Unfinished work** (unverified or failed declarations;
+  axioms are not listed here), **Assumptions** (axioms and trusted
+  declarations) and **Keystone lemmas** (theorems or proof functions;
+  "Most depended on" with every node on graphs without them). Each ranks by
+  unique transitive dependents: the number of declarations that reach the
+  row's node, each counted once. Members of a cycle share one count. Ties
+  break by ID. A row opens the callers of its node.
+- The **Layers** strip groups cycles into one node, then gives each
+  topological level (level 0 has no dependencies) its node count and the
+  shares of transitively verified, verified and trusted nodes.
+- Lists and suggestions only name nodes and edges the current kind and
+  edge-type filters show, and update when those filters change. The counts
+  always use every node and every dependency.
 - The boundary suggestion is the pair of crates or namespaces with the most
   edges in that direction.
 - "Show only transitively verified" selects that status alone (graphs without
   it get "Show only verified").
-- Clicking a suggestion keeps the Guide open; a toast reports the result, e.g.
-  "180 nodes: callers of GF16", and notes truncation. Browser back undoes it.
+- Clicking a row or a suggestion keeps the Guide open; a toast reports the
+  result, e.g. "180 nodes: callers of GF16". When the render cap applies, it
+  gives the number of nodes not shown, and when display filters (origin,
+  status, language, files) removed nodes, it says how many. Browser back
+  undoes it.
 
 ## VS Code
 

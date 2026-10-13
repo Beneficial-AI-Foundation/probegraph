@@ -160,7 +160,9 @@ target on the other layer. User-facing behaviour is in
 | `src/blueprint-details.ts` | Node-details section for blueprint entries and cross-layer links |
 | `src/theme.ts` | Colour tokens read from CSS, group palette |
 | `src/html.ts` | `escapeHtml` for graph-provided values in HTML |
-| `src/guide/` | Static-analysis Guide panel (graph summary, suggested queries; no LLM) |
+| `src/guide/` | Static-analysis Guide panel (graph summary, ranked lists, layers strip, suggested queries; no LLM) |
+| `src/reachability.ts` | SCC condensation, reverse-reachability bitsets, transitive dependent counts, dependency levels |
+| `src/truncate.ts` | Render-cap truncation by BFS from the query anchors |
 | `src/main.ts` | State, layers, graph loading, view dispatch, URL and history, VS Code messaging |
 
 Per-view layout and encoding algorithms are specified in
@@ -188,9 +190,13 @@ All constants are in `main.ts` unless noted.
   (`computeSeedTiers` / `expandFromSeeds` in `graph-utils.ts`) with those
   thresholds as the render budget, or the "use filters" view if no tier fits.
   Aggregated views (`isAggregatedView`: Crate Map, Hierarchy) are exempt.
-- **Result limiting**: query results are truncated to `MAX_RENDERED_NODES`,
-  keeping anchors first, then the best-connected nodes. Seeded views bypass
-  this cap; they are bounded by the seed budget instead.
+- **Result limiting**: query results are truncated to `MAX_RENDERED_NODES`
+  by a BFS from the query anchors in the query direction (`truncate.ts`), or
+  to the best-connected nodes when the query has no anchors. Seeded views
+  bypass this cap; they are bounded by the seed budget instead.
+- **Guide rankings**: `reachability.ts` condenses cycles and unions bitsets
+  on the resulting DAG, about C²/8 bytes for C components, computed once per
+  graph object.
 - **Debounced input**: on large graphs only, typing in the query, exclude and
   include fields applies after `SEARCH_DEBOUNCE_MS`.
 - Nodes and links are cloned before D3 mutates them.
