@@ -1,11 +1,15 @@
 /**
  * Guide panel -- DOM rendering for the Guide tab in the right sidebar.
  *
- * Shows a static graph overview (from static-analysis.ts) with suggested
- * queries that execute directly against the viewer state. No LLM involved.
+ * Shows a static graph overview (from static-analysis.ts): ranked lists
+ * whose rows open a node's dependents by exact ID, a layers strip, and
+ * suggested queries that execute directly against the viewer state. No LLM
+ * involved.
  */
 
-import type { GraphSummary, SuggestedAction, GuideActions, GuideResult, GuideTransition } from './types';
+import type {
+  GraphSummary, SuggestedAction, GuideActions, GuideResult, GuideTransition, LayerStat, RankedList,
+} from './types';
 import { NONE_INTENT, exactIntent, boundaryIntent } from '../intent';
 import { escapeHtml } from '../html';
 import { formatSummaryText } from './static-analysis';
@@ -42,6 +46,15 @@ export class GuidePanel {
     summaryEl.textContent = formatSummaryText(summary);
     summaryEl.style.whiteSpace = 'pre-wrap';
 
+    document.getElementById('guide-answers')?.replaceChildren(
+      this.rankedSection('Unfinished work', 'Unverified or failed, by unique transitive dependents', summary.unfinished),
+      this.rankedSection('Assumptions', 'Axioms and trusted declarations, by unique transitive dependents', summary.assumptions),
+      summary.keystonesAreLemmas
+        ? this.rankedSection('Keystone lemmas', 'By unique transitive dependents', summary.keystones)
+        : this.rankedSection('Most depended on', 'By unique transitive dependents', summary.keystones),
+      layersSection(summary.layers),
+    );
+
     chipsEl.innerHTML = '';
     for (const q of summary.suggestedQueries) {
       const chip = document.createElement('button');
@@ -52,11 +65,112 @@ export class GuidePanel {
     }
   }
 
+  /** A ranked list; each row opens the node's dependents by exact ID. */
+  private rankedSection(title: string, description: string, list: RankedList): HTMLElement {
+    const section = sectionElement(
+      list.total > list.rows.length ? `${title} (top ${list.rows.length} of ${list.total})` : title,
+      description,
+    );
+    if (list.rows.length === 0) {
+      const empty = document.createElement('p');
+      empty.className = 'guide-empty';
+      empty.textContent = 'None among the shown declaration kinds.';
+      section.appendChild(empty);
+      return section;
+    }
+    for (const r of list.rows) {
+      const row = document.createElement('button');
+      row.className = 'guide-row';
+      row.title = r.id;
+      row.dataset.id = r.id;
+      const name = document.createElement('span');
+      name.className = 'guide-row-name';
+      name.textContent = r.displayName;
+      if (r.context) {
+        const ctx = document.createElement('small');
+        ctx.className = 'guide-row-context';
+        ctx.textContent = r.context;
+        name.append(' ', ctx);
+      }
+      const count = document.createElement('span');
+      count.className = 'guide-row-count';
+      count.textContent = String(r.transitiveDependentCount);
+      count.title = `${r.transitiveDependentCount} unique transitive dependents`;
+      row.append(name, count);
+      const action: SuggestedAction = { type: 'setSink', id: r.id, label: r.displayName };
+      row.addEventListener('click', () => this.executeAction(action, r.displayName));
+      section.appendChild(row);
+    }
+    return section;
+  }
+
   private executeAction(action: SuggestedAction, label: string): void {
     // Stay on the Guide tab; the toast reports what the graph now shows
     const result = this.actions.apply(guideTransition(action, label));
     showToast(resultMessage(action, label, result));
   }
+}
+
+function sectionElement(title: string, description: string): HTMLElement {
+  const section = document.createElement('section');
+  section.className = 'guide-section';
+  const heading = document.createElement('p');
+  heading.className = 'guide-section-title';
+  heading.textContent = title;
+  const desc = document.createElement('p');
+  desc.className = 'guide-section-desc';
+  desc.textContent = description;
+  section.append(heading, desc);
+  return section;
+}
+
+const LAYER_STATUSES = [
+  ['transitivelyVerified', 'transitively-verified', 'transitively verified'],
+  ['verified', 'verified', 'verified'],
+  ['trusted', 'trusted', 'trusted'],
+] as const;
+
+/** One row per topological level: node count and status shares. */
+function layersSection(layers: LayerStat[]): HTMLElement {
+  const section = sectionElement('Layers',
+    'Cycles condensed, level 0 has no dependencies. Shares of transitively verified, verified and trusted per level.');
+  const strip = document.createElement('div');
+  strip.className = 'guide-layers';
+  for (const layer of layers) {
+    const row = document.createElement('div');
+    row.className = 'guide-layer';
+    row.dataset.level = String(layer.level);
+    const label = document.createElement('span');
+    label.className = 'guide-layer-label';
+    label.textContent = `L${layer.level}`;
+    const count = document.createElement('span');
+    count.className = 'guide-layer-count';
+    count.textContent = String(layer.nodes);
+    const bar = document.createElement('span');
+    bar.className = 'guide-layer-bar';
+    for (const [key, status] of LAYER_STATUSES) {
+      const seg = document.createElement('span');
+      seg.className = `status-${status}`;
+      seg.style.width = `${(100 * layer[key]) / layer.nodes}%`;
+      bar.appendChild(seg);
+    }
+    const shares = document.createElement('span');
+    shares.className = 'guide-layer-shares';
+    shares.textContent = layerShares(layer);
+    row.title = shares.textContent;
+    row.append(label, count, bar, shares);
+    strip.appendChild(row);
+  }
+  section.appendChild(strip);
+  return section;
+}
+
+/** "80% transitively verified, 5% verified, 10% trusted" (zero shares omitted). */
+export function layerShares(layer: LayerStat): string {
+  const parts = LAYER_STATUSES
+    .filter(([key]) => layer[key] > 0)
+    .map(([key, , text]) => `${Math.round((100 * layer[key]) / layer.nodes)}% ${text}`);
+  return parts.length > 0 ? parts.join(', ') : 'none verified or trusted';
 }
 
 /** What the graph shows after an action, e.g. "180 nodes: callers of GF16". */

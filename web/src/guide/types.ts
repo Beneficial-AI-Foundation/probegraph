@@ -44,6 +44,30 @@ export interface NodeRank {
   dependencyCount: number;
 }
 
+/** A row of a Guide ranked list. */
+export interface RankedAnswer extends NodeRank {
+  transitiveDependentCount: number;  // unique nodes that reach it, over the full graph
+  context?: string;                  // module or path, when another row has the same name
+}
+
+/** One ranked list: the top rows and how many candidates there were. */
+export interface RankedList {
+  rows: RankedAnswer[];
+  total: number;
+}
+
+/**
+ * Nodes on one topological level of the SCC-condensed graph. Level 0 has
+ * no dependencies. Statuses use the same definitions as VerificationBreakdown.
+ */
+export interface LayerStat {
+  level: number;
+  nodes: number;
+  verified: number;
+  transitivelyVerified: number;
+  trusted: number;
+}
+
 export interface SuggestedQuery {
   label: string;
   description: string;
@@ -70,7 +94,11 @@ export interface GraphSummary {
   files: string[];
   verification: VerificationBreakdown;
   kinds: KindBreakdown;
-  topConnected: NodeRank[];
+  unfinished: RankedList;    // unverified and failed, axioms excluded
+  assumptions: RankedList;   // axioms and trusted nodes
+  keystones: RankedList;     // lemmas (proof kinds), or every node when the graph has none
+  keystonesAreLemmas: boolean;
+  layers: LayerStat[];
   unverifiedHotspots: NodeRank[];
   failedNodes: NodeRank[];
   suggestedQueries: SuggestedQuery[];

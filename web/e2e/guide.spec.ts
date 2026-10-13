@@ -1,12 +1,10 @@
 /**
- * E2E tests for the Guide chips on the default Lean graph (public/graph.json,
- * probe-lean). Expectations are read from the rendered nodes and the URL,
- * not from counts pinned to the dataset.
+ * E2E tests for the Guide ranked lists and chips on the default Lean graph
+ * (public/graph.json, probe-lean). Expectations are read from the rendered
+ * nodes and the URL, not from counts pinned to the dataset.
  */
 
 import { test, expect, type Page } from '@playwright/test';
-
-const TYPE_KINDS = ['structure', 'inductive', 'class'];
 
 interface Shown {
   id: string;
@@ -40,10 +38,25 @@ function chip(page: Page, text: RegExp) {
   return page.locator('.guide-chip').filter({ hasText: text });
 }
 
+function rows(page: Page, section: string) {
+  return page.locator('.guide-section').filter({ hasText: section }).locator('.guide-row');
+}
+
 /** Click a chip and wait for its toast; the Guide tab must stay active. */
 async function clickChip(page: Page, text: RegExp): Promise<string> {
+  return clickAndToast(page, chip(page, text));
+}
+
+/** Click the first row of a ranked list; returns its node ID and the toast. */
+async function clickFirstRow(page: Page, section: string): Promise<{ id: string; toast: string }> {
+  const row = rows(page, section).first();
+  const id = (await row.getAttribute('data-id'))!;
+  return { id, toast: await clickAndToast(page, row) };
+}
+
+async function clickAndToast(page: Page, target: ReturnType<Page['locator']>): Promise<string> {
   await page.locator('.toast').evaluateAll(els => els.forEach(el => el.remove()));
-  await chip(page, text).click();
+  await target.click();
   const toast = page.locator('.toast').last();
   await expect(toast).toBeVisible();
   await expect(page.locator('#tab-guide')).toHaveClass(/active/);
@@ -80,25 +93,35 @@ test.describe('Guide on the Lean graph', () => {
     expect(links.some(([s, t]) => s === source && t === target)).toBe(true);
   });
 
-  test('most connected names a node the kind filters show, and follows them', async ({ page }) => {
+  test('a keystone row opens the callers of a theorem and keeps it when truncated', async ({ page }) => {
     await open(page);
-    const toast = await clickChip(page, /most connected/);
-    const target = param(page, 'id')!;
+    const { id, toast } = await clickFirstRow(page, 'Keystone lemmas');
+    expect(param(page, 'id')).toBe(id);
     expect(param(page, 'dir')).toBe('callers');
-    await expect.poll(async () => (await shownNodes(page)).map(n => n.id)).toContain(target);
-    const node = (await shownNodes(page)).find(n => n.id === target)!;
-    expect(TYPE_KINDS).not.toContain(node.kind);
-    expect(toast).toMatch(/^\d+ nodes: callers of .+/);
+    await expect.poll(async () => (await shownNodes(page)).map(n => n.id)).toContain(id);
+    expect((await shownNodes(page)).find(n => n.id === id)!.kind).toBe('theorem');
+    // The top keystone has more dependents than the render cap
+    expect(toast).toMatch(/^200 nodes: callers of .+ \(\d+ of \d+ not shown\)$/);
+  });
 
-    // Showing types re-ranks: the top node overall is a structure on this graph
-    const before = await chip(page, /most connected/).textContent();
-    await page.locator('#show-types').check();
-    await expect(chip(page, /most connected/)).not.toHaveText(before!);
-    await clickChip(page, /most connected/);
-    const typeTarget = param(page, 'id')!;
-    expect(typeTarget).not.toBe(target);
-    await expect.poll(async () => (await shownNodes(page)).find(n => n.id === typeTarget)?.kind)
-      .toMatch(new RegExp(`^(${TYPE_KINDS.join('|')})$`));
+  test('ranked lists follow the kind filters', async ({ page }) => {
+    await open(page);
+    await expect(rows(page, 'Keystone lemmas')).toHaveCount(5);
+    await page.locator('#show-proof-functions').uncheck();
+    await expect(rows(page, 'Keystone lemmas')).toHaveCount(0);
+    await expect(page.locator('.guide-section').filter({ hasText: 'Keystone lemmas' }))
+      .toContainText('None among the shown declaration kinds');
+
+    await page.locator('#show-proof-functions').check();
+    await expect(rows(page, 'Keystone lemmas')).toHaveCount(5);
+  });
+
+  test('layers strip shows every level', async ({ page }) => {
+    await open(page);
+    const levels = page.locator('.guide-layer');
+    await expect(levels.first()).toHaveAttribute('data-level', '0');
+    expect(await levels.count()).toBeGreaterThan(1);
+    await expect(levels.first()).toContainText(/% transitively verified/);
   });
 
   test('verified chip selects exactly transitively verified, after a boundary', async ({ page }) => {
@@ -154,7 +177,7 @@ test.describe('Guide on the Lean graph', () => {
 
   test('body/proof box drops term links from the view, and survives a reload', async ({ page }) => {
     await open(page);
-    await clickChip(page, /most connected/);
+    await clickFirstRow(page, 'Keystone lemmas');
     const roles = () => page.locator('path.link').evaluateAll(els => els.map(el => {
       const d = (el as any).__data__;
       return `${d.type}:${d.role ?? '-'}`;
@@ -175,7 +198,7 @@ test.describe('Guide on the Lean graph', () => {
 
   test('statement box drops type-only spec links, Specifications still checked', async ({ page }) => {
     await open(page);
-    await clickChip(page, /most connected/);
+    await clickFirstRow(page, 'Keystone lemmas');
     const links = () => page.locator('path.link').evaluateAll(els => els.map(el => {
       const d = (el as any).__data__;
       return { pair: `${d.source.id}>${d.target.id}`, kind: `${d.type}:${d.role ?? '-'}` };
