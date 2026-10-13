@@ -2,10 +2,18 @@
  * Render-cap truncation.
  *
  * A query result larger than the render cap keeps the nodes nearest to the
- * query's anchors: a breadth-first search (BFS) from the anchors in the
- * query direction, one depth at a time, ties broken by ID. Every kept node
- * then has a kept path to an anchor. Results without anchors (paths,
- * boundaries, unfiltered views) keep the most connected nodes instead.
+ * query's anchors, ties broken by ID. The distance is the query's own
+ * traversal depth (`nodeDepths`) when it has one, else a breadth-first
+ * search (BFS) from the anchors over the result's links in the query
+ * direction. Results without anchors (paths, boundaries, unfiltered views)
+ * keep the most connected nodes instead.
+ *
+ * Display filters (status, language, origin, files, edge types) run after
+ * the traversal and can remove the nodes between a kept node and its
+ * anchor. Such a node is still kept by its traversal depth, so it can show
+ * without a visible link to the anchor. Ranking only by visible links would
+ * drop it, and a filter that cuts the anchor off would leave the anchor
+ * alone on screen with the budget unused.
  *
  * Pure module (no DOM), unit-tested in the node environment.
  */
@@ -60,11 +68,11 @@ export function truncationSeeds(
 }
 
 /**
- * Keep at most `budget` nodes of `graph`. With seeds, BFS from the anchors
- * present in the graph; anchors beyond the budget are dropped in rank
- * order. Nodes the BFS cannot reach are omitted even when the budget is not
- * used up, since they have no kept path to an anchor. Without seeds (or
- * when no anchor is in the graph), keep the most connected nodes.
+ * Keep at most `budget` nodes of `graph`. With seeds, keep the anchors
+ * present in the graph (anchors beyond the budget are dropped in rank
+ * order), then the nearest nodes, then, if room is left, the most connected
+ * of the nodes with no distance. Without seeds (or when no anchor is in the
+ * graph), keep the most connected nodes.
  */
 export function truncateToBudget(
   graph: D3Graph,
@@ -78,7 +86,7 @@ export function truncateToBudget(
   }
 
   const kept = seeds && anchors.length > 0
-    ? bfsFromAnchors(graph, anchors, seeds.direction, budget)
+    ? nearestToAnchors(graph, anchors, seeds.direction, budget)
     : mostConnected(graph.nodes, budget);
 
   const nodes = graph.nodes.filter(n => kept.has(n.id));
@@ -94,12 +102,30 @@ export function truncateToBudget(
   };
 }
 
-function bfsFromAnchors(
+function nearestToAnchors(
   graph: D3Graph,
   anchors: string[],
   direction: TruncationDirection,
   budget: number,
 ): Set<string> {
+  const kept = new Set(anchors.slice(0, budget));
+  if (kept.size >= budget) return kept;
+  const depth = graph.nodeDepths ?? bfsDepths(graph, anchors, direction);
+  const rest = graph.nodes.filter(n => !kept.has(n.id));
+  const reached = rest
+    .filter(n => depth.has(n.id))
+    .sort((a, b) => depth.get(a.id)! - depth.get(b.id)! || compareIds(a.id, b.id));
+  for (const n of reached) {
+    if (kept.size >= budget) return kept;
+    kept.add(n.id);
+  }
+  const unreached = rest.filter(n => !depth.has(n.id));
+  for (const id of mostConnected(unreached, budget - kept.size)) kept.add(id);
+  return kept;
+}
+
+/** Depth of each node a BFS from the anchors reaches over the graph's links. */
+function bfsDepths(graph: D3Graph, anchors: string[], direction: TruncationDirection): Map<string, number> {
   const next = new Map<string, string[]>();
   const add = (from: string, to: string) => {
     const list = next.get(from);
@@ -111,18 +137,15 @@ function bfsFromAnchors(
     if (direction !== 'callees') add(targetId, sourceId);
   }
 
-  const kept = new Set(anchors.slice(0, budget));
-  let frontier = [...kept];
-  while (frontier.length > 0 && kept.size < budget) {
-    const level = new Set<string>();
-    for (const id of frontier) {
-      for (const n of next.get(id) ?? []) if (!kept.has(n)) level.add(n);
+  const depth = new Map(anchors.map(id => [id, 0]));
+  const queue = [...anchors];
+  for (let i = 0; i < queue.length; i++) {
+    const d = depth.get(queue[i])! + 1;
+    for (const n of next.get(queue[i]) ?? []) {
+      if (!depth.has(n)) { depth.set(n, d); queue.push(n); }
     }
-    const sorted = [...level].sort(compareIds).slice(0, budget - kept.size);
-    for (const id of sorted) kept.add(id);
-    frontier = sorted;
   }
-  return kept;
+  return depth;
 }
 
 function mostConnected(nodes: D3Node[], budget: number): Set<string> {

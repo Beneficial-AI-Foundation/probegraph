@@ -208,9 +208,18 @@ no intent, no include files and a finite depth. `hiddenNodes`
    with display predicates and result file patterns (0 for `noTraversal`).
 
 The render cap is applied after the pipeline, in `main.ts`, by
-`truncateToBudget` (`truncate.ts`): a BFS from the anchors (exact intent
-IDs, or the depth-0 nodes of a text query) in the query direction, ties by
-ID.
+`truncateToBudget` (`truncate.ts`). It keeps the anchors (exact intent IDs,
+or the depth-0 nodes of a text query), then the other nodes by distance,
+ties by ID. The distance is the result's `nodeDepths` (callers, callees,
+neighborhood), else a BFS from the anchors over the result's links in the
+query direction (`depthFromSelected`, exact sets). Nodes with no distance
+fill any room left, most connected first.
+
+`nodeDepths` comes from the traversal, before steps 5 and 5b. A kept node
+can therefore have no visible link to its anchor when a display predicate
+removed the nodes between them. A BFS over the visible links would drop
+such nodes, and a filter that cut the anchor off would leave the anchor
+alone on screen.
 
 ## 5. Operators
 

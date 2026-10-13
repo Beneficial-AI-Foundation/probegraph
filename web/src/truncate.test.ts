@@ -110,10 +110,10 @@ describe('truncateToBudget', () => {
     expect(seeds).toEqual({ anchors: ['c1'], direction: 'callers' });
   });
 
-  it('omits nodes that display filters cut off from the anchors', () => {
+  it('keeps nodes by traversal depth when display filters cut their path', () => {
     // Callers of t: z -> x -> m -> t and y -> t. The status filter removes m,
-    // so x and z have no kept path to t and are dropped when truncating, even
-    // though the budget has room for one of them.
+    // so x and z have no visible path to t. They are still ranked by their
+    // traversal depth: y (1), then x (2), then z (3).
     const g = graph([['z', 'x'], ['x', 'm'], ['m', 't'], ['y', 't']]);
     g.nodes.find(n => n.id === 'm')!.verification_status = 'failed';
     const { compiled, result } = run(g, {
@@ -122,8 +122,36 @@ describe('truncateToBudget', () => {
     expect(result.displayRemoved).toBe(1);
     expect(ids(result)).toEqual(['t', 'x', 'y', 'z']);
     const cut = truncateToBudget(result, 3, truncationSeeds(compiled.query, compiled.anchorIds, result));
-    expect(ids(cut.graph)).toEqual(['t', 'y']);
-    expect(cut.omitted).toBe(2);
+    expect(ids(cut.graph)).toEqual(['t', 'x', 'y']);
+    expect(cut.omitted).toBe(1);
+  });
+
+  it('fills the budget when a display filter cuts the anchor off', () => {
+    // t <- m <- a_i <- b_i, with m hidden by the status filter. Ranking by
+    // visible links alone would keep only t.
+    const edges: [string, string][] = [['m', 't']];
+    for (let i = 0; i < 30; i++) {
+      const k = String(i).padStart(2, '0');
+      edges.push([`a${k}`, 'm'], [`b${k}`, `a${k}`]);
+    }
+    const g = graph(edges);
+    g.nodes.find(n => n.id === 'm')!.verification_status = 'failed';
+    const { compiled, result } = run(g, {
+      intent: exactIntent(['t'], 'callers', 't', { type: 'guide' }), showFailedNodes: false,
+    });
+    expect(result.nodes.length).toBe(61);
+    const cut = truncateToBudget(result, 20, truncationSeeds(compiled.query, compiled.anchorIds, result));
+    expect(cut.graph.nodes.length).toBe(20);
+    // depth 2: a00..a29, ties by ID
+    expect(ids(cut.graph)).toEqual([...Array.from({ length: 19 }, (_, i) => `a${String(i).padStart(2, '0')}`), 't']);
+  });
+
+  it('fills the rest of the budget with unreached nodes, most connected first', () => {
+    // No traversal depths: BFS over links from m reaches z only; then the
+    // unreached nodes by connectivity, ties by ID
+    const g = graph([['m', 'z'], ['p', 'q'], ['p', 'r']], ['s']);
+    const cut = truncateToBudget(g, 4, { anchors: ['m'], direction: 'callees' });
+    expect(ids(cut.graph)).toEqual(['m', 'p', 'q', 'z']);
   });
 
   it('falls back to connectivity without anchors', () => {
