@@ -8,7 +8,9 @@
 import type { D3Graph, D3Link, D3Node, ProjectLanguage } from '../types';
 import { crateNoun, detectProjectLanguage, getKindSetsForLanguage, isVerifiedStatus } from '../types';
 import { getLinkId } from '../query';
-import { dependencyLevels, graphReachability, rankByTransitiveDependents } from '../reachability';
+import {
+  MAX_REACHABILITY_COMPONENTS, dependencyLevels, graphCondensation, rankByTransitiveDependents,
+} from '../reachability';
 import type {
   GraphSummary, CrateSummary, GroupBoundary, VerificationBreakdown,
   KindBreakdown, NodeRank, SuggestedQuery, RankedAnswer, RankedList, LayerStat,
@@ -175,20 +177,24 @@ export function isAssumption(n: D3Node): boolean {
 /**
  * The Guide's ranked lists, by unique transitive dependents over the full
  * graph, ties by ID. `isCandidate` (the kind filters) restricts the rows,
- * never the counts.
+ * never the counts. Above MAX_REACHABILITY_COMPONENTS the counts are not
+ * computed: the lists are empty and `rankingsSkipped` gives the component
+ * count.
  */
 function computeRankedLists(
   graph: D3Graph,
   lang: ProjectLanguage,
   isCandidate: (node: D3Node) => boolean,
-): Pick<GraphSummary, 'unfinished' | 'assumptions' | 'keystones' | 'keystonesAreLemmas'> {
+): Pick<GraphSummary, 'unfinished' | 'assumptions' | 'keystones' | 'keystonesAreLemmas' | 'rankingsSkipped'> {
   const { proofKinds } = getKindSetsForLanguage(lang);
   // Graphs without proofs (plain Rust) rank every node instead
   const keystonesAreLemmas = graph.nodes.some(n => proofKinds.has(n.kind));
   const isKeystone = keystonesAreLemmas ? (n: D3Node) => proofKinds.has(n.kind) : () => true;
+  const components = graphCondensation(graph).members.length;
+  const rankingsSkipped = components > MAX_REACHABILITY_COMPONENTS ? components : null;
   const list = (pred: (n: D3Node) => boolean): RankedList => {
     const select = (n: D3Node) => isCandidate(n) && pred(n);
-    const rows: RankedAnswer[] = rankByTransitiveDependents(graph, select, RANKED_LIST_LENGTH)
+    const rows: RankedAnswer[] = (rankByTransitiveDependents(graph, select, RANKED_LIST_LENGTH) ?? [])
       .map(({ node, count }) => ({ ...nodeToRank(node), transitiveDependentCount: count }));
     addContext(rows, graph);
     return { rows, total: graph.nodes.filter(select).length };
@@ -198,6 +204,7 @@ function computeRankedLists(
     assumptions: list(isAssumption),
     keystones: list(isKeystone),
     keystonesAreLemmas,
+    rankingsSkipped,
   };
 }
 
@@ -215,7 +222,7 @@ function addContext(rows: RankedAnswer[], graph: D3Graph): void {
 
 /** Node and status counts per topological level of the condensed graph. */
 function computeLayers(graph: D3Graph): LayerStat[] {
-  const { condensation } = graphReachability(graph);
+  const condensation = graphCondensation(graph);
   const levels = dependencyLevels(condensation);
   const byId = new Map(graph.nodes.map(n => [n.id, n]));
   const stats: LayerStat[] = [];

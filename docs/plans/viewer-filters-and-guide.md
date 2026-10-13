@@ -1,14 +1,14 @@
 # Viewer: statement/proof, private and blueprint filters, guide fixes
 
-Status (2026-10-01): Phases 0 to 2, 5a and 5c merged (#42, #43, #46, #48,
+Status (2026-10-13): Phases 0 to 2, 5a and 5c merged (#42, #43, #46, #48,
 #49, #51, #56, #57). Open: 5b (blueprint-layer filters and the code-layer
 "Blueprint-bound only" filter; `FilterOptions` has none of those fields),
-Phase 3 (blocked on probe-lean #114, still open) and Phase 4 except for two
-items: `removeIsolated` already keeps the intent's anchor IDs
-(`src/query.ts`, `keepSet`; #46), and the Guide re-renders when kind or edge
-filters change (#48). The ranked lists, SCC-based dependent counts, layers
-strip and BFS truncation are not started; `src/guide/` still has its
-conditional suggestion chips (up to six) and `main.ts` truncates by connectivity, keeping anchors first (#48).
+Phase 3 (blocked on probe-lean #114, still open) and Phase 4. Phase 4 is in
+#81: the ranked lists, SCC-based dependent counts (`src/reachability.ts`),
+the layers strip and truncation by distance from the anchors
+(`src/truncate.ts`). Two Phase 4 items merged earlier: `removeIsolated`
+keeps the intent's anchor IDs (`src/query.ts`, `keepSet`; #46), and the
+Guide re-renders when kind or edge filters change (#48).
 Planned 2026-09-29 and revised after two Codex reviews that day; see "Review
 decisions" at the end.
 
@@ -20,6 +20,21 @@ Where the merged work departs from the text below:
   graphs without it (#48), instead of `verified` only (Phase 1.6).
 - Phase 5 describes the code before 5a: the File Map rename to `file-map`
   (`src/file-map.ts`) and the blueprint layer both shipped in #56.
+- Phase 4 (#81) replaces only the node chips ("most connected", "verify
+  next"). The failed, boundary, verified-only and map chips stay, because
+  they are filters or views.
+- Unfinished work means `unverified` or `failed`: the data has no `sorry`
+  field (Phase 4).
+- The layers strip is display-only. A `layer:N` query filter is planned in
+  graph-search Phase 2.
+- The blueprint-layer Guide is not in #81. It needs the 5b blueprint
+  statuses.
+- Truncation ranks by the query's traversal depth, not by a BFS over the
+  visible links (Phase 4). A display filter can cut the path between a kept
+  node and its anchor; a BFS over visible links then kept only the anchor.
+  A kept node can therefore show without a visible link to its anchor.
+- Above 20,000 components (cycles merged), the Guide skips the ranked lists
+  and says so: the closure takes seconds and hundreds of MB (Phase 4).
 
 Goal: make large graphs navigable without drawing them whole. Two new
 filters shrink the graph; the Guide tab becomes a set of ranked answers

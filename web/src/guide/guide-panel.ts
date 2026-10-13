@@ -13,6 +13,7 @@ import type {
 import { NONE_INTENT, exactIntent, boundaryIntent } from '../intent';
 import { escapeHtml } from '../html';
 import { formatSummaryText } from './static-analysis';
+import { MAX_REACHABILITY_COMPONENTS } from '../reachability';
 
 export class GuidePanel {
   private actions: GuideActions;
@@ -46,14 +47,16 @@ export class GuidePanel {
     summaryEl.textContent = formatSummaryText(summary);
     summaryEl.style.whiteSpace = 'pre-wrap';
 
-    document.getElementById('guide-answers')?.replaceChildren(
-      this.rankedSection('Unfinished work', 'Unverified or failed, by unique transitive dependents', summary.unfinished),
-      this.rankedSection('Assumptions', 'Axioms and trusted declarations, by unique transitive dependents', summary.assumptions),
-      summary.keystonesAreLemmas
-        ? this.rankedSection('Keystone lemmas', 'By unique transitive dependents', summary.keystones)
-        : this.rankedSection('Most depended on', 'By unique transitive dependents', summary.keystones),
-      layersSection(summary.layers),
-    );
+    const lists = summary.rankingsSkipped !== null
+      ? [rankingsSkippedSection(summary.rankingsSkipped)]
+      : [
+        this.rankedSection('Unfinished work', 'Unverified or failed, by unique transitive dependents', summary.unfinished),
+        this.rankedSection('Assumptions', 'Axioms and trusted declarations, by unique transitive dependents', summary.assumptions),
+        summary.keystonesAreLemmas
+          ? this.rankedSection('Keystone lemmas', 'By unique transitive dependents', summary.keystones)
+          : this.rankedSection('Most depended on', 'By unique transitive dependents', summary.keystones),
+      ];
+    document.getElementById('guide-answers')?.replaceChildren(...lists, layersSection(summary.layers));
 
     chipsEl.innerHTML = '';
     for (const q of summary.suggestedQueries) {
@@ -122,6 +125,14 @@ function sectionElement(title: string, description: string): HTMLElement {
   desc.textContent = description;
   section.append(heading, desc);
   return section;
+}
+
+/** Replaces the ranked lists on graphs too large for dependent counts. */
+function rankingsSkippedSection(components: number): HTMLElement {
+  return sectionElement('Ranked lists',
+    `Not computed: the graph has ${components.toLocaleString('en-US')} components after merging cycles, `
+    + `above the limit of ${MAX_REACHABILITY_COMPONENTS.toLocaleString('en-US')}. `
+    + 'Counting the dependents would take seconds and hundreds of MB.');
 }
 
 const LAYER_STATUSES = [

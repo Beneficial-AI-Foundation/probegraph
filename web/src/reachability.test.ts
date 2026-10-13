@@ -23,7 +23,7 @@ function graph(edges: [string, string][], extra: string[] = []): D3Graph {
   };
 }
 
-const counts = (g: D3Graph) => Object.fromEntries(transitiveDependentCounts(g));
+const counts = (g: D3Graph) => Object.fromEntries(transitiveDependentCounts(g)!);
 
 /**
  * Reference: the nodes that reach each node on the plain graph (BFS), minus
@@ -145,14 +145,14 @@ describe('transitiveDependentCounts', () => {
 describe('rankByTransitiveDependents', () => {
   it('breaks ties by ID', () => {
     const g = graph([['r', 'b'], ['r', 'a'], ['r', 'c']]);
-    expect(rankByTransitiveDependents(g, () => true, 3).map(r => r.node.id)).toEqual(['a', 'b', 'c']);
+    expect(rankByTransitiveDependents(g, () => true, 3)!.map(r => r.node.id)).toEqual(['a', 'b', 'c']);
   });
 
   it('restricts the candidates, not the counts', () => {
     // A -> B -> C: with A not a candidate, C still counts A
     const g = graph([['A', 'B'], ['B', 'C']]);
     const ranked = rankByTransitiveDependents(g, n => n.id !== 'A', 5);
-    expect(ranked.map(r => [r.node.id, r.count])).toEqual([['C', 2], ['B', 1]]);
+    expect(ranked!.map(r => [r.node.id, r.count])).toEqual([['C', 2], ['B', 1]]);
   });
 });
 

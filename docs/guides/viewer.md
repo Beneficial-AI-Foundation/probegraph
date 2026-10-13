@@ -103,11 +103,17 @@ slider re-expands from the seeds. `?focus=` takes precedence over
 Only the Call Graph seeds. The File Map on a large graph with no query shows
 a "use filters" message instead, and Crate Map and Hierarchy render the whole
 graph. Filtered results in the Call Graph and File Map are truncated to 200
-rendered nodes; the seeded view is not. Truncation keeps the nodes nearest to
-the query's target: a breadth-first search from the target in the query
-direction, ties broken by ID, so every shown node has a shown path to the
-target. Queries without a target (paths, boundaries, no query) keep the most
-connected nodes.
+rendered nodes; the seeded view is not. Truncation keeps the target and then
+the nodes nearest to it, ties broken by ID. The distance is the number of
+steps from the target in the query direction, counted before the display
+filters run. Queries without a target (paths, boundaries, no query) keep the
+most connected nodes.
+
+The display filters (origin, status, language, result files, edge types)
+can remove the nodes between a shown node and the target. The shown node
+then has no visible edge to the target, but it is still one of the nearest.
+For example, "callers of t" with verified nodes hidden can show callers of a
+hidden verified function, with no edge from them to t.
 
 ## Sidebar filters
 
@@ -306,6 +312,10 @@ involved.
   unique transitive dependents: the number of declarations that reach the
   row's node, each counted once. Members of a cycle share one count. Ties
   break by ID. A row opens the callers of its node.
+- The lists need about C²/8 bytes for C groups of declarations (a cycle
+  is one group). Above 20,000 groups, the Guide does not compute them and
+  says so, because the count would take seconds and hundreds of MB. The
+  Layers strip still shows.
 - The **Layers** strip groups cycles into one node, then gives each
   topological level (level 0 has no dependencies) its node count and the
   shares of transitively verified, verified and trusted nodes.

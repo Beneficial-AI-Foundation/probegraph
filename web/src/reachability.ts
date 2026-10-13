@@ -239,6 +239,15 @@ export function dependencyLevels(c: Condensation): number[] {
 // Dependent counts
 // ============================================================================
 
+/**
+ * Largest condensed graph (components after merging cycles) that gets
+ * dependent counts. The closure keeps one bitset of C bits per component,
+ * so memory is 4 * C * ceil(C / 32) bytes (about 50 MB at 20,000) and time
+ * grows with C times the condensed edge count. Measured in Node on chain-like
+ * graphs: 20,000 components take about 1 s, 50,000 about 6 s.
+ */
+export const MAX_REACHABILITY_COMPONENTS = 20_000;
+
 export interface GraphReachability {
   condensation: Condensation;
   /** Transitive dependents of each component (see dependentClosure). */
@@ -247,22 +256,40 @@ export interface GraphReachability {
   dependentCounts: Map<string, number>;
 }
 
-const reachabilityCache = new WeakMap<D3Graph, GraphReachability>();
+const condensationCache = new WeakMap<D3Graph, Condensation>();
+const reachabilityCache = new WeakMap<D3Graph, GraphReachability | null>();
+
+/**
+ * The condensation of a graph, computed once per graph object. Linear in
+ * nodes and links, so it has no size limit. The graph's dependencies must
+ * not change after the first call.
+ */
+export function graphCondensation(graph: D3Graph): Condensation {
+  let c = condensationCache.get(graph);
+  if (!c) {
+    c = condenseGraph(graph);
+    condensationCache.set(graph, c);
+  }
+  return c;
+}
 
 /**
  * Condensation, reverse-reachability bitsets and dependent counts of a
- * graph, computed once per graph object. The graph's dependencies must not
- * change after the first call.
+ * graph, computed once per graph object. Null when the graph has more than
+ * MAX_REACHABILITY_COMPONENTS components: the closure would take seconds
+ * and hundreds of MB on the main thread.
  */
-export function graphReachability(graph: D3Graph): GraphReachability {
-  const cached = reachabilityCache.get(graph);
-  if (cached) return cached;
-  const condensation = condenseGraph(graph);
-  const dependentSets = dependentClosure(condensation);
-  const perComponent = dependentSets.map(set => memberCount(condensation, set));
-  const dependentCounts = new Map<string, number>();
-  for (const [id, k] of condensation.componentOf) dependentCounts.set(id, perComponent[k]);
-  const result = { condensation, dependentSets, dependentCounts };
+export function graphReachability(graph: D3Graph): GraphReachability | null {
+  if (reachabilityCache.has(graph)) return reachabilityCache.get(graph)!;
+  const condensation = graphCondensation(graph);
+  let result: GraphReachability | null = null;
+  if (condensation.members.length <= MAX_REACHABILITY_COMPONENTS) {
+    const dependentSets = dependentClosure(condensation);
+    const perComponent = dependentSets.map(set => memberCount(condensation, set));
+    const dependentCounts = new Map<string, number>();
+    for (const [id, k] of condensation.componentOf) dependentCounts.set(id, perComponent[k]);
+    result = { condensation, dependentSets, dependentCounts };
+  }
   reachabilityCache.set(graph, result);
   return result;
 }
@@ -270,10 +297,10 @@ export function graphReachability(graph: D3Graph): GraphReachability {
 /**
  * Unique transitive dependents of each node: the nodes that reach it. For
  * A -> B -> C the counts are A 0, B 1, C 2. Members of one SCC share a
- * count and do not count each other.
+ * count and do not count each other. Null above MAX_REACHABILITY_COMPONENTS.
  */
-export function transitiveDependentCounts(graph: D3Graph): Map<string, number> {
-  return graphReachability(graph).dependentCounts;
+export function transitiveDependentCounts(graph: D3Graph): Map<string, number> | null {
+  return graphReachability(graph)?.dependentCounts ?? null;
 }
 
 export interface DependentRank {
@@ -283,14 +310,16 @@ export interface DependentRank {
 
 /**
  * Candidates ranked by unique transitive dependents, ties by ID. Counts use
- * every node of the graph; `isCandidate` only selects what is ranked.
+ * every node of the graph; `isCandidate` only selects what is ranked. Null
+ * above MAX_REACHABILITY_COMPONENTS.
  */
 export function rankByTransitiveDependents(
   graph: D3Graph,
   isCandidate: (node: D3Node) => boolean,
   limit: number,
-): DependentRank[] {
+): DependentRank[] | null {
   const counts = transitiveDependentCounts(graph);
+  if (!counts) return null;
   return graph.nodes
     .filter(isCandidate)
     .map(node => ({ node, count: counts.get(node.id) ?? 0 }))

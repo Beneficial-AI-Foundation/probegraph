@@ -190,13 +190,16 @@ All constants are in `main.ts` unless noted.
   (`computeSeedTiers` / `expandFromSeeds` in `graph-utils.ts`) with those
   thresholds as the render budget, or the "use filters" view if no tier fits.
   Aggregated views (`isAggregatedView`: Crate Map, Hierarchy) are exempt.
-- **Result limiting**: query results are truncated to `MAX_RENDERED_NODES`
-  by a BFS from the query anchors in the query direction (`truncate.ts`), or
-  to the best-connected nodes when the query has no anchors. Seeded views
-  bypass this cap; they are bounded by the seed budget instead.
+- **Result limiting**: query results are truncated to `MAX_RENDERED_NODES`,
+  keeping the anchors and then the nearest nodes by traversal depth
+  (`truncate.ts`), or the best-connected nodes when the query has no
+  anchors. Seeded views bypass this cap; they are bounded by the seed budget
+  instead.
 - **Guide rankings**: `reachability.ts` condenses cycles and unions bitsets
   on the resulting DAG, about C²/8 bytes for C components, computed once per
-  graph object.
+  graph object. Above `MAX_REACHABILITY_COMPONENTS` (20,000) components it
+  skips the bitsets and the Guide shows a note in place of the ranked lists.
+  The condensation and the layers are linear and always computed.
 - **Debounced input**: on large graphs only, typing in the query, exclude and
   include fields applies after `SEARCH_DEBOUNCE_MS`.
 - Nodes and links are cloned before D3 mutates them.

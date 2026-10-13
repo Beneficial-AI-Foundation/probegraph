@@ -7,6 +7,7 @@ import { buildGraphSummary, formatSummaryText } from './static-analysis';
 import { guideTransition, layerShares, resultMessage } from './guide-panel';
 import type { SuggestedAction } from './types';
 import { D3Graph, D3Link, D3Node, VerificationStatus } from '../types';
+import { MAX_REACHABILITY_COMPONENTS, graphReachability, rankByTransitiveDependents } from '../reachability';
 
 function node(id: string, crate: string, kind: string, status?: VerificationStatus): D3Node {
   return {
@@ -265,5 +266,23 @@ describe('result toast', () => {
 
   it('aggregated views only repeat the label', () => {
     expect(resultMessage({ type: 'switchView', view: 'crate-map' }, 'View map', null)).toBe('View map');
+  });
+});
+
+describe('component limit', () => {
+  it('skips the ranked lists above MAX_REACHABILITY_COMPONENTS but keeps the layers', () => {
+    const nodes = Array.from({ length: MAX_REACHABILITY_COMPONENTS + 1 }, (_, i) => node(`n${i}`, 'A', 'theorem'));
+    const g = graph(nodes, []);
+    expect(graphReachability(g)).toBeNull();
+    expect(rankByTransitiveDependents(g, () => true, 5)).toBeNull();
+    const s = buildGraphSummary(g);
+    expect(s.rankingsSkipped).toBe(MAX_REACHABILITY_COMPONENTS + 1);
+    expect(s.keystones.rows).toEqual([]);
+    expect(s.layers.map(l => l.nodes)).toEqual([MAX_REACHABILITY_COMPONENTS + 1]);
+  });
+
+  it('computes the ranked lists below the limit', () => {
+    const nodes = Array.from({ length: 3 }, (_, i) => node(`n${i}`, 'A', 'theorem'));
+    expect(buildGraphSummary(graph(nodes, [])).rankingsSkipped).toBeNull();
   });
 });
