@@ -149,6 +149,7 @@ target on the other layer. User-facing behaviour is in
 | `src/graph-loader.ts` | Format detection and normalization (above) |
 | `src/query.ts`, `src/filters.ts` | Compile → execute query pipeline; see [QUERY_PIPELINE.md](QUERY_PIPELINE.md) |
 | `src/intent.ts` | `QueryIntent`: what the query is about (text, exact IDs, focus set, boundary) |
+| `src/reveal.ts` | Revealing one node: why it is not drawn (`classifyReveal`), the actions that would draw it, the intent a reveal sets. `revealNode` in `main.ts` uses it for editor selections |
 | `src/url-state.ts` | URL codec (`writeURLState` / `readURLState`), `defaultFilters()`, `ActiveView`, `Layer` |
 | `src/status-filter.ts` | Verification status groups and the exact-status filter |
 | `src/status.ts` | File Map border status (own readiness) and fill status (subtree completeness) |
@@ -193,8 +194,9 @@ All constants are in `main.ts` unless noted.
 - **Result limiting**: query results are truncated to `MAX_RENDERED_NODES`,
   keeping the anchors and then the nearest nodes by traversal depth
   (`truncate.ts`), or the best-connected nodes when the query has no
-  anchors. Seeded views bypass this cap; they are bounded by the seed budget
-  instead.
+  anchors. A reveal can raise the cap for the current intent only
+  (`renderCap`). Seeded views bypass this cap; they are bounded by the seed
+  budget instead.
 - **Guide rankings**: `reachability.ts` condenses cycles and unions bitsets
   on the resulting DAG, about C²/8 bytes for C components, computed once per
   graph object. The closure unions ceil(C/32) words per condensed edge,

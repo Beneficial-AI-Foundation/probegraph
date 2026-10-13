@@ -1429,6 +1429,26 @@ select.search-input {
   pointer-events: auto;
 }
 
+/* Fades out just before showActionToast removes it */
+.toast-with-actions {
+  animation: toast-in 0.25s ease-out, toast-out 0.3s ease-in 7.5s forwards;
+}
+
+.toast-action {
+  margin-left: 0.75rem;
+  background: transparent;
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-radius: var(--pg-radius-lg);
+  padding: 0.1rem 0.5rem;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.toast-action:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
 @keyframes toast-in {
   from { opacity: 0; transform: translateY(-10px); }
   to { opacity: 1; transform: translateY(0); }

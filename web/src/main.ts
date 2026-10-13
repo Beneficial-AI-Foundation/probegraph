@@ -12,7 +12,12 @@ import { CrateMapVisualization, buildCrateGraph } from './crate-map';
 import { HierarchyMapVisualization } from './hierarchy-map';
 import { computeDerivedStatuses } from './status';
 import { parseAndNormalizeGraph, pickSourceConfig } from './graph-loader';
-import { editorSelectionIntent, filtersHiding, relaxations, type EditorSelection, type SelectStatus } from './editor-selection';
+import { editorSelectionIntent, relaxations, type EditorSelection, type SelectStatus } from './editor-selection';
+import {
+  RevealCounter, actionLabel, classifyReveal, finishReveal, revealActions, revealMessage, searchIntent,
+  type RevealAction, type RevealContext, type RevealPolicy, type RevealResult,
+} from './reveal';
+import { showActionToast } from './action-toast';
 import { escapeHtml } from './html';
 import { StatusGroup, exactStatusFilter, groupCheckState, withGroupChecked } from './status-filter';
 import {
@@ -2308,6 +2313,7 @@ function loadGraph(graph: D3Graph, message: string, layer?: Layer): void {
   blueprintLayer = graph.blueprintLayer ? copyGraph(graph.blueprintLayer) : null;
   inactiveLayer = null;
   if (layer && blueprintLayer) replaceURLLayer(layer);
+  cancelReveals();
 
   // Seed tiers and the ?entrypoints= payload belong to the previous graph;
   // bumping the generation invalidates any of its in-flight fetches
@@ -2596,7 +2602,7 @@ function applyFiltersAndUpdate(): void {
   // nodes nearest to the query's anchors (see truncate.ts). Crate Map and
   // Hierarchy aggregate into group boxes, so truncation would distort them.
   const seeds = truncationSeeds(compiled.query, anchors, filtered);
-  const cut = isAggregatedView(activeView) ? null : truncateToBudget(filtered, MAX_RENDERED_NODES, seeds);
+  const cut = isAggregatedView(activeView) ? null : truncateToBudget(filtered, renderCap(), seeds);
   const wasTruncated = cut !== null && cut.omitted > 0;
   if (cut) filtered = cut.graph;
 
@@ -3727,6 +3733,144 @@ function handleResize(): void {
 }
 
 // ============================================================================
+// Reveal: one path for editor selections and search
+// ============================================================================
+
+// Numbers reveals so that a later step of one overtaken by a newer reveal
+// or a graph load does nothing
+const reveals = new RevealCounter();
+// The latest reveal's toast, removed when the next reveal starts
+let revealToast: HTMLElement | null = null;
+
+// A render cap a reveal raised, for the intent it was raised under: every
+// intent writer replaces the intent object, so the next query drops it
+let raisedCap: { intent: QueryIntent; cap: number } | null = null;
+
+function renderCap(): number {
+  return raisedCap?.intent === state.filters.intent ? raisedCap.cap : MAX_RENDERED_NODES;
+}
+
+/** Drop the pending reveal and its toast. */
+function cancelReveals(): void {
+  reveals.invalidate();
+  revealToast?.remove();
+  revealToast = null;
+}
+
+interface RevealOptions {
+  policy: RevealPolicy;
+  /** Centre the camera on the node once it is drawn */
+  center?: boolean;
+  /** Say why the node is not drawn, with the actions that would draw it */
+  offer?: boolean;
+}
+
+function revealContext(): RevealContext {
+  return {
+    graph: state.fullGraph!,
+    otherLayer: activeLayer === 'code' ? blueprintLayer : codeLayer,
+    filters: state.filters,
+    language: state.projectLanguage,
+    rendered: new Set(state.filteredGraph?.nodes.map(n => n.id)),
+    capped: !!lastRenderResult && !lastRenderResult.seeded && lastRenderResult.shown < lastRenderResult.total,
+  };
+}
+
+/**
+ * Show one node: on its layer, in the Call Graph, unhidden, with the intent
+ * the policy sets, and in node details whether drawn or not. Filters stay;
+ * with `offer` the user can relax the ones that hide it. Returns why the
+ * node is or is not drawn afterwards.
+ */
+function revealNode(id: string, opts: RevealOptions): RevealResult {
+  const token = reveals.start();
+  revealToast?.remove();
+  revealToast = null;
+  const { policy } = opts;
+  // The editor names code declarations only
+  const layer: Layer | null = codeLayer?.nodes.some(n => n.id === id) ? 'code'
+    : policy.kind !== 'editor' && blueprintLayer?.nodes.some(n => n.id === id) ? 'blueprint'
+    : null;
+  if (!layer) {
+    if (opts.offer) revealToast = showActionToast(revealMessage(id, { reason: 'missing' }, renderCap()), []);
+    return { reason: 'missing' };
+  }
+  // Each layer keeps its own filters, so switching needs no consent
+  if (layer !== activeLayer) switchLayer(layer);
+  const viewChanged = activeView !== 'callgraph';
+  if (viewChanged) switchView('callgraph', { apply: false });
+  const unhidden = state.filters.hiddenNodes.delete(id);
+  const node = state.fullGraph!.nodes.find(n => n.id === id)!;
+
+  if (policy.kind === 'editor') {
+    const { selection } = policy;
+    setIntent(editorSelectionIntent(selection, node.display_name), {
+      history: 'replace',
+      before: () => {
+        state.filters.maxDepth = selection.depth;
+        syncDepthSliderUI(selection.depth);
+      },
+    });
+  } else {
+    if (viewChanged || unhidden) applyFiltersAndUpdate();
+    const before = classifyReveal(revealContext(), id);
+    if (policy.kind === 'anchor' || before.reason === 'outside-intent') {
+      setIntent(searchIntent(state.filters.intent, id, node.display_name, policy), { history: 'push', pushed: true });
+    }
+  }
+  state.selectedNode = node;
+  updateNodeInfo();
+
+  const result = classifyReveal(revealContext(), id);
+  if (result.reason === 'shown' && opts.center && visualization instanceof CallGraphVisualization) {
+    const viz = visualization;
+    finishReveal(reveals, token, {
+      settle: () => new Promise(resolve => requestAnimationFrame(() => resolve())),
+      center: () => viz.centerOn(id),
+    });
+  }
+  if (opts.offer && result.reason !== 'shown') {
+    const actions = revealActions(result, state.filters.intent, id, node.display_name, lastRenderResult?.total ?? 0);
+    revealToast = showActionToast(revealMessage(node.display_name, result, renderCap()), actions.map(action => ({
+      label: actionLabel(action),
+      run: () => {
+        // A newer reveal or a graph load owns the view now
+        if (!reveals.isCurrent(token)) return;
+        runRevealAction(action);
+        revealNode(id, opts);
+      },
+    })));
+  }
+  return result;
+}
+
+/** An action the user accepted from a reveal's toast; one history entry at most. */
+function runRevealAction(action: RevealAction): void {
+  switch (action.kind) {
+    case 'relax':
+      // Pushed, so Back restores the filters
+      Object.assign(state.filters, relaxations(action.keys));
+      syncFilterUI();
+      urlWritesSuppressed++;
+      try {
+        applyFiltersAndUpdate();
+      } finally {
+        urlWritesSuppressed--;
+      }
+      window.history.pushState({ pushed: true }, '', generateShareableURL());
+      break;
+    case 'anchor':
+      setIntent(action.intent, { history: 'push', pushed: true });
+      break;
+    case 'raise-cap':
+      // The cap is not in the URL, so there is no history entry
+      raisedCap = { intent: state.filters.intent, cap: action.cap };
+      applyFiltersAndUpdate();
+      break;
+  }
+}
+
+// ============================================================================
 // VS Code Message Handler
 // ============================================================================
 
@@ -3747,23 +3891,10 @@ function revisionField(): { revision?: number } {
  * at its depth. Other filters stay; if one hides the node, says which.
  */
 function applyEditorSelection(selection: EditorSelection): { status: SelectStatus; filteredBy?: string[] } {
-  const node = codeLayer?.nodes.find(n => n.id === selection.nodeId);
-  if (!node) return { status: 'missing' };
-  if (activeLayer !== 'code') switchLayer('code');
-  if (activeView !== 'callgraph') switchView('callgraph', { apply: false });
-  state.filters.hiddenNodes.delete(node.id);
-  setIntent(editorSelectionIntent(selection, node.display_name), {
-    history: 'replace',
-    before: () => {
-      state.filters.maxDepth = selection.depth;
-      syncDepthSliderUI(selection.depth);
-    },
-  });
-  if (state.filteredGraph?.nodes.some(n => n.id === node.id)) return { status: 'shown' };
-  return {
-    status: 'filtered',
-    filteredBy: filtersHiding(state.fullGraph!, state.filters, state.projectLanguage, node.id),
-  };
+  const { reason, filteredBy } = revealNode(selection.nodeId, { policy: { kind: 'editor', selection } });
+  if (reason === 'shown' || reason === 'missing') return { status: reason };
+  // Under its own exact intent a selection is only ever hidden by a filter
+  return { status: 'filtered', filteredBy: filteredBy ?? [] };
 }
 
 function replySelectResult(revision: number, requestId: number | undefined, selection: EditorSelection): void {
