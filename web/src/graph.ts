@@ -281,6 +281,23 @@ export function computeFitTransform(
   return { k, x: width / 2 - k * cx, y: height / 2 - k * cy };
 }
 
+/**
+ * Compute a zoom transform that puts one node in the middle of the viewport
+ * at scale `k` (the largest scale fitToView uses). Null when the node has no
+ * position yet or the viewport is empty.
+ *
+ * Exported for testing (the renderer applies the result via d3.zoom).
+ */
+export function computeCenterTransform(
+  node: { x?: number; y?: number },
+  width: number,
+  height: number,
+  k: number = 1
+): FitTransform | null {
+  if (node.x === undefined || node.y === undefined || width <= 0 || height <= 0) return null;
+  return { k, x: width / 2 - k * node.x, y: height / 2 - k * node.y };
+}
+
 export class CallGraphVisualization {
   private svg: d3.Selection<SVGSVGElement, unknown, null, undefined>;
   private g: d3.Selection<SVGGElement, unknown, null, undefined>;
@@ -594,6 +611,25 @@ export class CallGraphVisualization {
       .transition()
       .duration(400)
       .call(this.zoom.transform as any, d3.zoomIdentity.translate(t.x, t.y).scale(t.k));
+  }
+
+  /**
+   * Pan and zoom to one drawn node with the same 400 ms transition as
+   * fitToView. Resolves true when the move ends, false when the node is not
+   * drawn or another camera move cuts this one short.
+   */
+  public centerOn(id: string): Promise<boolean> {
+    const node = this.currentNodes.find(n => n.id === id);
+    const t = node ? computeCenterTransform(node, this.width, this.height) : null;
+    if (!t) return Promise.resolve(false);
+    return new Promise(resolve => {
+      this.svg
+        .transition()
+        .duration(400)
+        .call(this.zoom.transform as any, d3.zoomIdentity.translate(t.x, t.y).scale(t.k))
+        .on('end', () => resolve(true))
+        .on('interrupt', () => resolve(false));
+    });
   }
 
   /** The node to center on when the whole graph cannot fit: the selected
