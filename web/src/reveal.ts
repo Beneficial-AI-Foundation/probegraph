@@ -110,8 +110,11 @@ export function withAnchor(current: QueryIntent, id: string, label: string): Que
   return exactIntent([...current.ids, id], current.dir, `${current.label}, ${label}`, current.origin);
 }
 
-/** The largest render cap a reveal offers to raise to. */
-export const RAISED_RENDER_CAP = 1000;
+/**
+ * The largest render cap a reveal offers to raise to. On SPQR the layout
+ * blocks the main thread for about 4 s at 500 nodes and 30 s at 1000.
+ */
+export const RAISED_RENDER_CAP = 500;
 
 /** An action the viewer offers for a node it does not draw; the user clicks it. */
 export type RevealAction =
