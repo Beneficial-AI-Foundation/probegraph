@@ -3,10 +3,10 @@
  *
  * A query result larger than the render cap keeps the nodes nearest to the
  * query's anchors, ties broken by ID. The distance is the query's own
- * traversal depth (`nodeDepths`) when it has one, else a breadth-first
+ * traversal depth (`anchorDepths`) when it has one, else a breadth-first
  * search (BFS) from the anchors over the result's links in the query
- * direction. Results without anchors (paths, boundaries, unfiltered views)
- * keep the most connected nodes instead.
+ * direction (exact sets). Results without anchors (paths, boundaries,
+ * unfiltered views) keep the most connected nodes instead.
  *
  * Display filters (status, language, origin, files, edge types) run after
  * the traversal and can remove the nodes between a kept node and its
@@ -110,7 +110,7 @@ function nearestToAnchors(
 ): Set<string> {
   const kept = new Set(anchors.slice(0, budget));
   if (kept.size >= budget) return kept;
-  const depth = graph.nodeDepths ?? bfsDepths(graph, anchors, direction);
+  const depth = graph.anchorDepths ?? bfsDepths(graph, anchors, direction);
   const rest = graph.nodes.filter(n => !kept.has(n.id));
   const reached = rest
     .filter(n => depth.has(n.id))

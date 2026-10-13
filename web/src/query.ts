@@ -43,6 +43,8 @@ export interface TraversalResult {
   nodeIds: Set<string>;
   calleeDepths?: Map<string, number>;
   callerDepths?: Map<string, number>;
+  /** Steps from the start nodes over links in either direction (traverseBidirectional). */
+  undirectedDepths?: Map<string, number>;
   boundaryLinkPairs?: Set<string>;
 }
 
@@ -310,12 +312,12 @@ export function traverseBidirectional(
     adj.get(targetId)!.add(sourceId);
   }
 
-  const visited = new Set<string>();
+  const depths = new Map<string, number>();
   const queue: Array<{ id: string; depth: number }> = [];
 
   for (const id of centerIds) {
     queue.push({ id, depth: 0 });
-    visited.add(id);
+    depths.set(id, 0);
   }
 
   while (queue.length > 0) {
@@ -324,14 +326,14 @@ export function traverseBidirectional(
     const neighbors = adj.get(id);
     if (!neighbors) continue;
     for (const nId of neighbors) {
-      if (!visited.has(nId)) {
-        visited.add(nId);
+      if (!depths.has(nId)) {
+        depths.set(nId, depth + 1);
         queue.push({ id: nId, depth: depth + 1 });
       }
     }
   }
 
-  return { nodeIds: visited };
+  return { nodeIds: new Set(depths.keys()), undirectedDepths: depths };
 }
 
 /** DFS path finding from sourceIds to sinkIds, returns all nodes on any valid path. */
@@ -733,7 +735,7 @@ function compileTextQuery(source: string, sink: string, maxDepth: number | null)
  *   4. assemble result nodes
  *   5. apply display predicates
  *   6. filter links
- *   7. removeIsolated + build nodeDepths
+ *   7. removeIsolated + build nodeDepths and anchorDepths
  */
 export function executeQuery(
   compiled: CompiledQuery,
@@ -971,6 +973,9 @@ export function executeQuery(
     }
   }
 
+  const anchorDepths = nodeDepths
+    ?? (query.type === 'depthFromSelected' ? traversalResult.undirectedDepths : undefined);
+
   return {
     nodes: resultNodes.map(n => ({ ...n })),
     links: resultLinks.map(l => ({
@@ -982,6 +987,7 @@ export function executeQuery(
       total_edges: resultLinks.length,
     },
     nodeDepths,
+    anchorDepths,
     displayRemoved: query.type === 'noTraversal' ? 0 : displayRemoved,
   };
 }

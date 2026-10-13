@@ -146,6 +146,24 @@ describe('truncateToBudget', () => {
     expect(ids(cut.graph)).toEqual([...Array.from({ length: 19 }, (_, i) => `a${String(i).padStart(2, '0')}`), 't']);
   });
 
+  it('ranks a click selection by its traversal depth when a display filter cuts the path', () => {
+    // m -> t -> u, a_i -> m, b_i -> a_i, and b29 calls 20 more nodes. With m
+    // hidden, only u has a visible path to t. The a_i (depth 2) still come
+    // before b29 (depth 3), although b29 has the most links.
+    const edges: [string, string][] = [['m', 't'], ['t', 'u']];
+    for (let i = 0; i < 30; i++) {
+      const k = String(i).padStart(2, '0');
+      edges.push([`a${k}`, 'm'], [`b${k}`, `a${k}`]);
+    }
+    for (let i = 0; i < 20; i++) edges.push(['b29', `w${i}`]);
+    const g = graph(edges);
+    g.nodes.find(n => n.id === 'm')!.verification_status = 'failed';
+    const { compiled, result } = run(g, { maxDepth: 3, selectedNodes: new Set(['t']), showFailedNodes: false });
+    expect(compiled.query.type).toBe('depthFromSelected');
+    const cut = truncateToBudget(result, 6, truncationSeeds(compiled.query, compiled.anchorIds, result));
+    expect(ids(cut.graph)).toEqual(['a00', 'a01', 'a02', 'a03', 't', 'u']);
+  });
+
   it('fills the rest of the budget with unreached nodes, most connected first', () => {
     // No traversal depths: BFS over links from m reaches z only; then the
     // unreached nodes by connectivity, ties by ID

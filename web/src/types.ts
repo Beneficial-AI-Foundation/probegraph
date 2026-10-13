@@ -334,6 +334,12 @@ export interface D3Graph {
   metadata: D3GraphMetadata;
   nodeDepths?: Map<string, number>;
   /**
+   * Query results only: steps from the query's anchors in the traversal,
+   * before display filters (callers, callees, neighborhood and click
+   * selections). Truncation ranks by it; layout does not use it.
+   */
+  anchorDepths?: Map<string, number>;
+  /**
    * Query results only: nodes the traversal reached that display filters
    * (origin, status, language, result files) removed. 0 for queries
    * without traversal.
