@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
   RevealCounter, classifyReveal, finishReveal, revealActions, revealMessage, searchIntent, withAnchor,
-  type RevealContext,
+  type RevealContext, type RevealSteps,
 } from './reveal';
 import { applyFilters } from './filters';
 import { exactIntent, focusIntent, textIntent, type QueryIntent } from './intent';
@@ -165,44 +165,81 @@ describe('finishReveal', () => {
     return { promise, resolve };
   }
 
+  /** Steps that settle at once, are untouched, and log each centring as `name`. */
+  function steps(name: string, log: string[], over: Partial<RevealSteps> = {}): RevealSteps {
+    return {
+      settle: async () => {},
+      untouched: () => true,
+      center: async () => { log.push(name); return true; },
+      settleFully: async () => {},
+      ...over,
+    };
+  }
+
+  it('centres, then centres again once the layout stops', async () => {
+    const counter = new RevealCounter();
+    const centred: string[] = [];
+    const full = deferred<void>();
+    const a = finishReveal(counter, counter.start(), steps('A', centred, { settleFully: () => full.promise }));
+    await new Promise(r => setTimeout(r));
+    expect(centred).toEqual(['A']);
+    full.resolve();
+    expect(await a).toBe(true);
+    expect(centred).toEqual(['A', 'A']);
+  });
+
   it('drops the first of two reveals in a row once the second starts', async () => {
     const counter = new RevealCounter();
     const centred: string[] = [];
     const settleA = deferred<void>();
-    const a = finishReveal(counter, counter.start(), {
-      settle: () => settleA.promise,
-      center: async () => { centred.push('A'); return true; },
-    });
+    const a = finishReveal(counter, counter.start(), steps('A', centred, { settle: () => settleA.promise }));
     // B is selected while A's layout settles
-    const b = finishReveal(counter, counter.start(), {
-      settle: async () => {},
-      center: async () => { centred.push('B'); return true; },
-    });
+    const b = finishReveal(counter, counter.start(), steps('B', centred));
     expect(await b).toBe(true);
     settleA.resolve();
     expect(await a).toBe(false);
-    expect(centred).toEqual(['B']);
+    expect(centred).toEqual(['B', 'B']);
   });
 
   it('reports a reveal overtaken during its camera move as not centred', async () => {
     const counter = new RevealCounter();
     const move = deferred<boolean>();
-    const a = finishReveal(counter, counter.start(), { settle: async () => {}, center: () => move.promise });
+    const a = finishReveal(counter, counter.start(), steps('A', [], { center: () => move.promise }));
     await Promise.resolve();
     counter.start();
     move.resolve(true);
     expect(await a).toBe(false);
   });
 
+  it('does not centre once something else moved the camera', async () => {
+    const counter = new RevealCounter();
+    const centred: string[] = [];
+    expect(await finishReveal(counter, counter.start(), steps('A', centred, { untouched: () => false }))).toBe(false);
+    expect(centred).toEqual([]);
+  });
+
+  it('skips the second centring when the camera moved after the first', async () => {
+    const counter = new RevealCounter();
+    const centred: string[] = [];
+    let touched = false;
+    const full = deferred<void>();
+    const a = finishReveal(counter, counter.start(), steps('A', centred, {
+      untouched: () => !touched,
+      settleFully: () => full.promise,
+    }));
+    await new Promise(r => setTimeout(r));
+    touched = true;
+    full.resolve();
+    expect(await a).toBe(true);
+    expect(centred).toEqual(['A']);
+  });
+
   it('drops a reveal when a graph loads', async () => {
     const counter = new RevealCounter();
     const token = counter.start();
     counter.invalidate();
-    let centred = false;
-    expect(await finishReveal(counter, token, {
-      settle: async () => {},
-      center: async () => { centred = true; return true; },
-    })).toBe(false);
-    expect(centred).toBe(false);
+    const centred: string[] = [];
+    expect(await finishReveal(counter, token, steps('A', centred))).toBe(false);
+    expect(centred).toEqual([]);
   });
 });

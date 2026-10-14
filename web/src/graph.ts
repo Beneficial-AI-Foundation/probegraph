@@ -316,9 +316,10 @@ export class CallGraphVisualization {
   // changes, so hover/selection re-renders never move the user's view.
   private renderedNodeIds: Set<string> = new Set();
   private currentNodes: D3Node[] = [];
-  // Pans and zooms by the user (wheel, drag), so a delayed camera move can
-  // tell that the user took over in the meantime
-  private userCameraMoveCount = 0;
+  // Camera moves so far: by the user (wheel, drag), fitToView and centerOn.
+  // A delayed camera move compares it to tell that something else moved
+  // the camera in the meantime
+  private cameraMoveCount = 0;
   private settleWaiters = 0;
 
   /**
@@ -356,8 +357,9 @@ export class CallGraphVisualization {
       .scaleExtent([0.1, 10])
       .on('zoom', (event) => {
         this.g.attr('transform', event.transform);
-        // Programmatic moves (fitToView, centerOn) have no source event
-        if (event.sourceEvent) this.userCameraMoveCount++;
+        // Programmatic moves have no source event; fitToView and centerOn
+        // count themselves once each, not per frame
+        if (event.sourceEvent) this.cameraMoveCount++;
       });
 
     this.svg.call(this.zoom);
@@ -613,6 +615,7 @@ export class CallGraphVisualization {
       this.currentNodes, this.width, this.height, this.findFocusNode()
     );
     if (!t) return;
+    this.cameraMoveCount++;
     this.svg
       .transition()
       .duration(400)
@@ -628,6 +631,7 @@ export class CallGraphVisualization {
     const node = this.currentNodes.find(n => n.id === id);
     const t = node ? computeCenterTransform(node, this.width, this.height) : null;
     if (!t) return Promise.resolve(false);
+    this.cameraMoveCount++;
     return new Promise(resolve => {
       this.svg
         .transition()
@@ -644,9 +648,9 @@ export class CallGraphVisualization {
     this.svg.interrupt();
   }
 
-  /** The number of pans and zooms by the user so far. */
-  public get userCameraMoves(): number {
-    return this.userCameraMoveCount;
+  /** The number of camera moves so far (user, fitToView, centerOn). */
+  public get cameraMoves(): number {
+    return this.cameraMoveCount;
   }
 
   /**

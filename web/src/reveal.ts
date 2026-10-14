@@ -131,7 +131,8 @@ export type RevealAction =
 
 /**
  * The actions for a reveal result. `resultSize` is the number of nodes in
- * the query result before the cap, and `cap` the render cap. A truncated
+ * the query result before the cap, and `cap` the render cap once the
+ * intent changes (a new intent ends a raised cap). A truncated
  * node always gets `replace`, which draws it: a lone anchor is never cut.
  * `anchor` is offered only when the anchors fit in the cap, since
  * truncation keeps the first `cap` anchors. The cap is raised only up to
@@ -207,20 +208,33 @@ export class RevealCounter {
 }
 
 export interface RevealSteps {
-  /** Resolves once the layout has a position for the node */
+  /** Resolves when the layout settles, or at a time limit while it still moves */
   settle: () => Promise<void>;
+  /**
+   * False once something else moved the camera or changed the view since
+   * the reveal started or last centred: the user, a query, Reset View
+   */
+  untouched: () => boolean;
   /** Starts the camera move; resolves true when it ends, false if it was cut short */
   center: () => Promise<boolean>;
+  /** Resolves when the layout stops moving, or at a longer time limit */
+  settleFully: () => Promise<void>;
 }
 
 /**
- * The asynchronous end of a reveal: wait for the layout, then centre. Each
- * step drops out when `token` is no longer current, so a reveal that a newer
- * one overtook never moves the camera. Resolves true when it centred.
+ * The asynchronous end of a reveal: wait for the layout, centre, then
+ * centre once more when the layout stops, because a node centred at the
+ * time limit can still drift. Each step drops out when `token` is no longer
+ * current or the view was touched, so a reveal never overrides a newer
+ * reveal, a query or the user. Resolves true when it centred.
  */
 export async function finishReveal(counter: RevealCounter, token: number, steps: RevealSteps): Promise<boolean> {
+  const wanted = () => counter.isCurrent(token) && steps.untouched();
   await steps.settle();
-  if (!counter.isCurrent(token)) return false;
+  if (!wanted()) return false;
   const ended = await steps.center();
-  return ended && counter.isCurrent(token);
+  if (!ended || !counter.isCurrent(token)) return false;
+  await steps.settleFully();
+  if (wanted()) await steps.center();
+  return true;
 }

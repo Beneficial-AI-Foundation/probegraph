@@ -3741,10 +3741,14 @@ function handleResize(): void {
 const reveals = new RevealCounter();
 // The latest reveal's toast, removed when the next reveal starts
 let revealToast: HTMLElement | null = null;
-// The latest reveal's camera move, stopped when the next reveal starts
+// The latest reveal's camera move while it runs, stopped when the next
+// reveal starts. Unset while the reveal waits, so the next reveal never
+// stops a move that someone else started.
 let revealCamera: { viz: CallGraphVisualization } | null = null;
-// The longest a reveal waits for the layout before it centres
+// The longest a reveal waits for the layout before it centres, and before
+// it centres once more on a node that drifted
 const REVEAL_SETTLE_MS = 1500;
+const REVEAL_FINAL_SETTLE_MS = 8000;
 
 // A render cap a reveal raised, for the query it was raised under:
 // intentGeneration moves with every new query
@@ -3852,28 +3856,44 @@ function presentReveal(node: D3Node, opts: RevealOptions, token: number): Reveal
 
   const result = classifyReveal(revealContext(), id);
   if (result.reason === 'shown' && opts.center && visualization instanceof CallGraphVisualization) {
-    const camera = { viz: visualization };
-    revealCamera = camera;
-    const userMoves = camera.viz.userCameraMoves;
+    const viz = visualization;
+    // Read after the reveal's own render and fit. Any later camera move
+    // (the user, Reset View, a query's fit) or state change wins over the
+    // reveal; a query that draws the same nodes moves no camera, hence the
+    // URL state as well.
+    let moves = viz.cameraMoves;
+    const shownAt = generateShareableURL();
     finishReveal(reveals, token, {
-      settle: () => camera.viz.whenSettled(REVEAL_SETTLE_MS),
-      // A pan or zoom by the user while the layout settles wins
-      center: () => camera.viz.userCameraMoves === userMoves ? camera.viz.centerOn(id) : Promise.resolve(false),
-    }).finally(() => {
-      if (revealCamera === camera) revealCamera = null;
+      settle: () => viz.whenSettled(REVEAL_SETTLE_MS),
+      untouched: () => viz.cameraMoves === moves && generateShareableURL() === shownAt,
+      center: () => {
+        const camera = { viz };
+        revealCamera = camera;
+        const move = viz.centerOn(id);
+        moves = viz.cameraMoves;
+        return move.finally(() => {
+          if (revealCamera === camera) revealCamera = null;
+        });
+      },
+      settleFully: () => viz.whenSettled(REVEAL_FINAL_SETTLE_MS),
     });
   }
   if (opts.offer && result.reason !== 'shown') {
+    // An action that sets an intent ends a raised cap, so the anchors must
+    // fit in the plain one
     const actions = revealActions(
-      result, state.filters.intent, id, node.display_name, lastRenderResult?.total ?? 0, renderCap(),
+      result, state.filters.intent, id, node.display_name, lastRenderResult?.total ?? 0, MAX_RENDERED_NODES,
     );
-    // The actions fit the state they were computed in; after any other
-    // change (a query, a filter, Back) a click does nothing
+    // The actions fit the state they were computed in; when the URL state
+    // differs (a query, a filter, Back), a click only says so
     const offeredAt = generateShareableURL();
     revealToast = showActionToast(revealMessage(node.display_name, result, renderCap()), actions.map(action => ({
       label: actionLabel(action),
       run: () => {
-        if (!reveals.isCurrent(token) || generateShareableURL() !== offeredAt) return;
+        if (!reveals.isCurrent(token) || generateShareableURL() !== offeredAt) {
+          showToast('The view changed, so this action no longer applies');
+          return;
+        }
         runRevealAction(action, node, opts.policy);
         presentReveal(node, opts, token);
       },
