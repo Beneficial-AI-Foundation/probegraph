@@ -2707,7 +2707,7 @@ function updateStats(truncated?: { shown: number; byAnchors: boolean }): void {
       <span style="color: var(--pg-accent); font-weight: bold;">Results Limited</span>
       <p style="margin: 4px 0 0 0; font-size: 0.85rem; color: var(--pg-text-muted);">
         ${truncated?.byAnchors
-          ? `Showing the ${truncated.shown} nodes nearest to the query target.`
+          ? `Showing the ${truncated.shown} nodes nearest to the query targets.`
           : `Showing top ${truncated?.shown} nodes by connectivity.`} Use a more specific query or reduce <strong>Depth</strong> to narrow results.
       </p>
     </div>

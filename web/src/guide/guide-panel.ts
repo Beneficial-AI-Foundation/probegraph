@@ -116,7 +116,7 @@ export class GuidePanel {
 function sectionElement(title: string, description: string): HTMLElement {
   const section = document.createElement('section');
   section.className = 'guide-section';
-  const heading = document.createElement('p');
+  const heading = document.createElement('h3');
   heading.className = 'guide-section-title';
   heading.textContent = title;
   const desc = document.createElement('p');
