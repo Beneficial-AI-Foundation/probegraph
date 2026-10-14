@@ -60,7 +60,7 @@ export interface RankedList {
  * Nodes on one topological level of the SCC-condensed graph. Level 0 has
  * no dependencies. Statuses use the same definitions as VerificationBreakdown.
  */
-export interface LayerStat {
+export interface LevelStat {
   level: number;
   nodes: number;
   verified: number;
@@ -99,7 +99,7 @@ export interface GraphSummary {
   keystones: RankedList;     // lemmas (proof kinds), or every node when the graph has none
   keystonesAreLemmas: boolean;
   rankingsSkipped: { components: number; links: number } | null;  // condensed size when too large (lists empty)
-  layers: LayerStat[];
+  levels: LevelStat[];
   unverifiedHotspots: NodeRank[];
   failedNodes: NodeRank[];
   suggestedQueries: SuggestedQuery[];

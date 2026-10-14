@@ -1375,12 +1375,12 @@ select.search-input {
   color: var(--pg-text-muted);
 }
 
-.guide-layers {
+.guide-levels {
   max-height: 14rem;
   overflow-y: auto;
 }
 
-.guide-layer {
+.guide-level {
   display: grid;
   grid-template-columns: 2.5rem 3rem 1fr;
   align-items: center;
@@ -1389,7 +1389,7 @@ select.search-input {
   font-variant-numeric: tabular-nums;
 }
 
-.guide-layer-bar {
+.guide-level-bar {
   display: flex;
   height: 0.6rem;
   background: var(--pg-accent-soft);
@@ -1397,7 +1397,7 @@ select.search-input {
   overflow: hidden;
 }
 
-.guide-layer-shares {
+.guide-level-shares {
   grid-column: 1 / -1;
   color: var(--pg-text-muted);
   padding-left: 2.85rem;

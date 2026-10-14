@@ -300,7 +300,7 @@ boxes.
 ## Guide tab
 
 The right sidebar has a **Guide (testing)** tab with a statically computed
-graph overview, ranked lists, a layers strip and suggested queries. No LLM is
+graph overview, ranked lists, a dependency levels strip and suggested queries. No LLM is
 involved.
 
 - Counts use the whole graph, with transitively verified, verified (locally
@@ -316,12 +316,9 @@ involved.
   is one group), and time that grows with C and the links between groups.
   Above 20,000 groups, or with too many links for that number of groups,
   the Guide does not compute them and says so. This limits the memory and
-  the time the page is blocked. The Layers strip still shows.
-- The **Layers** strip groups cycles into one node, then gives each
-  topological level (level 0 has no dependencies) its node count and the
-  shares of transitively verified, verified and trusted nodes. It shows
-  at most 60 rows. In a deeper graph, the last row (for example `L59+`)
-  combines the remaining levels.
+  the time the page is blocked. The Dependency levels strip still shows.
+- The **Dependency levels** strip shows how verification is spread over
+  the dependency stack. See [Dependency levels](#dependency-levels).
 - Lists and suggestions only name nodes and edges the current kind and
   edge-type filters show, and update when those filters change. The counts
   always use every node and every dependency.
@@ -334,6 +331,44 @@ involved.
   gives the number of nodes not shown, and when display filters (origin,
   status, language, files) removed nodes, it says how many. Browser back
   undoes it.
+
+### Dependency levels
+
+The strip sorts the declarations by how deep they sit in the dependency
+graph. A declaration with no dependencies in the graph is at level 0.
+Every other declaration is one level above its highest dependency, so its
+level is the length of the longest dependency chain below it. A cycle
+(declarations that all depend on each other) counts as one declaration,
+and its members share one level. Dependencies outside the graph, for
+example the standard library, are not counted.
+
+Each row has four parts:
+
+- The level, for example `L3`.
+- The number of declarations at that level.
+- A bar with the transitively verified, verified and trusted shares, in
+  the colors of [Verification colors](#verification-colors). The empty
+  part of the bar is unverified, failed or unknown.
+- The same shares as text, also in the tooltip.
+
+Example: for `a -> b -> c` and `a -> c`, `c` is at level 0, `b` at
+level 1 and `a` at level 2. The edge `a -> c` does not lower the level
+of `a`, because `a` also depends on `b`.
+
+Read the strip from the bottom up. Low levels hold the basic definitions
+and lemmas that the rest of the project builds on. If those levels have
+a low verified share, much of the project rests on unproven ground, even
+when the top levels look verified. A high unverified share near the top
+is less serious, because little depends on it.
+
+The strip always uses every node and every dependency of the graph. It
+does not change with the kind or edge-type filters. It shows at most 60
+rows. In a deeper graph, the last row (for example `L59+`) combines the
+remaining levels, and its tooltip gives the level range. The rows are
+not clickable.
+
+The strip is on trial. If it does not help to read real graphs, it will
+be removed.
 
 ## VS Code
 

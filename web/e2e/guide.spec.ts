@@ -116,9 +116,9 @@ test.describe('Guide on the Lean graph', () => {
     await expect(rows(page, 'Keystone lemmas')).toHaveCount(5);
   });
 
-  test('layers strip shows every level', async ({ page }) => {
+  test('dependency levels strip shows every level', async ({ page }) => {
     await open(page);
-    const levels = page.locator('.guide-layer');
+    const levels = page.locator('.guide-level');
     await expect(levels.first()).toHaveAttribute('data-level', '0');
     expect(await levels.count()).toBeGreaterThan(1);
     await expect(levels.first()).toContainText(/% transitively verified/);

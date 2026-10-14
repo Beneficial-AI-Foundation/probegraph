@@ -160,7 +160,7 @@ target on the other layer. User-facing behaviour is in
 | `src/blueprint-details.ts` | Node-details section for blueprint entries and cross-layer links |
 | `src/theme.ts` | Colour tokens read from CSS, group palette |
 | `src/html.ts` | `escapeHtml` for graph-provided values in HTML |
-| `src/guide/` | Static-analysis Guide panel (graph summary, ranked lists, layers strip, suggested queries; no LLM) |
+| `src/guide/` | Static-analysis Guide panel (graph summary, ranked lists, dependency levels strip, suggested queries; no LLM) |
 | `src/reachability.ts` | SCC condensation, reverse-reachability bitsets, transitive dependent counts, dependency levels |
 | `src/truncate.ts` | Render-cap truncation by BFS from the query anchors |
 | `src/main.ts` | State, layers, graph loading, view dispatch, URL and history, VS Code messaging |
@@ -203,8 +203,9 @@ All constants are in `main.ts` unless noted.
   `reachabilityFits` skips the bitsets above `MAX_REACHABILITY_COMPONENTS`
   (20,000) components or `MAX_REACHABILITY_WORDS` (250 million words, about
   0.35 s), and the Guide shows a note in place of the ranked lists. The
-  condensation and the layers are linear and always computed. The Layers
-  strip renders at most `MAX_LAYER_ROWS` (60, `guide/guide-panel.ts`) rows.
+  condensation and the dependency levels are linear and always computed.
+  The Dependency levels strip renders at most `MAX_LEVEL_ROWS` (60,
+  `guide/guide-panel.ts`) rows.
 - **Debounced input**: on large graphs only, typing in the query, exclude and
   include fields applies after `SEARCH_DEBOUNCE_MS`.
 - Nodes and links are cloned before D3 mutates them.

@@ -5,7 +5,7 @@ Status (2026-10-13): Phases 0 to 2, 5a and 5c merged (#42, #43, #46, #48,
 "Blueprint-bound only" filter; `FilterOptions` has none of those fields),
 Phase 3 (blocked on probe-lean #114, still open) and Phase 4. Phase 4 is in
 #81: the ranked lists, SCC-based dependent counts (`src/reachability.ts`),
-the layers strip and truncation by distance from the anchors
+the dependency levels strip and truncation by distance from the anchors
 (`src/truncate.ts`). Two Phase 4 items merged earlier: `removeIsolated`
 keeps the intent's anchor IDs (`src/query.ts`, `keepSet`; #46), and the
 Guide re-renders when kind or edge filters change (#48).
@@ -25,8 +25,12 @@ Where the merged work departs from the text below:
   they are filters or views.
 - Unfinished work means `unverified` or `failed`: the data has no `sorry`
   field (Phase 4).
-- The layers strip is display-only. A `layer:N` query filter is planned in
-  graph-search Phase 2.
+- The layers strip (Phase 4) is named "Dependency levels" in the UI and
+  the code, because "layer" already means the blueprint and code layers.
+  Its purpose: show whether the low levels, which the rest of the project
+  builds on, are verified. It is display-only and on trial (2026-10-14):
+  remove it if it does not help to read real graphs. The level filter
+  planned in graph-search Phase 2 as `layer:N` should be `level:N`.
 - The blueprint-layer Guide is not in #81. It needs the 5b blueprint
   statuses.
 - Truncation ranks by the query's traversal depth, not by a BFS over the

@@ -2,13 +2,13 @@
  * Guide panel -- DOM rendering for the Guide tab in the right sidebar.
  *
  * Shows a static graph overview (from static-analysis.ts): ranked lists
- * whose rows open a node's dependents by exact ID, a layers strip, and
- * suggested queries that execute directly against the viewer state. No LLM
+ * whose rows open a node's dependents by exact ID, a dependency levels
+ * strip, and suggested queries that execute directly against the viewer state. No LLM
  * involved.
  */
 
 import type {
-  GraphSummary, SuggestedAction, GuideActions, GuideResult, GuideTransition, LayerStat, RankedList,
+  GraphSummary, SuggestedAction, GuideActions, GuideResult, GuideTransition, LevelStat, RankedList,
 } from './types';
 import { NONE_INTENT, exactIntent, boundaryIntent } from '../intent';
 import { escapeHtml } from '../html';
@@ -55,7 +55,7 @@ export class GuidePanel {
           ? this.rankedSection('Keystone lemmas', 'By unique transitive dependents', summary.keystones)
           : this.rankedSection('Most depended on', 'By unique transitive dependents', summary.keystones),
       ];
-    document.getElementById('guide-answers')?.replaceChildren(...lists, layersSection(summary.layers));
+    document.getElementById('guide-answers')?.replaceChildren(...lists, levelsSection(summary.levels));
 
     chipsEl.innerHTML = '';
     for (const q of summary.suggestedQueries) {
@@ -133,33 +133,32 @@ function rankingsSkippedSection({ components, links }: { components: number; lin
     + `and ${links.toLocaleString('en-US')} links, above the size limit for counting dependents in the page.`);
 }
 
-const LAYER_STATUSES = [
+const LEVEL_STATUSES = [
   ['transitivelyVerified', 'transitively-verified', 'transitively verified'],
   ['verified', 'verified', 'verified'],
   ['trusted', 'trusted', 'trusted'],
 ] as const;
 
-/** One row per topological level: node count and status shares. */
-/** Most rows the Layers strip shows. The deeper levels share the last row. */
-export const MAX_LAYER_ROWS = 60;
+/** Most rows the Dependency levels strip shows. The deeper levels share the last row. */
+export const MAX_LEVEL_ROWS = 60;
 
-export interface LayerRow {
+export interface LevelRow {
   label: string;
   /** Level range, for the tooltip of a folded row; null for one level. */
   range: string | null;
-  stat: LayerStat;
+  stat: LevelStat;
 }
 
 /**
- * The strip's rows: one per level, up to MAX_LAYER_ROWS. A deeper graph
+ * The strip's rows: one per level, up to MAX_LEVEL_ROWS. A deeper graph
  * folds its top levels into the last row, so a long chain does not render
  * one row per node.
  */
-export function layerRows(layers: LayerStat[]): LayerRow[] {
-  const one = (stat: LayerStat): LayerRow => ({ label: `L${stat.level}`, range: null, stat });
-  if (layers.length <= MAX_LAYER_ROWS) return layers.map(one);
-  const rest = layers.slice(MAX_LAYER_ROWS - 1);
-  const stat: LayerStat = { level: rest[0].level, nodes: 0, verified: 0, transitivelyVerified: 0, trusted: 0 };
+export function levelRows(levels: LevelStat[]): LevelRow[] {
+  const one = (stat: LevelStat): LevelRow => ({ label: `L${stat.level}`, range: null, stat });
+  if (levels.length <= MAX_LEVEL_ROWS) return levels.map(one);
+  const rest = levels.slice(MAX_LEVEL_ROWS - 1);
+  const stat: LevelStat = { level: rest[0].level, nodes: 0, verified: 0, transitivelyVerified: 0, trusted: 0 };
   for (const l of rest) {
     stat.nodes += l.nodes;
     stat.verified += l.verified;
@@ -168,37 +167,41 @@ export function layerRows(layers: LayerStat[]): LayerRow[] {
   }
   const last = rest[rest.length - 1].level;
   return [
-    ...layers.slice(0, MAX_LAYER_ROWS - 1).map(one),
+    ...levels.slice(0, MAX_LEVEL_ROWS - 1).map(one),
     { label: `L${stat.level}+`, range: `Levels ${stat.level} to ${last}`, stat },
   ];
 }
 
-function layersSection(layers: LayerStat[]): HTMLElement {
-  const section = sectionElement('Layers',
-    'Cycles condensed, level 0 has no dependencies. Shares of transitively verified, verified and trusted per level.');
+/** One row per topological level: node count and status shares. */
+function levelsSection(levels: LevelStat[]): HTMLElement {
+  const section = sectionElement('Dependency levels',
+    'Level 0 holds the declarations that use nothing else in the project. Every other declaration '
+    + 'sits one level above the highest one it uses, and a cycle counts as one. The bars show the '
+    + 'transitively verified, verified and trusted share of each level. A low share near level 0 '
+    + 'means that much of the project rests on unproven ground.');
   const strip = document.createElement('div');
-  strip.className = 'guide-layers';
-  for (const { label: text, range, stat: layer } of layerRows(layers)) {
+  strip.className = 'guide-levels';
+  for (const { label: text, range, stat } of levelRows(levels)) {
     const row = document.createElement('div');
-    row.className = 'guide-layer';
-    row.dataset.level = String(layer.level);
+    row.className = 'guide-level';
+    row.dataset.level = String(stat.level);
     const label = document.createElement('span');
-    label.className = 'guide-layer-label';
+    label.className = 'guide-level-label';
     label.textContent = text;
     const count = document.createElement('span');
-    count.className = 'guide-layer-count';
-    count.textContent = String(layer.nodes);
+    count.className = 'guide-level-count';
+    count.textContent = String(stat.nodes);
     const bar = document.createElement('span');
-    bar.className = 'guide-layer-bar';
-    for (const [key, status] of LAYER_STATUSES) {
+    bar.className = 'guide-level-bar';
+    for (const [key, status] of LEVEL_STATUSES) {
       const seg = document.createElement('span');
       seg.className = `status-${status}`;
-      seg.style.width = `${(100 * layer[key]) / layer.nodes}%`;
+      seg.style.width = `${(100 * stat[key]) / stat.nodes}%`;
       bar.appendChild(seg);
     }
     const shares = document.createElement('span');
-    shares.className = 'guide-layer-shares';
-    shares.textContent = layerShares(layer);
+    shares.className = 'guide-level-shares';
+    shares.textContent = levelShares(stat);
     row.title = range ? `${range}: ${shares.textContent}` : shares.textContent;
     row.append(label, count, bar, shares);
     strip.appendChild(row);
@@ -208,10 +211,10 @@ function layersSection(layers: LayerStat[]): HTMLElement {
 }
 
 /** "80% transitively verified, 5% verified, 10% trusted" (zero shares omitted). */
-export function layerShares(layer: LayerStat): string {
-  const parts = LAYER_STATUSES
-    .filter(([key]) => layer[key] > 0)
-    .map(([key, , text]) => `${Math.round((100 * layer[key]) / layer.nodes)}% ${text}`);
+export function levelShares(stat: LevelStat): string {
+  const parts = LEVEL_STATUSES
+    .filter(([key]) => stat[key] > 0)
+    .map(([key, , text]) => `${Math.round((100 * stat[key]) / stat.nodes)}% ${text}`);
   return parts.length > 0 ? parts.join(', ') : 'none verified or trusted';
 }
 

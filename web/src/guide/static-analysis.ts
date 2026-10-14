@@ -13,7 +13,7 @@ import {
 } from '../reachability';
 import type {
   GraphSummary, CrateSummary, GroupBoundary, VerificationBreakdown,
-  KindBreakdown, NodeRank, SuggestedQuery, RankedAnswer, RankedList, LayerStat,
+  KindBreakdown, NodeRank, SuggestedQuery, RankedAnswer, RankedList, LevelStat,
 } from './types';
 
 /** Rows per ranked list. */
@@ -42,7 +42,7 @@ export function buildGraphSummary(graph: D3Graph, visibility: SummaryVisibility 
   const verification = computeVerification(nodes);
   const kinds = computeKinds(nodes);
   const ranked = computeRankedLists(graph, lang, isCandidate);
-  const layers = computeLayers(graph);
+  const levels = computeLevels(graph);
   const unverifiedHotspots = computeUnverifiedHotspots(candidates, nodes, 5);
   const failedNodes = nodes
     .filter(n => n.verification_status === 'failed')
@@ -63,7 +63,7 @@ export function buildGraphSummary(graph: D3Graph, visibility: SummaryVisibility 
     verification,
     kinds,
     ...ranked,
-    layers,
+    levels,
     unverifiedHotspots,
     failedNodes,
     suggestedQueries,
@@ -224,11 +224,11 @@ function addContext(rows: RankedAnswer[], graph: D3Graph): void {
 }
 
 /** Node and status counts per topological level of the condensed graph. */
-function computeLayers(graph: D3Graph): LayerStat[] {
+function computeLevels(graph: D3Graph): LevelStat[] {
   const condensation = graphCondensation(graph);
   const levels = dependencyLevels(condensation);
   const byId = new Map(graph.nodes.map(n => [n.id, n]));
-  const stats: LayerStat[] = [];
+  const stats: LevelStat[] = [];
   for (let k = 0; k < levels.length; k++) {
     const level = levels[k];
     while (stats.length <= level) {

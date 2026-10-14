@@ -4,7 +4,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { buildGraphSummary, formatSummaryText } from './static-analysis';
-import { MAX_LAYER_ROWS, guideTransition, layerRows, layerShares, resultMessage } from './guide-panel';
+import { MAX_LEVEL_ROWS, guideTransition, levelRows, levelShares, resultMessage } from './guide-panel';
 import type { SuggestedAction } from './types';
 import { D3Graph, D3Link, D3Node, VerificationStatus } from '../types';
 import { MAX_REACHABILITY_COMPONENTS, graphReachability, rankByTransitiveDependents } from '../reachability';
@@ -155,16 +155,16 @@ describe('ranked lists', () => {
   });
 });
 
-describe('layers strip', () => {
+describe('dependency levels strip', () => {
   it('counts nodes and statuses per topological level', () => {
     const s = buildGraphSummary(fixture(), notStructure);
-    expect(s.layers).toEqual([
+    expect(s.levels).toEqual([
       { level: 0, nodes: 3, verified: 0, transitivelyVerified: 2, trusted: 0 },  // S, t1, b3
       { level: 1, nodes: 3, verified: 1, transitivelyVerified: 1, trusted: 1 },  // b1, b2, b4
       { level: 2, nodes: 2, verified: 0, transitivelyVerified: 2, trusted: 0 },  // a1, a2
     ]);
-    expect(layerShares(s.layers[1])).toBe('33% transitively verified, 33% verified, 33% trusted');
-    expect(layerShares(s.layers[0])).toBe('67% transitively verified');
+    expect(levelShares(s.levels[1])).toBe('33% transitively verified, 33% verified, 33% trusted');
+    expect(levelShares(s.levels[0])).toBe('67% transitively verified');
   });
 
   it('puts a cycle on one level', () => {
@@ -175,22 +175,22 @@ describe('layers strip', () => {
     g.nodes.find(n => n.id === 'a1')!.dependents.push('b3');
     const s = buildGraphSummary(g);
     // L0: S, t1. L1: the cycle {a1, b1, b3}, b2, b4. L2: a2
-    expect(s.layers.map(l => l.nodes)).toEqual([2, 5, 1]);
-    expect(layerRows(s.layers).map(r => r.label)).toEqual(['L0', 'L1', 'L2']);
+    expect(s.levels.map(l => l.nodes)).toEqual([2, 5, 1]);
+    expect(levelRows(s.levels).map(r => r.label)).toEqual(['L0', 'L1', 'L2']);
   });
 
-  it('folds the levels beyond MAX_LAYER_ROWS into the last row', () => {
-    // A chain of MAX_LAYER_ROWS + 10 nodes, every other one verified
-    const n = MAX_LAYER_ROWS + 10;
+  it('folds the levels beyond MAX_LEVEL_ROWS into the last row', () => {
+    // A chain of MAX_LEVEL_ROWS + 10 nodes, every other one verified
+    const n = MAX_LEVEL_ROWS + 10;
     const nodes = Array.from({ length: n }, (_, i) => node(`n${String(i).padStart(3, '0')}`, 'A', 'theorem',
       i % 2 === 0 ? 'verified' : 'unverified'));
     const links: D3Link[] = [];
     for (let i = 0; i + 1 < n; i++) links.push({ source: nodes[i].id, target: nodes[i + 1].id, type: 'inner' });
-    const rows = layerRows(buildGraphSummary(graph(nodes, links)).layers);
-    expect(rows.length).toBe(MAX_LAYER_ROWS);
+    const rows = levelRows(buildGraphSummary(graph(nodes, links)).levels);
+    expect(rows.length).toBe(MAX_LEVEL_ROWS);
     const last = rows[rows.length - 1];
-    expect(last.label).toBe(`L${MAX_LAYER_ROWS - 1}+`);
-    expect(last.range).toBe(`Levels ${MAX_LAYER_ROWS - 1} to ${n - 1}`);
+    expect(last.label).toBe(`L${MAX_LEVEL_ROWS - 1}+`);
+    expect(last.range).toBe(`Levels ${MAX_LEVEL_ROWS - 1} to ${n - 1}`);
     expect([last.stat.nodes, last.stat.verified]).toEqual([11, 6]);
   });
 });
@@ -286,7 +286,7 @@ describe('result toast', () => {
 });
 
 describe('component limit', () => {
-  it('skips the ranked lists above MAX_REACHABILITY_COMPONENTS but keeps the layers', () => {
+  it('skips the ranked lists above MAX_REACHABILITY_COMPONENTS but keeps the levels', () => {
     const nodes = Array.from({ length: MAX_REACHABILITY_COMPONENTS + 1 }, (_, i) => node(`n${i}`, 'A', 'theorem'));
     const g = graph(nodes, []);
     expect(graphReachability(g)).toBeNull();
@@ -294,7 +294,7 @@ describe('component limit', () => {
     const s = buildGraphSummary(g);
     expect(s.rankingsSkipped).toEqual({ components: MAX_REACHABILITY_COMPONENTS + 1, links: 0 });
     expect(s.keystones.rows).toEqual([]);
-    expect(s.layers.map(l => l.nodes)).toEqual([MAX_REACHABILITY_COMPONENTS + 1]);
+    expect(s.levels.map(l => l.nodes)).toEqual([MAX_REACHABILITY_COMPONENTS + 1]);
   });
 
   it('computes the ranked lists below the limit', () => {
