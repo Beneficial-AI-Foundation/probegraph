@@ -156,13 +156,13 @@ answer the first one but not the other two without recursive scripts.
   - Module matrix: edge counts from module to module, the crate
     boundary at module level. A table, not a node list.
   - Unused: as defined above.
-- **Layer filter.** `layer:N` selects the nodes at dependency level N
-  (level 0 has no dependencies, as in the Guide layers strip). It
-  combines with the other filters, for example `layer:0 kind:lemma
-  status:unverified`. This replaces a click on a layer in the strip,
+- **Level filter.** `level:N` selects the nodes at dependency level N
+  (level 0 has no dependencies, as in the Guide Dependency levels strip).
+  It combines with the other filters, for example `level:0 kind:lemma
+  status:unverified`. This replaces a click on a level in the strip,
   which stays display-only, because one level can exceed the render cap.
   Decided 2026-10-13.
-- **Later presets.** Layers and the longest chain from an entry point.
+- **Later presets.** Dependency levels and the longest chain from an entry point.
   Mutual-recursion groups (SCCs of size two or more). Assumptions under
   X (axioms, trusted, `external_body`, from `trust-and-frontier.md`
   Phase 1). Largest declarations by line count and highest fan-out.
