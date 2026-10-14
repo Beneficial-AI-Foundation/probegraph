@@ -20,7 +20,7 @@ import type { D3Graph, FilterOptions, ProjectLanguage } from './types';
  * - `outside-intent`: passes the filters, but the query does not reach it.
  *   Replace the intent, or add the node as an anchor.
  * - `truncated`: in the query result, dropped by the render cap. Make it an
- *   anchor, or raise the cap.
+ *   anchor, query the node instead, or raise the cap.
  * - `shown`: drawn. Centre on it.
  */
 export type RevealReason = 'missing' | 'other-layer' | 'filtered' | 'outside-intent' | 'truncated' | 'shown';
@@ -72,7 +72,8 @@ export function classifyReveal(ctx: RevealContext, id: string): RevealResult {
  * Who asked for the reveal, which decides the intent it sets:
  * - `editor`: always the selection's exact intent, at its depth.
  * - `replace` (search): an exact intent on the node at the current depth,
- *   when the current query does not reach it.
+ *   when the current query does not reach it. A query that reaches it
+ *   stays, and a `truncated` reveal offers the replacement as an action.
  * - `anchor` (search, "as source" / "as sink"): the node joins the current
  *   exact source or sink set, or starts one.
  */
@@ -91,12 +92,17 @@ export type RevealPolicy =
 export function searchIntent(
   current: QueryIntent, id: string, label: string, policy: Exclude<RevealPolicy, { kind: 'editor' }>,
 ): QueryIntent {
-  if (policy.kind === 'replace') return exactIntent([id], 'both', label, { type: 'search' });
+  if (policy.kind === 'replace') return nodeIntent(id, label);
   const dir = policy.role === 'source' ? 'callees' : 'callers';
   if (current.kind === 'ids' && !isFocusIntent(current) && current.dir === dir) {
     return withAnchor(current, id, label)!;
   }
   return exactIntent([id], dir, label, { type: 'search' });
+}
+
+/** The node and its callers and callees, at the current depth. */
+function nodeIntent(id: string, label: string): QueryIntent {
+  return exactIntent([id], 'both', label, { type: 'search' });
 }
 
 /**
@@ -120,16 +126,20 @@ export const RAISED_RENDER_CAP = 500;
 export type RevealAction =
   | { kind: 'relax'; keys: (keyof FilterOptions)[] }
   | { kind: 'anchor'; intent: QueryIntent }
+  | { kind: 'replace'; intent: QueryIntent }
   | { kind: 'raise-cap'; cap: number };
 
 /**
  * The actions for a reveal result. `resultSize` is the number of nodes in
- * the query result before the cap; the cap is raised only up to
+ * the query result before the cap, and `cap` the render cap. A truncated
+ * node always gets `replace`, which draws it: a lone anchor is never cut.
+ * `anchor` is offered only when the anchors fit in the cap, since
+ * truncation keeps the first `cap` anchors. The cap is raised only up to
  * RAISED_RENDER_CAP. `other-layer` and `outside-intent` have none here:
  * the reveal acts on them itself.
  */
 export function revealActions(
-  result: RevealResult, intent: QueryIntent, id: string, label: string, resultSize: number,
+  result: RevealResult, intent: QueryIntent, id: string, label: string, resultSize: number, cap: number,
 ): RevealAction[] {
   switch (result.reason) {
     case 'filtered':
@@ -137,7 +147,10 @@ export function revealActions(
     case 'truncated': {
       const actions: RevealAction[] = [];
       const anchored = withAnchor(intent, id, label);
-      if (anchored) actions.push({ kind: 'anchor', intent: anchored });
+      if (anchored && anchored !== intent && anchorIds(anchored).length <= cap) {
+        actions.push({ kind: 'anchor', intent: anchored });
+      }
+      actions.push({ kind: 'replace', intent: nodeIntent(id, label) });
       if (resultSize <= RAISED_RENDER_CAP) actions.push({ kind: 'raise-cap', cap: resultSize });
       return actions;
     }
@@ -150,6 +163,7 @@ export function actionLabel(action: RevealAction): string {
   switch (action.kind) {
     case 'relax': return 'Show it';
     case 'anchor': return 'Keep it in the query';
+    case 'replace': return 'Query this node instead';
     case 'raise-cap': return `Draw all ${action.cap} nodes`;
   }
 }

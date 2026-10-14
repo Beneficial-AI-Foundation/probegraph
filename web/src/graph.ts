@@ -316,6 +316,10 @@ export class CallGraphVisualization {
   // changes, so hover/selection re-renders never move the user's view.
   private renderedNodeIds: Set<string> = new Set();
   private currentNodes: D3Node[] = [];
+  // Pans and zooms by the user (wheel, drag), so a delayed camera move can
+  // tell that the user took over in the meantime
+  private userCameraMoveCount = 0;
+  private settleWaiters = 0;
 
   /**
    * Gets whether the node was selected before the double-click's first
@@ -352,6 +356,8 @@ export class CallGraphVisualization {
       .scaleExtent([0.1, 10])
       .on('zoom', (event) => {
         this.g.attr('transform', event.transform);
+        // Programmatic moves (fitToView, centerOn) have no source event
+        if (event.sourceEvent) this.userCameraMoveCount++;
       });
 
     this.svg.call(this.zoom);
@@ -616,7 +622,7 @@ export class CallGraphVisualization {
   /**
    * Pan and zoom to one drawn node with the same 400 ms transition as
    * fitToView. Resolves true when the move ends, false when the node is not
-   * drawn or another camera move cuts this one short.
+   * drawn or another camera move stops or cancels this one.
    */
   public centerOn(id: string): Promise<boolean> {
     const node = this.currentNodes.find(n => n.id === id);
@@ -628,7 +634,37 @@ export class CallGraphVisualization {
         .duration(400)
         .call(this.zoom.transform as any, d3.zoomIdentity.translate(t.x, t.y).scale(t.k))
         .on('end', () => resolve(true))
-        .on('interrupt', () => resolve(false));
+        .on('interrupt', () => resolve(false))
+        .on('cancel', () => resolve(false));
+    });
+  }
+
+  /** Stop the camera move in progress, where it is. */
+  public stopCameraMove(): void {
+    this.svg.interrupt();
+  }
+
+  /** The number of pans and zooms by the user so far. */
+  public get userCameraMoves(): number {
+    return this.userCameraMoveCount;
+  }
+
+  /**
+   * Resolves when the layout stops moving: the simulation ends, or `maxMs`
+   * passes (also when an update replaces the simulation before it ends).
+   */
+  public whenSettled(maxMs: number): Promise<void> {
+    const simulation = this.simulation;
+    if (!simulation || simulation.alpha() < simulation.alphaMin()) return Promise.resolve();
+    const event = `end.settled${++this.settleWaiters}`;
+    return new Promise(resolve => {
+      const done = () => {
+        clearTimeout(timer);
+        simulation.on(event, null);
+        resolve();
+      };
+      const timer = setTimeout(done, maxMs);
+      simulation.on(event, done);
     });
   }
 

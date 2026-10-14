@@ -112,23 +112,37 @@ describe('withAnchor', () => {
 
 describe('revealActions', () => {
   it('relaxes exactly the filters that hide the node', () => {
-    expect(revealActions({ reason: 'filtered', filteredBy: ['showTypes'] }, query, 'probe:x', 'x', 10))
+    expect(revealActions({ reason: 'filtered', filteredBy: ['showTypes'] }, query, 'probe:x', 'x', 10, 200))
       .toEqual([{ kind: 'relax', keys: ['showTypes'] }]);
   });
 
   it('offers nothing when no filter set draws the node', () => {
-    expect(revealActions({ reason: 'filtered', filteredBy: [] }, query, 'probe:x', 'x', 10)).toEqual([]);
+    expect(revealActions({ reason: 'filtered', filteredBy: [] }, query, 'probe:x', 'x', 10, 200)).toEqual([]);
   });
 
-  it('offers an anchor and a raised cap for a truncated node', () => {
-    const actions = revealActions({ reason: 'truncated' }, query, 'probe:x', 'x', 300);
-    expect(actions.map(a => a.kind)).toEqual(['anchor', 'raise-cap']);
+  it('offers an anchor, a query on the node and a raised cap for a truncated node', () => {
+    const actions = revealActions({ reason: 'truncated' }, query, 'probe:x', 'x', 300, 200);
+    expect(actions.map(a => a.kind)).toEqual(['anchor', 'replace', 'raise-cap']);
     expect((actions[0] as { intent: QueryIntent }).intent).toMatchObject({ ids: [INIT_A, 'probe:x'] });
-    expect(actions[1]).toEqual({ kind: 'raise-cap', cap: 300 });
+    expect((actions[1] as { intent: QueryIntent }).intent)
+      .toMatchObject({ ids: ['probe:x'], dir: 'both', origin: { type: 'search' } });
+    expect(actions[2]).toEqual({ kind: 'raise-cap', cap: 300 });
   });
 
-  it('raises the cap only up to its limit, and anchors only in an exact set', () => {
-    expect(revealActions({ reason: 'truncated' }, textIntent('init', ''), 'probe:x', 'x', 5000)).toEqual([]);
+  it('always offers a query on the node, even above the raised cap and outside an exact set', () => {
+    expect(revealActions({ reason: 'truncated' }, textIntent('init', ''), 'probe:x', 'x', 5000, 200).map(a => a.kind))
+      .toEqual(['replace']);
+  });
+
+  it('offers no anchor when the anchors would not fit in the cap', () => {
+    const full = exactIntent(['probe:a', 'probe:b'], 'callees', 'a, b', { type: 'search' });
+    expect(revealActions({ reason: 'truncated' }, full, 'probe:x', 'x', 5000, 2).map(a => a.kind))
+      .toEqual(['replace']);
+  });
+
+  it('offers no anchor for a node that is already one', () => {
+    expect(revealActions({ reason: 'truncated' }, query, INIT_A, 'initA', 5000, 200).map(a => a.kind))
+      .toEqual(['replace']);
   });
 });
 

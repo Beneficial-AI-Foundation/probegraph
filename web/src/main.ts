@@ -3741,20 +3741,32 @@ function handleResize(): void {
 const reveals = new RevealCounter();
 // The latest reveal's toast, removed when the next reveal starts
 let revealToast: HTMLElement | null = null;
+// The latest reveal's camera move, stopped when the next reveal starts
+let revealCamera: { viz: CallGraphVisualization } | null = null;
+// The longest a reveal waits for the layout before it centres
+const REVEAL_SETTLE_MS = 1500;
 
-// A render cap a reveal raised, for the intent it was raised under: every
-// intent writer replaces the intent object, so the next query drops it
-let raisedCap: { intent: QueryIntent; cap: number } | null = null;
+// A render cap a reveal raised, for the query it was raised under:
+// intentGeneration moves with every new query
+let raisedCap: { generation: number; cap: number } | null = null;
 
 function renderCap(): number {
-  return raisedCap?.intent === state.filters.intent ? raisedCap.cap : MAX_RENDERED_NODES;
+  return raisedCap?.generation === intentGeneration ? raisedCap.cap : MAX_RENDERED_NODES;
 }
 
-/** Drop the pending reveal and its toast. */
-function cancelReveals(): void {
-  reveals.invalidate();
+/** Remove the latest reveal's toast and stop its camera move. */
+function dropRevealEffects(): void {
   revealToast?.remove();
   revealToast = null;
+  revealCamera?.viz.stopCameraMove();
+  revealCamera = null;
+}
+
+/** A graph load: drop the pending reveal, its toast and the raised cap. */
+function cancelReveals(): void {
+  reveals.invalidate();
+  dropRevealEffects();
+  raisedCap = null;
 }
 
 interface RevealOptions {
@@ -3784,8 +3796,7 @@ function revealContext(): RevealContext {
  */
 function revealNode(id: string, opts: RevealOptions): RevealResult {
   const token = reveals.start();
-  revealToast?.remove();
-  revealToast = null;
+  dropRevealEffects();
   const { policy } = opts;
   // The editor names code declarations only
   const layer: Layer | null = codeLayer?.nodes.some(n => n.id === id) ? 'code'
@@ -3813,31 +3824,58 @@ function revealNode(id: string, opts: RevealOptions): RevealResult {
     });
   } else {
     if (viewChanged || unhidden) applyFiltersAndUpdate();
-    const before = classifyReveal(revealContext(), id);
-    if (policy.kind === 'anchor' || before.reason === 'outside-intent') {
-      setIntent(searchIntent(state.filters.intent, id, node.display_name, policy), { history: 'push', pushed: true });
-    }
+    applySearchPolicy(id, node.display_name, policy);
   }
+  return presentReveal(node, opts, token);
+}
+
+/**
+ * Set the intent a search policy asks for, as one pushed history entry.
+ * Returns whether it pushed one: not when the intent stays as it is.
+ */
+function applySearchPolicy(id: string, label: string, policy: Exclude<RevealPolicy, { kind: 'editor' }>): boolean {
+  if (policy.kind === 'replace' && classifyReveal(revealContext(), id).reason !== 'outside-intent') return false;
+  const intent = searchIntent(state.filters.intent, id, label, policy);
+  if (intent === state.filters.intent) return false;
+  setIntent(intent, { history: 'push', pushed: true });
+  return true;
+}
+
+/**
+ * The end of a reveal, and of each action its toast offers: open node
+ * details, then centre on the node, or say why it is not drawn.
+ */
+function presentReveal(node: D3Node, opts: RevealOptions, token: number): RevealResult {
+  const { id } = node;
   state.selectedNode = node;
   updateNodeInfo();
 
   const result = classifyReveal(revealContext(), id);
   if (result.reason === 'shown' && opts.center && visualization instanceof CallGraphVisualization) {
-    const viz = visualization;
+    const camera = { viz: visualization };
+    revealCamera = camera;
+    const userMoves = camera.viz.userCameraMoves;
     finishReveal(reveals, token, {
-      settle: () => new Promise(resolve => requestAnimationFrame(() => resolve())),
-      center: () => viz.centerOn(id),
+      settle: () => camera.viz.whenSettled(REVEAL_SETTLE_MS),
+      // A pan or zoom by the user while the layout settles wins
+      center: () => camera.viz.userCameraMoves === userMoves ? camera.viz.centerOn(id) : Promise.resolve(false),
+    }).finally(() => {
+      if (revealCamera === camera) revealCamera = null;
     });
   }
   if (opts.offer && result.reason !== 'shown') {
-    const actions = revealActions(result, state.filters.intent, id, node.display_name, lastRenderResult?.total ?? 0);
+    const actions = revealActions(
+      result, state.filters.intent, id, node.display_name, lastRenderResult?.total ?? 0, renderCap(),
+    );
+    // The actions fit the state they were computed in; after any other
+    // change (a query, a filter, Back) a click does nothing
+    const offeredAt = generateShareableURL();
     revealToast = showActionToast(revealMessage(node.display_name, result, renderCap()), actions.map(action => ({
       label: actionLabel(action),
       run: () => {
-        // A newer reveal or a graph load owns the view now
-        if (!reveals.isCurrent(token)) return;
-        runRevealAction(action);
-        revealNode(id, opts);
+        if (!reveals.isCurrent(token) || generateShareableURL() !== offeredAt) return;
+        runRevealAction(action, node, opts.policy);
+        presentReveal(node, opts, token);
       },
     })));
   }
@@ -3845,29 +3883,42 @@ function revealNode(id: string, opts: RevealOptions): RevealResult {
 }
 
 /** An action the user accepted from a reveal's toast; one history entry at most. */
-function runRevealAction(action: RevealAction): void {
+function runRevealAction(action: RevealAction, node: D3Node, policy: RevealPolicy): void {
   switch (action.kind) {
-    case 'relax':
-      // Pushed, so Back restores the filters
+    case 'relax': {
+      // The relaxed filters can bring the node into reach of a new intent.
+      // Both go into one pushed entry, so one Back restores the filters
+      // and the query.
       Object.assign(state.filters, relaxations(action.keys));
       syncFilterUI();
+      let pushed = false;
       urlWritesSuppressed++;
       try {
         applyFiltersAndUpdate();
+        if (policy.kind !== 'editor') pushed = applySearchPolicy(node.id, node.display_name, policy);
       } finally {
         urlWritesSuppressed--;
       }
-      window.history.pushState({ pushed: true }, '', generateShareableURL());
+      if (!pushed) window.history.pushState({ pushed: true }, '', generateShareableURL());
       break;
+    }
     case 'anchor':
+    case 'replace':
       setIntent(action.intent, { history: 'push', pushed: true });
       break;
     case 'raise-cap':
       // The cap is not in the URL, so there is no history entry
-      raisedCap = { intent: state.filters.intent, cap: action.cap };
+      raisedCap = { generation: intentGeneration, cap: action.cap };
       applyFiltersAndUpdate();
       break;
   }
+}
+
+// The e2e tests drive the search half of revealNode through this hook
+// until the search box (graph-search.md Phase 1) calls it. Dev builds only.
+if (import.meta.env.DEV) {
+  (window as unknown as { __revealNode: unknown }).__revealNode =
+    (id: string, opts: RevealOptions) => revealNode(id, opts);
 }
 
 // ============================================================================
