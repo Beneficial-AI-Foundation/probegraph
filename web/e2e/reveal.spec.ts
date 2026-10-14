@@ -57,6 +57,7 @@ async function shownIds(page: Page): Promise<string[]> {
   )).sort();
 }
 
+const transform = (page: Page) => page.locator('#graph-container svg > g').getAttribute('transform');
 const historyLength = (page: Page) => page.evaluate(() => window.history.length);
 const toastAction = (page: Page, label: string) => page.locator('.toast-action', { hasText: label });
 
@@ -102,6 +103,7 @@ test.describe('revealNode from search', () => {
     await expect.poll(() => new URL(page.url()).searchParams.has('id')).toBe(false);
 
     await toastAction(page, 'Show it').click();
+    await expect(page.locator('.toast')).toContainText('The view changed, so this action no longer applies');
     await expect(page.locator('#show-spec-functions')).not.toBeChecked();
   });
 
@@ -142,12 +144,48 @@ test.describe('revealNode from search', () => {
     await expect.poll(async () => (await shownIds(page)).length).toBe(200);
   });
 
+  test('a cap raised with no query ends when a query is run and cleared', async ({ page }) => {
+    // With no query the filters let 303 nodes through, and the cap draws 200
+    await open(page, '');
+    await expect.poll(async () => (await shownIds(page)).length).toBe(200);
+    const shown = new Set(await shownIds(page));
+    const cut = LEAVES.find(l => !shown.has(l))!;
+
+    expect(await reveal(page, cut, { policy: { kind: 'replace' }, offer: true })).toBe('truncated');
+    await toastAction(page, 'Draw all 303 nodes').click();
+    await expect.poll(async () => (await shownIds(page)).length).toBe(303);
+
+    await page.locator('#source-input').fill('l1');
+    await expect.poll(async () => (await shownIds(page)).length).toBeLessThan(200);
+    await page.locator('#source-input').fill('');
+    await expect.poll(async () => (await shownIds(page)).length).toBe(200);
+  });
+
+  test('a cap raised before a graph load does not carry over', async ({ page }) => {
+    await open(page, '');
+    await expect.poll(async () => (await shownIds(page)).length).toBe(200);
+    const shown = new Set(await shownIds(page));
+    const cut = LEAVES.find(l => !shown.has(l))!;
+    expect(await reveal(page, cut, { policy: { kind: 'replace' }, offer: true })).toBe('truncated');
+    await toastAction(page, 'Draw all 303 nodes').click();
+    await expect.poll(async () => (await shownIds(page)).length).toBe(303);
+
+    await page.locator('#file-input').setInputFiles({
+      name: 'reveal.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(graph())),
+    });
+    await expect.poll(async () => (await shownIds(page)).length).toBe(200);
+  });
+
   test('centres on the hit once the layout settles', async ({ page }) => {
     await open(page, H_CALLEES);
     await expect.poll(async () => (await shownIds(page)).length).toBe(200);
     const leaf = (await shownIds(page)).find(id => id !== 'probe:h')!;
     expect(await reveal(page, leaf, { policy: { kind: 'replace' }, center: true })).toBe('shown');
     await expect.poll(() => offCentre(page, leaf), { timeout: 5000 }).toBeLessThan(20);
+    // The layout runs about 5 s; the reveal centres again when it stops,
+    // so the node is still in the middle afterwards
+    await page.waitForTimeout(7000);
+    expect(await offCentre(page, leaf)).toBeLessThan(20);
   });
 
   test('a pan by the user while the layout settles wins over centring', async ({ page }) => {
@@ -157,13 +195,28 @@ test.describe('revealNode from search', () => {
     // Wait for the load's fit to end, so the wheel is the last camera move
     await page.waitForTimeout(600);
     const box = (await page.locator('#graph-container svg').boundingBox())!;
+    const before = await transform(page);
+    // The layout still runs (about 5 s), so the reveal waits to centre
     expect(await reveal(page, leaf, { policy: { kind: 'replace' }, center: true })).toBe('shown');
     await page.mouse.move(box.x + 10, box.y + 10);
     await page.mouse.wheel(0, -100);
-    const transform = () => page.locator('#graph-container svg > g').getAttribute('transform');
     await page.waitForTimeout(300);
-    const afterWheel = await transform();
-    await page.waitForTimeout(2000);
-    expect(await transform()).toBe(afterWheel);
+    const afterWheel = await transform(page);
+    expect(afterWheel).not.toBe(before);
+    await page.waitForTimeout(2500);
+    expect(await transform(page)).toBe(afterWheel);
+  });
+
+  test('Reset View while the layout settles wins over centring', async ({ page }) => {
+    await open(page, H_CALLEES);
+    await expect.poll(async () => (await shownIds(page)).length).toBe(200);
+    const leaf = (await shownIds(page)).find(id => id !== 'probe:h')!;
+    expect(await reveal(page, leaf, { policy: { kind: 'replace' }, center: true })).toBe('shown');
+    await page.locator('#reset-view').click();
+    // The fit takes 400 ms; the reveal would centre at 1.5 s
+    await page.waitForTimeout(600);
+    const afterReset = await transform(page);
+    await page.waitForTimeout(2500);
+    expect(await transform(page)).toBe(afterReset);
   });
 });
