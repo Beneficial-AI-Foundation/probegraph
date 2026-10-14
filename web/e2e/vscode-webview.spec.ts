@@ -147,6 +147,7 @@ test.describe('VS Code webview', () => {
       ]);
       // depth 1: partition, its callees len and swap, its caller quicksort
       await expect.poll(() => drawn(page)).toEqual(['core/len()', 'core/swap()', 'qs/partition()', 'qs/quicksort()']);
+      await expect(page.locator('#node-info')).toContainText('partition');
     });
 
     test('selectNode moves the selection and ignores other revisions', async ({ page }) => {
@@ -183,6 +184,9 @@ test.describe('VS Code webview', () => {
         { type: 'selectResult', revision: 1, requestId: 2, status: 'filtered', filteredBy: ['showSpecFunctions'] },
         { type: 'selectResult', revision: 1, requestId: 3, status: 'missing' },
       ]);
+      // Node details open for a selection that a filter hides, and a
+      // missing ID leaves them on it
+      await expect(page.locator('#node-info')).toContainText('sorted');
     });
 
     test('relaxFilters turns the named filters on for the loaded revision only', async ({ page }) => {
