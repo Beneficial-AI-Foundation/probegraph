@@ -64,15 +64,17 @@ both callers through it.
   check it and drop out when a later reveal has started. Graph reload
   increments it too. Codex's case: search picks A, the editor selects B
   while A's layout settles, A's callback centres A over B's selection. A
-  newer reveal also stops a camera move in progress. A toast action
-  records the URL state it was computed for, and a click after any other
-  change (a query, a filter, Back) does nothing.
+  newer reveal also stops the reveal's own camera move in progress. A
+  toast action records the URL state it was computed for. A click when
+  the URL state differs only says that the view changed.
 - **Centre on node.** `fitToView` in `src/graph.ts` is private and fits the
   whole result (or centres on the focus node when the result is too big).
   Add a public `centerOn(id)` that pans and zooms to one node at a readable
   scale with the same 400 ms transition; `revealNode` calls it once the
-  force layout settles, or after 1.5 s at most. A pan or zoom by the user
-  in the meantime cancels the centring.
+  force layout settles, or after 1.5 s at most, and once more when the
+  layout stops (8 s at most), since the node can drift after the first
+  move. Any other camera move in the meantime (the user, Reset View, a
+  query's fit) or a change of the URL state cancels the centring.
 - Tests: reason classification on `probe-lean-extract-cut.json` for each
   of the six values; two reveals in a row where the first one's completion
   is a no-op; the editor integration tests in `vscode/` keep passing.
