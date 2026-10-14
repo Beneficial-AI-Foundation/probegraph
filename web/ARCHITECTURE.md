@@ -197,7 +197,9 @@ All constants are in `main.ts` unless noted.
   instead.
 - **Guide rankings**: `reachability.ts` condenses cycles and unions bitsets
   on the resulting DAG, about C²/8 bytes for C components, computed once per
-  graph object. The closure unions ceil(C/32) words per condensed edge.
+  graph object. The closure unions ceil(C/32) words per condensed edge,
+  and the member counts take 1 + `extraMemberPlanes` popcounts per
+  component (one bit plane per bit of the largest cycle size minus one).
   `reachabilityFits` skips the bitsets above `MAX_REACHABILITY_COMPONENTS`
   (20,000) components or `MAX_REACHABILITY_WORDS` (250 million words, about
   0.35 s), and the Guide shows a note in place of the ranked lists. The

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
-  Bitset, MAX_REACHABILITY_COMPONENTS, MAX_REACHABILITY_WORDS, condense, dependencyLevels,
+  Bitset, MAX_REACHABILITY_COMPONENTS, MAX_REACHABILITY_WORDS, condense, dependencyLevels, extraMemberPlanes,
   rankByTransitiveDependents, reachabilityFits, transitiveDependentCounts, type Condensation,
 } from './reachability';
 import { parseAndNormalizeGraph } from './graph-loader';
@@ -66,9 +66,7 @@ describe('Bitset', () => {
     expect(a.count()).toBe(5);
     expect(a.has(63)).toBe(true);
     expect(a.has(64)).toBe(false);
-    const shared: number[] = [];
-    a.forEachShared(b, i => shared.push(i));
-    expect(shared).toEqual([31, 63, 69]);
+    expect(a.countShared(b)).toBe(3);
   });
 });
 
@@ -122,6 +120,23 @@ describe('transitiveDependentCounts', () => {
     expect(counts(graph(cyc)).t).toBe(5);
   });
 
+  it('counts cycles of many sizes, across bitset words', () => {
+    // A chain of 40 cycles of sizes 1 to 40: each counts every member above it
+    const edges: [string, string][] = [];
+    const sizes = Array.from({ length: 40 }, (_, i) => i + 1);
+    const ids = sizes.map((size, i) => Array.from({ length: size }, (_, j) => `c${String(i).padStart(2, '0')}m${j}`));
+    ids.forEach((members, i) => {
+      if (members.length > 1) members.forEach((m, j) => edges.push([m, members[(j + 1) % members.length]]));
+      if (i + 1 < ids.length) edges.push([members[0], ids[i + 1][0]]);
+    });
+    const got = counts(graph(edges, ids.flat()));
+    let above = 0;
+    ids.forEach((members, i) => {
+      for (const m of members) expect(got[m]).toBe(above);
+      above += sizes[i];
+    });
+  });
+
   it('ignores a self-loop', () => {
     expect(counts(graph([['a', 'a'], ['a', 'b']]))).toEqual({ a: 0, b: 1 });
   });
@@ -162,22 +177,34 @@ describe('rankByTransitiveDependents', () => {
 
 describe('reachabilityFits', () => {
   /** A condensation with only the sizes reachabilityFits reads. */
-  const sized = (components: number, edgesPer: number) => ({
-    members: Array.from({ length: components }, () => []),
+  const sized = (components: number, edgesPer: number, membersPer = 1) => ({
+    members: Array.from({ length: components }, () => new Array(membersPer).fill('')),
     dependencies: Array.from({ length: components }, () => new Array(edgesPer).fill(0)),
   } as unknown as Condensation);
-  const words = (components: number, edgesPer: number) => components * edgesPer * Math.ceil(components / 32);
+  // One union per edge, 1 + planes popcounts per component, ceil(C/32) words each
+  const words = (components: number, edgesPer: number, planes = 0) =>
+    (components * edgesPer + components * (1 + planes)) * Math.ceil(components / 32);
+  const C = MAX_REACHABILITY_COMPONENTS;
 
   it('rejects too many components', () => {
-    expect(reachabilityFits(sized(MAX_REACHABILITY_COMPONENTS, 1))).toBe(true);
-    expect(reachabilityFits(sized(MAX_REACHABILITY_COMPONENTS + 1, 0))).toBe(false);
+    expect(reachabilityFits(sized(C, 1))).toBe(true);
+    expect(reachabilityFits(sized(C + 1, 0))).toBe(false);
   });
 
   it('rejects too many condensed edges below the component limit', () => {
-    expect(words(MAX_REACHABILITY_COMPONENTS, 20)).toBeLessThanOrEqual(MAX_REACHABILITY_WORDS);
-    expect(reachabilityFits(sized(MAX_REACHABILITY_COMPONENTS, 20))).toBe(true);
-    expect(words(MAX_REACHABILITY_COMPONENTS, 21)).toBeGreaterThan(MAX_REACHABILITY_WORDS);
-    expect(reachabilityFits(sized(MAX_REACHABILITY_COMPONENTS, 21))).toBe(false);
+    expect(words(C, 19)).toBeLessThanOrEqual(MAX_REACHABILITY_WORDS);
+    expect(reachabilityFits(sized(C, 19))).toBe(true);
+    expect(words(C, 20)).toBeGreaterThan(MAX_REACHABILITY_WORDS);
+    expect(reachabilityFits(sized(C, 20))).toBe(false);
+  });
+
+  it('counts the member-counting work of cycles', () => {
+    // Cycles of 4 members: extra 3 needs 2 planes
+    expect(extraMemberPlanes(sized(C, 17, 4))).toBe(2);
+    expect(words(C, 17, 2)).toBeLessThanOrEqual(MAX_REACHABILITY_WORDS);
+    expect(reachabilityFits(sized(C, 17, 4))).toBe(true);
+    expect(words(C, 18, 2)).toBeGreaterThan(MAX_REACHABILITY_WORDS);
+    expect(reachabilityFits(sized(C, 18, 4))).toBe(false);
   });
 });
 

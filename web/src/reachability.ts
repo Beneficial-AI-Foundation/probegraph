@@ -48,33 +48,36 @@ export class Bitset {
   /** Members in increasing order. */
   forEach(fn: (i: number) => void): void {
     const w = this.words;
-    for (let k = 0; k < w.length; k++) eachBit(w[k], k, fn);
-  }
-
-  /** Members of both this set and `other` (same size), in increasing order. */
-  forEachShared(other: Bitset, fn: (i: number) => void): void {
-    const w = this.words;
-    const o = other.words;
-    for (let k = 0; k < w.length; k++) eachBit(w[k] & o[k], k, fn);
+    for (let k = 0; k < w.length; k++) {
+      let word = w[k];
+      while (word !== 0) {
+        const bit = 31 - Math.clz32(word & -word);
+        fn((k << 5) + bit);
+        word &= word - 1;
+      }
+    }
   }
 
   count(): number {
     let n = 0;
-    for (const word of this.words) {
-      let v = word - ((word >>> 1) & 0x55555555);
-      v = (v & 0x33333333) + ((v >>> 2) & 0x33333333);
-      n += Math.imul((v + (v >>> 4)) & 0x0f0f0f0f, 0x01010101) >>> 24;
-    }
+    for (const word of this.words) n += popcount(word);
+    return n;
+  }
+
+  /** Number of members of both this set and `other` (same size). */
+  countShared(other: Bitset): number {
+    const w = this.words;
+    const o = other.words;
+    let n = 0;
+    for (let k = 0; k < w.length; k++) n += popcount(w[k] & o[k]);
     return n;
   }
 }
 
-function eachBit(word: number, k: number, fn: (i: number) => void): void {
-  while (word !== 0) {
-    const bit = 31 - Math.clz32(word & -word);
-    fn((k << 5) + bit);
-    word &= word - 1;
-  }
+function popcount(word: number): number {
+  let v = word - ((word >>> 1) & 0x55555555);
+  v = (v & 0x33333333) + ((v >>> 2) & 0x33333333);
+  return Math.imul((v + (v >>> 4)) & 0x0f0f0f0f, 0x01010101) >>> 24;
 }
 
 // ============================================================================
@@ -221,22 +224,39 @@ export function dependentClosure(c: Condensation): Bitset[] {
   return sets;
 }
 
-const cycleMasks = new WeakMap<Condensation, Bitset>();
+/**
+ * Number of bit planes of the extra members (size - 1) of the largest
+ * component: 0 without cycles, 1 when every cycle has two members.
+ */
+export function extraMemberPlanes(c: Condensation): number {
+  let maxExtra = 0;
+  for (const m of c.members) maxExtra = Math.max(maxExtra, m.length - 1);
+  return 32 - Math.clz32(maxExtra);
+}
+
+const planeCache = new WeakMap<Condensation, Bitset[]>();
+
+/** Plane b holds the components whose extra member count has bit b set. */
+function extraMemberMasks(c: Condensation): Bitset[] {
+  let planes = planeCache.get(c);
+  if (!planes) {
+    planes = Array.from({ length: extraMemberPlanes(c) }, () => new Bitset(c.members.length));
+    c.members.forEach((m, k) => {
+      for (let b = 0; b < planes!.length; b++) if (((m.length - 1) >>> b) & 1) planes![b].add(k);
+    });
+    planeCache.set(c, planes);
+  }
+  return planes;
+}
 
 /**
  * Number of declarations in a set of components (an SCC of five counts
- * five). A popcount, plus the extra members of the cycle components in the
- * set, so the cost does not grow with the size of the set.
+ * five). A popcount, plus the extra members weighted by bit plane: one
+ * popcount of ceil(C / 32) words per plane (extraMemberPlanes).
  */
 export function memberCount(c: Condensation, set: Bitset): number {
-  let cycles = cycleMasks.get(c);
-  if (!cycles) {
-    cycles = new Bitset(c.members.length);
-    c.members.forEach((m, k) => { if (m.length > 1) cycles!.add(k); });
-    cycleMasks.set(c, cycles);
-  }
   let n = set.count();
-  set.forEachShared(cycles, k => { n += c.members[k].length - 1; });
+  extraMemberMasks(c).forEach((plane, b) => { n += set.countShared(plane) * 2 ** b; });
   return n;
 }
 
@@ -267,10 +287,11 @@ export function dependencyLevels(c: Condensation): number[] {
 export const MAX_REACHABILITY_COMPONENTS = 20_000;
 
 /**
- * Largest closure work, in 32-bit words: each condensed edge unions one
- * bitset of ceil(C / 32) words. Measured in Node at about 1.4 ns per word,
+ * Largest closure work, in 32-bit words of ceil(C / 32) per bitset: one
+ * union per condensed edge, and 1 + extraMemberPlanes popcounts per
+ * component to count members. Measured in Node at about 1.4 ns per word,
  * so the limit is about 0.35 s (20,000 components with 400,000 condensed
- * edges). A chain of 20,000 components is 12.5 million words, about 0.1 s.
+ * edges). A chain of 20,000 components is 25 million words, about 0.1 s.
  */
 export const MAX_REACHABILITY_WORDS = 250_000_000;
 
@@ -283,7 +304,8 @@ export function reachabilityFits(c: Condensation): boolean {
   if (components > MAX_REACHABILITY_COMPONENTS) return false;
   let edges = 0;
   for (const deps of c.dependencies) edges += deps.length;
-  return edges * Math.ceil(components / 32) <= MAX_REACHABILITY_WORDS;
+  const passes = edges + components * (1 + extraMemberPlanes(c));
+  return passes * Math.ceil(components / 32) <= MAX_REACHABILITY_WORDS;
 }
 
 export interface GraphReachability {
