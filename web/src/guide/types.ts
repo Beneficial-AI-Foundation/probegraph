@@ -44,6 +44,30 @@ export interface NodeRank {
   dependencyCount: number;
 }
 
+/** A row of a Guide ranked list. */
+export interface RankedAnswer extends NodeRank {
+  transitiveDependentCount: number;  // unique nodes that reach it, over the full graph
+  context?: string;                  // module or path, when another row has the same name
+}
+
+/** One ranked list: the top rows and how many candidates there were. */
+export interface RankedList {
+  rows: RankedAnswer[];
+  total: number;
+}
+
+/**
+ * Nodes on one topological level of the SCC-condensed graph. Level 0 has
+ * no dependencies. Statuses use the same definitions as VerificationBreakdown.
+ */
+export interface LevelStat {
+  level: number;
+  nodes: number;
+  verified: number;
+  transitivelyVerified: number;
+  trusted: number;
+}
+
 export interface SuggestedQuery {
   label: string;
   description: string;
@@ -70,7 +94,12 @@ export interface GraphSummary {
   files: string[];
   verification: VerificationBreakdown;
   kinds: KindBreakdown;
-  topConnected: NodeRank[];
+  unfinished: RankedList;    // unverified and failed, axioms excluded
+  assumptions: RankedList;   // axioms and trusted nodes
+  keystones: RankedList;     // lemmas (proof kinds), or every node when the graph has none
+  keystonesAreLemmas: boolean;
+  rankingsSkipped: { components: number; links: number } | null;  // condensed size when too large (lists empty)
+  levels: LevelStat[];
   unverifiedHotspots: NodeRank[];
   failedNodes: NodeRank[];
   suggestedQueries: SuggestedQuery[];
@@ -100,6 +129,9 @@ export interface GuideTransition {
 export interface GuideResult {
   shown: number;           // nodes rendered
   total: number;           // nodes in the result before the render cap
+  anchorsShown?: number;   // anchors kept when there were more than the render cap
+  anchorsTotal?: number;
+  displayRemoved?: number; // nodes the traversal reached that display filters removed
   missingAnchor: boolean;  // the exact target itself is filtered out
   seeded: boolean;         // large graph without a query: the entry-point view
   tooLarge: boolean;       // large graph without a query and no entry-point view: nothing rendered

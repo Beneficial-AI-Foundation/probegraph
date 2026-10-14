@@ -1322,6 +1322,89 @@ select.search-input {
   margin-top: 0.1rem;
 }
 
+.guide-section {
+  margin-top: 0.75rem;
+}
+
+/* h3 for screen-reader navigation; beats the .panel h3 rule */
+.guide-section > .guide-section-title {
+  font-size: inherit;
+  font-weight: 600;
+  margin: 0;
+  color: var(--pg-text);
+}
+
+.guide-section-desc,
+.guide-empty {
+  margin: 0 0 0.25rem 0;
+  font-size: 0.72rem;
+  color: var(--pg-text-muted);
+}
+
+.guide-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.2rem 0.4rem;
+  background: none;
+  border: none;
+  border-radius: var(--pg-radius-lg);
+  font-size: 0.8rem;
+  font-family: inherit;
+  text-align: left;
+  color: var(--pg-accent);
+  cursor: pointer;
+}
+
+.guide-row:hover {
+  background: var(--pg-accent-soft);
+}
+
+.guide-row-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.guide-row-context {
+  color: var(--pg-text-muted);
+}
+
+.guide-row-count {
+  font-variant-numeric: tabular-nums;
+  color: var(--pg-text-muted);
+}
+
+.guide-levels {
+  max-height: 14rem;
+  overflow-y: auto;
+}
+
+.guide-level {
+  display: grid;
+  grid-template-columns: 2.5rem 3rem 1fr;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.guide-level-bar {
+  display: flex;
+  height: 0.6rem;
+  background: var(--pg-accent-soft);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.guide-level-shares {
+  grid-column: 1 / -1;
+  color: var(--pg-text-muted);
+  padding-left: 2.85rem;
+}
+
 /* Toast Notifications */
 .toast-container {
   position: fixed;

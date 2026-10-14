@@ -9,7 +9,7 @@
 import { test, expect, type Page, type Route } from '@playwright/test';
 
 // a → b → c ← d, e isolated. Crates x (a, b) and y (c, d, e).
-// c has the most dependents, so the "most connected" chip is callers of c.
+// c has the most dependents, so the first "Most depended on" row is callers of c.
 const IDS = ['a', 'b', 'c', 'd', 'e'].map(n => `probe:${n < 'c' ? 'x' : 'y'}/${n}`);
 const [A, B, C, D, E] = IDS;
 const LINKS: [string, string][] = [[A, B], [B, C], [D, C]];
@@ -103,10 +103,10 @@ async function clickNode(page: Page, id: string): Promise<void> {
 
 async function clickChip(page: Page, text: RegExp): Promise<void> {
   await page.locator('#tab-guide').click();
-  await page.locator('.guide-chip').filter({ hasText: text }).click();
+  await page.locator('.guide-chip, .guide-row').filter({ hasText: text }).click();
 }
 
-const MOST_CONNECTED = /^Explore func_c/;
+const MOST_CONNECTED = /^func_c/;
 const CALLERS_OF_C = [A, B, C, D].sort();
 
 test.describe('Guide chips replace the intent', () => {
@@ -195,7 +195,8 @@ test.describe('History', () => {
     const depth = page.locator('#depth-value');
     await expect(page.locator('#stats')).toContainText('entry points, depth 1', { timeout: 30000 });
 
-    await clickChip(page, /^Explore /);
+    await page.locator('#tab-guide').click();
+    await page.locator('.guide-row').first().click();
     await expect(depth).toHaveText('All');
     await page.locator('#depth-limit').fill('5');
     await expect(depth).toHaveText('5');
@@ -292,9 +293,9 @@ test.describe('Back restores the controls', () => {
     await expect(page.locator('#stats')).toContainText('Total Nodes', { timeout: 15000 });
     await expect(page.locator('#source-crate-select')).toHaveValue('p');
 
-    // A chip pushes an entry; the dropdowns then select the other boundary
+    // A Guide row pushes an entry; the dropdowns then select the other boundary
     await page.locator('#tab-guide').click();
-    await page.locator('.guide-chip').first().click();
+    await page.locator('.guide-row').first().click();
     await page.locator('#source-crate-select').selectOption('r');
     await page.locator('#target-crate-select').selectOption('s');
     expect(new URL(page.url()).searchParams.get('boundary-source')).toBe('r');

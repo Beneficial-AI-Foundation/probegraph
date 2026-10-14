@@ -190,7 +190,7 @@ no intent, no include files and a finite depth. `hiddenNodes`
    scans edges, `depthFromSelected` uses undirected BFS, and `noTraversal`
    takes the focus set, exact set or whole traversable set. Each returns a
    `TraversalResult` with `nodeIds` and optional `calleeDepths`,
-   `callerDepths` and `boundaryLinkPairs`.
+   `callerDepths`, `undirectedDepths` and `boundaryLinkPairs`.
 4. **Assemble result nodes** from `fullGraph` by `nodeIds`.
 5. **Display predicates** (§3.5), then re-apply the kind filter (except for
    `noTraversal`) and hidden nodes, since step 4 reads the full graph.
@@ -203,7 +203,25 @@ no intent, no include files and a finite depth. `hiddenNodes`
    anchors and blueprint entries; skipped for an exact status selection
    without a query so every matching node shows. Build `nodeDepths` for
    layout from the traversal depths (minimum when a node has both), and
-   shallow-clone nodes and links so D3 can't mutate the source graph.
+   `anchorDepths` for truncation (`nodeDepths`, or the undirected depths
+   of `depthFromSelected`). Shallow-clone nodes and links so D3 can't
+   mutate the source graph. The
+   result's `displayRemoved` counts the nodes that steps 5 and 5b removed
+   with display predicates and result file patterns (0 for `noTraversal`).
+
+The render cap is applied after the pipeline, in `main.ts`, by
+`truncateToBudget` (`truncate.ts`). It keeps the anchors (exact intent IDs,
+or the depth-0 nodes of a text query), then the other nodes by distance,
+ties by ID. The distance is the result's `anchorDepths` (callers, callees,
+neighborhood, `depthFromSelected`), else a BFS from the anchors over the
+result's links in the query direction (exact sets). Nodes with no distance
+fill any room left, most connected first.
+
+`anchorDepths` comes from the traversal, before steps 5 and 5b. A kept node
+can therefore have no visible link to its anchor when a display predicate
+removed the nodes between them. A BFS over the visible links would drop
+such nodes, and a filter that cut the anchor off would leave the anchor
+alone on screen.
 
 ## 5. Operators
 
@@ -240,7 +258,8 @@ can't be found" when a predicate filtered it.
 
 **Depths travel beside the nodes.** Traversal returns depth maps in
 `TraversalResult` rather than writing them onto nodes; the executor uses them
-for depth-based link filtering and the `nodeDepths` it attaches to the result.
+for depth-based link filtering and the `nodeDepths` and `anchorDepths` it
+attaches to the result.
 
 The VS Code exact-node rule (how `selectedNodeId` picks a direction) is in
 [vscode-extension.md](../docs/guides/vscode-extension.md#message-protocol).

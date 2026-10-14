@@ -160,7 +160,9 @@ target on the other layer. User-facing behaviour is in
 | `src/blueprint-details.ts` | Node-details section for blueprint entries and cross-layer links |
 | `src/theme.ts` | Colour tokens read from CSS, group palette |
 | `src/html.ts` | `escapeHtml` for graph-provided values in HTML |
-| `src/guide/` | Static-analysis Guide panel (graph summary, suggested queries; no LLM) |
+| `src/guide/` | Static-analysis Guide panel (graph summary, ranked lists, dependency levels strip, suggested queries; no LLM) |
+| `src/reachability.ts` | SCC condensation, reverse-reachability bitsets, transitive dependent counts, dependency levels |
+| `src/truncate.ts` | Render-cap truncation by BFS from the query anchors |
 | `src/main.ts` | State, layers, graph loading, view dispatch, URL and history, VS Code messaging |
 
 Per-view layout and encoding algorithms are specified in
@@ -189,8 +191,21 @@ All constants are in `main.ts` unless noted.
   thresholds as the render budget, or the "use filters" view if no tier fits.
   Aggregated views (`isAggregatedView`: Crate Map, Hierarchy) are exempt.
 - **Result limiting**: query results are truncated to `MAX_RENDERED_NODES`,
-  keeping anchors first, then the best-connected nodes. Seeded views bypass
-  this cap; they are bounded by the seed budget instead.
+  keeping the anchors and then the nearest nodes by traversal depth
+  (`truncate.ts`), or the best-connected nodes when the query has no
+  anchors. Seeded views bypass this cap; they are bounded by the seed budget
+  instead.
+- **Guide rankings**: `reachability.ts` condenses cycles and unions bitsets
+  on the resulting DAG, about C²/8 bytes for C components, computed once per
+  graph object. The closure unions ceil(C/32) words per condensed edge,
+  and the member counts take 1 + `extraMemberPlanes` popcounts per
+  component (one bit plane per bit of the largest cycle size minus one).
+  `reachabilityFits` skips the bitsets above `MAX_REACHABILITY_COMPONENTS`
+  (20,000) components or `MAX_REACHABILITY_WORDS` (250 million words, about
+  0.35 s), and the Guide shows a note in place of the ranked lists. The
+  condensation and the dependency levels are linear and always computed.
+  The Dependency levels strip renders at most `MAX_LEVEL_ROWS` (60,
+  `guide/guide-panel.ts`) rows.
 - **Debounced input**: on large graphs only, typing in the query, exclude and
   include fields applies after `SEARCH_DEBOUNCE_MS`.
 - Nodes and links are cloned before D3 mutates them.

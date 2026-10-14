@@ -284,6 +284,12 @@ describe('traverseBidirectional', () => {
     // B's neighbors: A (backward) and D (forward)
     expect([...result.nodeIds].sort()).toEqual(['a', 'b', 'd']);
   });
+
+  it('returns the undirected depth of each node', () => {
+    const g = linearGraph();
+    const result = traverseBidirectional(g, new Set(['a']), 2);
+    expect(Object.fromEntries(result.undirectedDepths!)).toEqual({ a: 0, b: 1, c: 2 });
+  });
 });
 
 // ============================================================================

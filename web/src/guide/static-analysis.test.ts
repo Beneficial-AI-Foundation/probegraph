@@ -4,9 +4,10 @@
 
 import { describe, it, expect } from 'vitest';
 import { buildGraphSummary, formatSummaryText } from './static-analysis';
-import { guideTransition, resultMessage } from './guide-panel';
+import { MAX_LEVEL_ROWS, guideTransition, levelRows, levelShares, resultMessage } from './guide-panel';
 import type { SuggestedAction } from './types';
 import { D3Graph, D3Link, D3Node, VerificationStatus } from '../types';
+import { MAX_REACHABILITY_COMPONENTS, graphReachability, rankByTransitiveDependents } from '../reachability';
 
 function node(id: string, crate: string, kind: string, status?: VerificationStatus): D3Node {
   return {
@@ -90,11 +91,107 @@ describe('crate boundary chip', () => {
   });
 });
 
-describe('most connected chip', () => {
-  it('names only nodes the kind filters show', () => {
-    expect(action(fixture(), 'setSink', { isCandidate: () => true, isLinkShown: () => true }))
-      .toMatchObject({ id: 'S' });
-    expect(action(fixture(), 'setSink')).toMatchObject({ id: 't1' });
+describe('ranked lists', () => {
+  const all = { isCandidate: () => true, isLinkShown: () => true };
+  const rows = (list: { rows: { id: string; transitiveDependentCount: number }[] }) =>
+    list.rows.map(r => [r.id, r.transitiveDependentCount]);
+
+  it('ranks by unique transitive dependents, not direct callers', () => {
+    // b3 has one direct caller (b1) but three transitive dependents
+    const s = buildGraphSummary(fixture(), all);
+    expect(rows(s.unfinished)).toEqual([['b3', 3]]);
+    expect(rows(s.keystones)).toEqual([['t1', 5], ['a1', 0], ['a2', 0]]);
+    expect(s.keystonesAreLemmas).toBe(true);
+  });
+
+  it('lists axioms and trusted nodes as assumptions, never as unfinished', () => {
+    const g = fixture();
+    // An axiom with an unfinished status is still an assumption
+    g.nodes.push(node('ax', 'B', 'axiom', 'unverified'));
+    g.links.push({ source: 'b3', target: 'ax', type: 'inner' });
+    g.nodes.find(n => n.id === 'b3')!.dependencies.push('ax');
+    g.nodes.find(n => n.id === 'ax')!.dependents.push('b3');
+    const s = buildGraphSummary(g, all);
+    expect(rows(s.assumptions)).toEqual([['ax', 4], ['b2', 0]]);
+    expect(rows(s.unfinished)).toEqual([['b3', 3]]);
+  });
+
+  it('counts failed nodes as unfinished', () => {
+    const g = fixture();
+    g.nodes.find(n => n.id === 'b1')!.verification_status = 'failed';
+    expect(rows(buildGraphSummary(g, all).unfinished)).toEqual([['b3', 3], ['b1', 2]]);
+  });
+
+  it('kind filters restrict the rows, not the counts', () => {
+    // Hiding defs drops b3 from the rows but t1 still counts its def callers
+    const noDefs = { isCandidate: (n: D3Node) => n.kind !== 'def', isLinkShown: () => true };
+    const s = buildGraphSummary(fixture(), noDefs);
+    expect(s.unfinished).toEqual({ rows: [], total: 0 });
+    expect(rows(s.keystones)[0]).toEqual(['t1', 5]);
+  });
+
+  it('keeps the top rows and reports the total', () => {
+    const g = fixture();
+    for (const id of ['u1', 'u2', 'u3', 'u4', 'u5', 'u6']) g.nodes.push(node(id, 'B', 'def', 'unverified'));
+    const s = buildGraphSummary(g, all);
+    expect(s.unfinished.total).toBe(7);
+    expect(s.unfinished.rows.map(r => r.id)).toEqual(['b3', 'u1', 'u2', 'u3', 'u4']);
+  });
+
+  it('ranks every node on graphs without proof kinds', () => {
+    const g = fixture();
+    for (const n of g.nodes) { n.kind = 'exec'; n.language = 'rust'; }
+    const s = buildGraphSummary(g, all);
+    expect(s.keystonesAreLemmas).toBe(false);
+    expect(rows(s.keystones).slice(0, 2)).toEqual([['t1', 5], ['S', 4]]);
+  });
+
+  it('shows module context for rows that share a name', () => {
+    const g = fixture();
+    g.nodes.find(n => n.id === 'a1')!.display_name = 'same';
+    g.nodes.find(n => n.id === 'a2')!.display_name = 'same';
+    const s = buildGraphSummary(g, all);
+    expect(s.keystones.rows.map(r => r.context)).toEqual([undefined, 'A/a1.lean', 'A/a2.lean']);
+  });
+});
+
+describe('dependency levels strip', () => {
+  it('counts nodes and statuses per topological level', () => {
+    const s = buildGraphSummary(fixture(), notStructure);
+    expect(s.levels).toEqual([
+      { level: 0, nodes: 3, verified: 0, transitivelyVerified: 2, trusted: 0 },  // S, t1, b3
+      { level: 1, nodes: 3, verified: 1, transitivelyVerified: 1, trusted: 1 },  // b1, b2, b4
+      { level: 2, nodes: 2, verified: 0, transitivelyVerified: 2, trusted: 0 },  // a1, a2
+    ]);
+    expect(levelShares(s.levels[1])).toBe('33% transitively verified, 33% verified, 33% trusted');
+    expect(levelShares(s.levels[0])).toBe('67% transitively verified');
+  });
+
+  it('puts a cycle on one level', () => {
+    const g = fixture();
+    // b3 -> a1 closes a1 -> b1 -> b3 -> a1
+    g.links.push({ source: 'b3', target: 'a1', type: 'inner' });
+    g.nodes.find(n => n.id === 'b3')!.dependencies.push('a1');
+    g.nodes.find(n => n.id === 'a1')!.dependents.push('b3');
+    const s = buildGraphSummary(g);
+    // L0: S, t1. L1: the cycle {a1, b1, b3}, b2, b4. L2: a2
+    expect(s.levels.map(l => l.nodes)).toEqual([2, 5, 1]);
+    expect(levelRows(s.levels).map(r => r.label)).toEqual(['L0', 'L1', 'L2']);
+  });
+
+  it('folds the levels beyond MAX_LEVEL_ROWS into the last row', () => {
+    // A chain of MAX_LEVEL_ROWS + 10 nodes, every other one verified
+    const n = MAX_LEVEL_ROWS + 10;
+    const nodes = Array.from({ length: n }, (_, i) => node(`n${String(i).padStart(3, '0')}`, 'A', 'theorem',
+      i % 2 === 0 ? 'verified' : 'unverified'));
+    const links: D3Link[] = [];
+    for (let i = 0; i + 1 < n; i++) links.push({ source: nodes[i].id, target: nodes[i + 1].id, type: 'inner' });
+    const rows = levelRows(buildGraphSummary(graph(nodes, links)).levels);
+    expect(rows.length).toBe(MAX_LEVEL_ROWS);
+    const last = rows[rows.length - 1];
+    expect(last.label).toBe(`L${MAX_LEVEL_ROWS - 1}+`);
+    expect(last.range).toBe(`Levels ${MAX_LEVEL_ROWS - 1} to ${n - 1}`);
+    expect([last.stat.nodes, last.stat.verified]).toEqual([11, 6]);
   });
 });
 
@@ -151,9 +248,19 @@ describe('result toast', () => {
       .toBe('180 nodes: callers of GF16');
   });
 
-  it('notes truncation by the render cap', () => {
+  it('reports the omitted count when the render cap applies', () => {
     expect(resultMessage(sink, 'chip', { shown: 200, total: 950, missingAnchor: false, seeded: false, tooLarge: false }))
-      .toBe('200 nodes: callers of GF16 (truncated from 950)');
+      .toBe('200 nodes: callers of GF16 (750 of 950 not shown)');
+  });
+
+  it('says when only the first targets fit the render cap', () => {
+    const r = { shown: 200, total: 950, anchorsShown: 200, anchorsTotal: 340, missingAnchor: false, seeded: false, tooLarge: false };
+    expect(resultMessage(sink, 'chip', r)).toBe('200 nodes: callers of GF16 (750 of 950 not shown, first 200 of 340 targets)');
+  });
+
+  it('says when display filters removed nodes', () => {
+    const r = { shown: 12, total: 12, displayRemoved: 3, missingAnchor: false, seeded: false, tooLarge: false };
+    expect(resultMessage(sink, 'chip', r)).toBe('12 nodes: callers of GF16 (3 removed by display filters)');
   });
 
   it('names the entry points view on a large graph without a query', () => {
@@ -175,5 +282,23 @@ describe('result toast', () => {
 
   it('aggregated views only repeat the label', () => {
     expect(resultMessage({ type: 'switchView', view: 'crate-map' }, 'View map', null)).toBe('View map');
+  });
+});
+
+describe('component limit', () => {
+  it('skips the ranked lists above MAX_REACHABILITY_COMPONENTS but keeps the levels', () => {
+    const nodes = Array.from({ length: MAX_REACHABILITY_COMPONENTS + 1 }, (_, i) => node(`n${i}`, 'A', 'theorem'));
+    const g = graph(nodes, []);
+    expect(graphReachability(g)).toBeNull();
+    expect(rankByTransitiveDependents(g, () => true, 5)).toBeNull();
+    const s = buildGraphSummary(g);
+    expect(s.rankingsSkipped).toEqual({ components: MAX_REACHABILITY_COMPONENTS + 1, links: 0 });
+    expect(s.keystones.rows).toEqual([]);
+    expect(s.levels.map(l => l.nodes)).toEqual([MAX_REACHABILITY_COMPONENTS + 1]);
+  });
+
+  it('computes the ranked lists below the limit', () => {
+    const nodes = Array.from({ length: 3 }, (_, i) => node(`n${i}`, 'A', 'theorem'));
+    expect(buildGraphSummary(graph(nodes, [])).rankingsSkipped).toBeNull();
   });
 });

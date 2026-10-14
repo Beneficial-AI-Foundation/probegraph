@@ -103,7 +103,17 @@ slider re-expands from the seeds. `?focus=` takes precedence over
 Only the Call Graph seeds. The File Map on a large graph with no query shows
 a "use filters" message instead, and Crate Map and Hierarchy render the whole
 graph. Filtered results in the Call Graph and File Map are truncated to 200
-rendered nodes; the seeded view is not.
+rendered nodes; the seeded view is not. Truncation keeps the target and then
+the nodes nearest to it, ties broken by ID. The distance is the number of
+steps from the target in the query direction, counted before the display
+filters run. Queries without a target (paths, boundaries, no query) keep the
+most connected nodes.
+
+The display filters (origin, status, language, result files, edge types)
+can remove the nodes between a shown node and the target. The shown node
+then has no visible edge to the target, but it is still one of the nearest.
+For example, "callers of t" with verified nodes hidden can show callers of a
+hidden verified function, with no edge from them to t.
 
 ## Sidebar filters
 
@@ -290,18 +300,75 @@ boxes.
 ## Guide tab
 
 The right sidebar has a **Guide (testing)** tab with a statically computed
-graph overview and suggested queries. No LLM is involved.
+graph overview, ranked lists, a dependency levels strip and suggested queries. No LLM is
+involved.
 
 - Counts use the whole graph, with transitively verified, verified (locally
   only) and trusted reported separately.
-- Suggestions only name nodes and edges the current kind and edge-type
-  filters show, and update when those filters change.
+- Three ranked lists: **Unfinished work** (unverified or failed declarations;
+  axioms are not listed here), **Assumptions** (axioms and trusted
+  declarations) and **Keystone lemmas** (theorems or proof functions;
+  "Most depended on" with every node on graphs without them). Each ranks by
+  unique transitive dependents: the number of declarations that reach the
+  row's node, each counted once. Members of a cycle share one count. Ties
+  break by ID. A row opens the callers of its node.
+- The lists need about C²/8 bytes for C groups of declarations (a cycle
+  is one group), and time that grows with C and the links between groups.
+  Above 20,000 groups, or with too many links for that number of groups,
+  the Guide does not compute them and says so. This limits the memory and
+  the time the page is blocked. The Dependency levels strip still shows.
+- The **Dependency levels** strip shows how verification is spread over
+  the dependency stack. See [Dependency levels](#dependency-levels).
+- Lists and suggestions only name nodes and edges the current kind and
+  edge-type filters show, and update when those filters change. The counts
+  always use every node and every dependency.
 - The boundary suggestion is the pair of crates or namespaces with the most
   edges in that direction.
 - "Show only transitively verified" selects that status alone (graphs without
   it get "Show only verified").
-- Clicking a suggestion keeps the Guide open; a toast reports the result, e.g.
-  "180 nodes: callers of GF16", and notes truncation. Browser back undoes it.
+- Clicking a row or a suggestion keeps the Guide open; a toast reports the
+  result, e.g. "180 nodes: callers of GF16". When the render cap applies, it
+  gives the number of nodes not shown, and when display filters (origin,
+  status, language, files) removed nodes, it says how many. Browser back
+  undoes it.
+
+### Dependency levels
+
+The strip sorts the declarations by how deep they sit in the dependency
+graph. A declaration with no dependencies in the graph is at level 0.
+Every other declaration is one level above its highest dependency, so its
+level is the length of the longest dependency chain below it. A cycle
+(declarations that all depend on each other) counts as one declaration,
+and its members share one level. Dependencies outside the graph, for
+example the standard library, are not counted.
+
+Each row has four parts:
+
+- The level, for example `L3`.
+- The number of declarations at that level.
+- A bar with the transitively verified, verified and trusted shares, in
+  the colors of [Verification colors](#verification-colors). The empty
+  part of the bar is unverified, failed or unknown.
+- The same shares as text, also in the tooltip.
+
+Example: for `a -> b -> c` and `a -> c`, `c` is at level 0, `b` at
+level 1 and `a` at level 2. The edge `a -> c` does not lower the level
+of `a`, because `a` also depends on `b`.
+
+Read the strip from the bottom up. Low levels hold the basic definitions
+and lemmas that the rest of the project builds on. If those levels have
+a low verified share, much of the project rests on unproven ground, even
+when the top levels look verified. A high unverified share near the top
+is less serious, because little depends on it.
+
+The strip always uses every node and every dependency of the graph. It
+does not change with the kind or edge-type filters. It shows at most 60
+rows. In a deeper graph, the last row (for example `L59+`) combines the
+remaining levels, and its tooltip gives the level range. The rows are
+not clickable.
+
+The strip is on trial. If it does not help to read real graphs, it will
+be removed.
 
 ## VS Code
 
