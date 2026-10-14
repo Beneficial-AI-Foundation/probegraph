@@ -39,32 +39,46 @@ both callers through it.
     does not reach it. Action: replace the intent (below) or add it as an
     anchor.
   - `truncated`: dropped by the 200-node cap. Action: make it an anchor so
-    BFS truncation keeps it (guide plan, Phase 4), or raise the cap.
+    BFS truncation keeps it (guide plan, Phase 4), query the node instead,
+    or raise the cap.
   - `shown`: nothing to do except centre.
   The classification runs on `state.fullGraph`, never on the DOM, and node
   details open for any node the graph has, element or not.
 - **Intent policy.** Editor: unchanged (exact-ID intent at the given depth,
   history `replace`). Search, default: replace the intent with an exact-ID
-  intent on the hit at the current depth, one history entry. Search, "as
-  source" / "as sink": extend the current intent's anchor set instead. No
-  new query semantics: a source hit and a sink hit are the existing
-  source/sink query.
+  intent on the hit at the current depth, one history entry, only when the
+  current query does not reach the hit. A query that reaches it stays, so
+  a hit that the view already draws keeps the user's context. A truncated
+  hit offers "Query this node instead", which always draws it (truncation
+  never cuts a lone anchor). Decided 2026-10-14. Search, "as source" /
+  "as sink": extend the current intent's anchor set instead. No new query
+  semantics: a source hit and a sink hit are the existing source/sink
+  query.
 - **Relaxing filters is explicit.** The viewer never relaxes on its own; it
   offers the action and the user clicks. The relaxation is one history
-  entry so Back restores the filters.
+  entry so Back restores the filters. When the relaxed filters let the
+  search policy replace the intent, the relaxation and the new intent
+  share that one entry.
 - **Stale results.** A reveal counter: each `revealNode` increments it and
   the asynchronous steps (layout settle, camera transition end, the toast)
   check it and drop out when a later reveal has started. Graph reload
   increments it too. Codex's case: search picks A, the editor selects B
-  while A's layout settles, A's callback centres A over B's selection.
+  while A's layout settles, A's callback centres A over B's selection. A
+  newer reveal also stops a camera move in progress. A toast action
+  records the URL state it was computed for, and a click after any other
+  change (a query, a filter, Back) does nothing.
 - **Centre on node.** `fitToView` in `src/graph.ts` is private and fits the
   whole result (or centres on the focus node when the result is too big).
   Add a public `centerOn(id)` that pans and zooms to one node at a readable
-  scale with the same 400 ms transition; `revealNode` calls it after the
-  layout has a position for the node.
+  scale with the same 400 ms transition; `revealNode` calls it once the
+  force layout settles, or after 1.5 s at most. A pan or zoom by the user
+  in the meantime cancels the centring.
 - Tests: reason classification on `probe-lean-extract-cut.json` for each
   of the six values; two reveals in a row where the first one's completion
   is a no-op; the editor integration tests in `vscode/` keep passing.
+  `web/e2e/reveal.spec.ts` drives the toast actions, their history
+  entries, the raised cap and centring through a dev-only
+  `window.__revealNode` hook until the search box calls `revealNode`.
 
 ## Phase 1: lexical search
 
@@ -186,5 +200,5 @@ answer the first one but not the other two without recursive scripts.
   queries only, which does not answer arbitrary queries. Document and query
   must use the same model revision and preprocessing.
 - **Snapshots.** When the viewer loads a sequence of extracts
-  (`docs/plans/concept-discovery.md`, Later), "not in this snapshot" is one
+  (the planned concept-discovery document, Later), "not in this snapshot" is one
   more reveal reason, answered by moving to the first snapshot that has it.

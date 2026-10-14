@@ -99,7 +99,8 @@ including one in `loadGraph` (answered after `graphLoaded`), gets a
 `selectResult`.
 
 A selection switches to the code layer and the call graph view, unhides the
-node if the user hid it, and shows it at `depth`. Other filters stay as the
+node if the user hid it, shows it at `depth`, and opens it in node details,
+also when a filter hides it. Other filters stay as the
 user set them. If they still hide the node, the status is `filtered` and
 `filteredBy` lists the `FilterOptions` keys to relax (a kind shown, a
 pattern cleared) so that it is drawn: the key that does it on its own
