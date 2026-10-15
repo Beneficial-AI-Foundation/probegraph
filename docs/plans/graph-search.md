@@ -3,7 +3,9 @@
 Status (2026-10-15): Phase 0 merged in #80. `revealNode` in
 `src/main.ts` serves the editor; the search half has no UI caller yet and
 is reached in e2e tests through the dev-only `window.__revealNode` hook.
-Phase 1 is next. Phase 2 needs Phase 1. Its `rank by dependents` verb
+Phase 1 is in progress as three PRs (decided 2026-10-15): 1 the index and
+ranking (`src/search.ts`, no UI), 2 the search box and result list, 3 the
+source-set plus sink-set intent. Phase 2 needs Phase 1. Its `rank by dependents` verb
 reuses the guide Phase 4 count (merged in #81). Its frontier and
 "assumptions under X" presets need `trust-and-frontier.md` Phases 2 and 1.
 
@@ -108,6 +110,22 @@ both callers through it.
   recall@5 for substring against BM25. Add BM25 only if it wins on that
   set. Codex's point: the ranking is the least certain part and the
   cheapest to measure.
+  Result (2026-10-15): 22 queries in `src/test-data/spqr-search-queries.json`,
+  written before the ranking, on the full SPQR extract (3508 atoms) cut
+  to names, kinds and paths (`spqr-aeneas-search-cut.json`, 0.7 MB).
+  Lexical: recall@5 22/22, recall@1 21/22. BM25 (name tokens weighted 3,
+  path tokens 1): recall@5 22/22, recall@1 22/22. BM25 does not win on
+  recall@5, so lexical stays. The order: whole query equal to the ID, then
+  equal to the display name, then the sum of the token costs (name before
+  module path before statement names; exact token before prefix before
+  substring), then position in the name, name length and ID. An exact ID
+  ranks above an exact display name because a display name can name
+  several nodes.
+- **Build time.** On the largest local graph (22109 nodes, 48923 links)
+  the index builds in about 65 ms in Node and holds about 400k tokens. A
+  query takes 7 to 28 ms. The build is short enough to run in one piece,
+  so PR 2 builds the index on the first focus of the search box rather
+  than in chunks at load.
 - **UI.** A search box in the toolbar; a result list with display name,
   kind, status and module; Enter reveals the top hit; each row has reveal,
   "as source" and "as sink". Reveal goes through Phase 0 and shows the
