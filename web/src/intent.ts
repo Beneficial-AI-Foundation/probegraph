@@ -18,7 +18,8 @@ export type FocusOrigin = { type: 'focus'; url: string };
 export type ExactOrigin =
   | { type: 'guide' }
   | { type: 'vscode' }
-  | { type: 'drilldown' };
+  | { type: 'drilldown' }
+  | { type: 'search' };
 
 export type FocusIntent = {
   kind: 'ids'; ids: string[]; dir: 'none'; label: string; origin: FocusOrigin;

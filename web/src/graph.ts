@@ -281,6 +281,23 @@ export function computeFitTransform(
   return { k, x: width / 2 - k * cx, y: height / 2 - k * cy };
 }
 
+/**
+ * Compute a zoom transform that puts one node in the middle of the viewport
+ * at scale `k` (the largest scale fitToView uses). Null when the node has no
+ * position yet or the viewport is empty.
+ *
+ * Exported for testing (the renderer applies the result via d3.zoom).
+ */
+export function computeCenterTransform(
+  node: { x?: number; y?: number },
+  width: number,
+  height: number,
+  k: number = 1
+): FitTransform | null {
+  if (node.x === undefined || node.y === undefined || width <= 0 || height <= 0) return null;
+  return { k, x: width / 2 - k * node.x, y: height / 2 - k * node.y };
+}
+
 export class CallGraphVisualization {
   private svg: d3.Selection<SVGSVGElement, unknown, null, undefined>;
   private g: d3.Selection<SVGGElement, unknown, null, undefined>;
@@ -299,6 +316,11 @@ export class CallGraphVisualization {
   // changes, so hover/selection re-renders never move the user's view.
   private renderedNodeIds: Set<string> = new Set();
   private currentNodes: D3Node[] = [];
+  // Camera moves so far: by the user (wheel, drag), fitToView and centerOn.
+  // A delayed camera move compares it to tell that something else moved
+  // the camera in the meantime
+  private cameraMoveCount = 0;
+  private settleWaiters = 0;
 
   /**
    * Gets whether the node was selected before the double-click's first
@@ -335,6 +357,9 @@ export class CallGraphVisualization {
       .scaleExtent([0.1, 10])
       .on('zoom', (event) => {
         this.g.attr('transform', event.transform);
+        // Programmatic moves have no source event; fitToView and centerOn
+        // count themselves once each, not per frame
+        if (event.sourceEvent) this.cameraMoveCount++;
       });
 
     this.svg.call(this.zoom);
@@ -590,10 +615,67 @@ export class CallGraphVisualization {
       this.currentNodes, this.width, this.height, this.findFocusNode()
     );
     if (!t) return;
+    this.cameraMoveCount++;
     this.svg
       .transition()
       .duration(400)
       .call(this.zoom.transform as any, d3.zoomIdentity.translate(t.x, t.y).scale(t.k));
+  }
+
+  /**
+   * Pan and zoom to one drawn node with the same 400 ms transition as
+   * fitToView. Resolves true when the move ends, false when the node is not
+   * drawn, another camera move stops or cancels this one, or `wanted`
+   * (checked on every frame) returns false.
+   */
+  public centerOn(id: string, wanted: () => boolean = () => true): Promise<boolean> {
+    const node = this.currentNodes.find(n => n.id === id);
+    const t = node ? computeCenterTransform(node, this.width, this.height) : null;
+    if (!t) return Promise.resolve(false);
+    const move = ++this.cameraMoveCount;
+    return new Promise(resolve => {
+      this.svg
+        .transition()
+        .duration(400)
+        .call(this.zoom.transform as any, d3.zoomIdentity.translate(t.x, t.y).scale(t.k))
+        .tween('wanted', () => () => {
+          // Once a later move owns the camera, it interrupts this one when
+          // it starts; interrupting here would also cancel the later one
+          if (!wanted() && this.cameraMoveCount === move) this.svg.interrupt();
+        })
+        .on('end', () => resolve(true))
+        .on('interrupt', () => resolve(false))
+        .on('cancel', () => resolve(false));
+    });
+  }
+
+  /** Stop the camera move in progress, where it is. */
+  public stopCameraMove(): void {
+    this.svg.interrupt();
+  }
+
+  /** The number of camera moves so far (user, fitToView, centerOn). */
+  public get cameraMoves(): number {
+    return this.cameraMoveCount;
+  }
+
+  /**
+   * Resolves when the layout stops moving: the simulation ends, or `maxMs`
+   * passes (also when an update replaces the simulation before it ends).
+   */
+  public whenSettled(maxMs: number): Promise<void> {
+    const simulation = this.simulation;
+    if (!simulation || simulation.alpha() < simulation.alphaMin()) return Promise.resolve();
+    const event = `end.settled${++this.settleWaiters}`;
+    return new Promise(resolve => {
+      const done = () => {
+        clearTimeout(timer);
+        simulation.on(event, null);
+        resolve();
+      };
+      const timer = setTimeout(done, maxMs);
+      simulation.on(event, done);
+    });
   }
 
   /** The node to center on when the whole graph cannot fit: the selected

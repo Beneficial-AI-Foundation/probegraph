@@ -9,6 +9,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { formatTimestamp, isInside, isLeanGraph, D3Node } from './indexLoader';
 import { resolveCursor } from '../../web/src/editor-lookup';
+import { describeFilters } from '../../web/src/filter-names';
 import { enclosingSymbol } from './cursorSymbol';
 import { GraphPanel, Direction, HostMessage, WebviewMessage } from './webviewLoader';
 import { GraphRevision, GraphSession, Sessions } from './session';
@@ -282,15 +283,6 @@ async function reportUnreadable(session: GraphSession, languageId: string, error
     }
 }
 
-const FILTER_NAMES: Record<string, string> = {
-    showExecFunctions: 'Exec', showProofFunctions: 'Proof', showSpecFunctions: 'Spec',
-    showAxioms: 'Axiom', showTypes: 'Type', showProjections: 'Projection', showInstances: 'Instance',
-    showRustNodes: 'Rust', showLeanNodes: 'Lean', showLibsignal: 'libsignal', showNonLibsignal: 'non-libsignal',
-    showVerifiedNodes: 'Verified', showFailedNodes: 'Failed', showUnverifiedNodes: 'Unverified',
-    exactStatuses: 'status', excludeNamePatterns: 'name exclusion', excludePathPatterns: 'path exclusion',
-    includeFiles: 'file',
-};
-
 /** The selected node is in the graph but a viewer filter hides it. */
 async function reportFiltered(nodeId: string, filteredBy: string[]): Promise<void> {
     const name = sessions.graph?.index.graph.nodes.find(n => n.id === nodeId)?.display_name ?? nodeId;
@@ -299,9 +291,8 @@ async function reportFiltered(nodeId: string, filteredBy: string[]): Promise<voi
         vscode.window.showWarningMessage(`${name} is not drawn by the viewer even with every node filter off.`);
         return;
     }
-    const names = filteredBy.map(k => FILTER_NAMES[k] ?? k);
     const action = await vscode.window.showWarningMessage(
-        `${name} is hidden by the ${names.join(' and ')} filter${names.length > 1 ? 's' : ''}.`,
+        `${name} is hidden by ${describeFilters(filteredBy)}.`,
         'Show it'
     );
     if (action === 'Show it') {

@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { computeFitTransform } from './graph';
+import { computeCenterTransform, computeFitTransform } from './graph';
 
 const WIDTH = 1000;
 const HEIGHT = 800;
@@ -93,5 +93,19 @@ describe('computeFitTransform', () => {
     const t = computeFitTransform(nodes, WIDTH, HEIGHT)!;
     expect(t.x + t.k * 150).toBeCloseTo(WIDTH / 2);
     expect(t.y + t.k * 150).toBeCloseTo(HEIGHT / 2);
+  });
+});
+
+describe('computeCenterTransform', () => {
+  it('maps the node to the viewport centre at the given scale', () => {
+    const t = computeCenterTransform({ x: 1500, y: -40 }, WIDTH, HEIGHT, 1)!;
+    expect(t.k).toBe(1);
+    expect(t.x + t.k * 1500).toBeCloseTo(WIDTH / 2);
+    expect(t.y + t.k * -40).toBeCloseTo(HEIGHT / 2);
+  });
+
+  it('returns null for a node without a position or an empty viewport', () => {
+    expect(computeCenterTransform({}, WIDTH, HEIGHT)).toBeNull();
+    expect(computeCenterTransform({ x: 0, y: 0 }, WIDTH, 0)).toBeNull();
   });
 });
