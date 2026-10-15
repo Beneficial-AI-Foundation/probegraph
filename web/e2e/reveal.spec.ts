@@ -6,6 +6,7 @@
  */
 
 import { test, expect, type Page, type Route } from '@playwright/test';
+import { readFileSync } from 'node:fs';
 
 // h calls 300 leaves, which is over the 200-node render cap. a calls b.
 // s is a spec function (hidden by default) that calls t.
@@ -237,5 +238,28 @@ test.describe('revealNode from search', () => {
     expect(await shownIds(page)).toContain('probe:b');
   });
 
+});
+
+// probe-leanblueprint project-template extract: 9 blueprint atoms, 9 Lean atoms
+const BLUEPRINT = readFileSync(new URL('../src/test-data/blueprint-project-template.json', import.meta.url));
+
+test('a reveal on the other layer and its new query are one history entry', async ({ page }) => {
+  await page.goto('/probegraph/');
+  await page.locator('#file-input').setInputFiles({
+    name: 'extract.json', mimeType: 'application/json', buffer: BLUEPRINT,
+  });
+  await expect(page.locator('circle.node')).toHaveCount(9, { timeout: 15000 });
+  // A blueprint query that does not reach addition_assoc, kept by the layer
+  await page.locator('#source-input').fill('collatz_step');
+  await expect.poll(async () => (await shownIds(page)).includes('probe:blueprint:addition_assoc')).toBe(false);
+  await page.locator('#layer-code').click();
+  await expect(page.locator('#layer-code')).toHaveClass(/active/);
+  const codeUrl = page.url();
+
+  expect(await reveal(page, 'probe:blueprint:addition_assoc', { policy: { kind: 'replace' } })).toBe('shown');
+  await expect(page.locator('#layer-blueprint')).toHaveClass(/active/);
+  await page.goBack();
+  await expect(page.locator('#layer-code')).toHaveClass(/active/);
+  expect(page.url()).toBe(codeUrl);
 });
 

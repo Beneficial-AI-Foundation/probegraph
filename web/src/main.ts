@@ -3823,7 +3823,8 @@ function revealNode(id: string, opts: RevealOptions): RevealResult {
     return { reason: 'missing' };
   }
   // Each layer keeps its own filters, so switching needs no consent
-  if (layer !== activeLayer) switchLayer(layer);
+  const switched = layer !== activeLayer;
+  if (switched) switchLayer(layer);
   const viewChanged = activeView !== 'callgraph';
   if (viewChanged) switchView('callgraph', { apply: false });
   const unhidden = state.filters.hiddenNodes.delete(id);
@@ -3840,20 +3841,26 @@ function revealNode(id: string, opts: RevealOptions): RevealResult {
     });
   } else {
     if (viewChanged || unhidden) applyFiltersAndUpdate();
-    applySearchPolicy(id, node.display_name, policy);
+    // A new intent replaces the switch's entry, so one Back restores the
+    // layer and its query
+    applySearchPolicy(id, node.display_name, policy, switched ? 'replace' : 'push');
   }
   return presentReveal(node, opts, token);
 }
 
 /**
- * Set the intent a search policy asks for, as one pushed history entry.
- * Returns whether it pushed one: not when the intent stays as it is.
+ * Set the intent a search policy asks for, as one history entry (`push`,
+ * or `replace` over an entry the reveal pushed itself). Returns whether it
+ * wrote one: not when the intent stays as it is.
  */
-function applySearchPolicy(id: string, label: string, policy: Exclude<RevealPolicy, { kind: 'editor' }>): boolean {
+function applySearchPolicy(
+  id: string, label: string, policy: Exclude<RevealPolicy, { kind: 'editor' }>,
+  history: 'push' | 'replace' = 'push',
+): boolean {
   if (policy.kind === 'replace' && classifyReveal(revealContext(), id).reason !== 'outside-intent') return false;
   const intent = searchIntent(state.filters.intent, id, label, policy);
   if (intent === state.filters.intent) return false;
-  setIntent(intent, { history: 'push', pushed: true });
+  setIntent(intent, { history, pushed: true });
   return true;
 }
 

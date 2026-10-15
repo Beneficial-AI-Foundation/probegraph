@@ -77,6 +77,9 @@ both callers through it.
   layout stops (8 s at most), since the node can drift after the first
   move. Any other camera move in the meantime (the user, Reset View, a
   query's fit) or a change of the URL state cancels the centring.
+- **History.** A search reveal on the other layer pushes one entry for the
+  switch. A new intent replaces that entry, so one Back restores the
+  layer and its query.
 - Tests: reason classification on `probe-lean-extract-cut.json` for each
   of the six values; two reveals in a row where the first one's completion
   is a no-op; the editor integration tests in `vscode/` keep passing.
