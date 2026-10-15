@@ -632,14 +632,16 @@ export class CallGraphVisualization {
     const node = this.currentNodes.find(n => n.id === id);
     const t = node ? computeCenterTransform(node, this.width, this.height) : null;
     if (!t) return Promise.resolve(false);
-    this.cameraMoveCount++;
+    const move = ++this.cameraMoveCount;
     return new Promise(resolve => {
       this.svg
         .transition()
         .duration(400)
         .call(this.zoom.transform as any, d3.zoomIdentity.translate(t.x, t.y).scale(t.k))
         .tween('wanted', () => () => {
-          if (!wanted()) this.svg.interrupt();
+          // Once a later move owns the camera, it interrupts this one when
+          // it starts; interrupting here would also cancel the later one
+          if (!wanted() && this.cameraMoveCount === move) this.svg.interrupt();
         })
         .on('end', () => resolve(true))
         .on('interrupt', () => resolve(false))
