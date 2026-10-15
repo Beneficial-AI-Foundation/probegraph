@@ -1434,6 +1434,12 @@ select.search-input {
   animation: toast-in 0.25s ease-out, toast-out 0.3s ease-in 7.5s forwards;
 }
 
+/* showActionToast keeps the toast on the same conditions */
+.toast-with-actions:hover,
+.toast-with-actions:focus-within {
+  animation-play-state: paused;
+}
+
 .toast-action {
   margin-left: 0.75rem;
   background: transparent;

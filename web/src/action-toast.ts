@@ -1,7 +1,10 @@
 /**
  * A toast with buttons, for a viewer action the user must confirm (relaxing
  * a filter, raising the render cap). It stays longer than a plain toast
- * (showToast in guide/guide-panel.ts) so there is time to click.
+ * (showToast in guide/guide-panel.ts) so there is time to click, and does
+ * not go while it has the pointer or the keyboard focus. #toast-container
+ * is a live region, so screen readers announce the message and the button
+ * labels.
  */
 
 export interface ToastAction {
@@ -31,6 +34,25 @@ export function showActionToast(message: string, actions: ToastAction[]): HTMLEl
   }
   container.appendChild(toast);
 
-  setTimeout(() => toast.remove(), ACTION_TOAST_MS);
+  // The CSS fade pauses on the same conditions (:hover, :focus-within)
+  let remaining = ACTION_TOAST_MS;
+  let startedAt = Date.now();
+  let timer: ReturnType<typeof setTimeout> | null = setTimeout(() => toast.remove(), remaining);
+  const hold = () => {
+    if (!timer) return;
+    clearTimeout(timer);
+    timer = null;
+    remaining -= Date.now() - startedAt;
+  };
+  const resume = () => {
+    if (timer || toast.matches(':hover, :focus-within')) return;
+    startedAt = Date.now();
+    timer = setTimeout(() => toast.remove(), remaining);
+  };
+  toast.addEventListener('mouseenter', hold);
+  toast.addEventListener('focusin', hold);
+  toast.addEventListener('mouseleave', resume);
+  // Focus moves after focusout, so look once it has
+  toast.addEventListener('focusout', () => setTimeout(resume));
   return toast;
 }

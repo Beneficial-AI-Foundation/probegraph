@@ -82,6 +82,9 @@ both callers through it.
 - **History.** A search reveal on the other layer pushes one entry for the
   switch. A new intent replaces that entry, so one Back restores the
   layer and its query.
+- **Toasts.** `#toast-container` is a polite live region, so screen
+  readers announce why a hit is not drawn and the action labels. A toast
+  with actions stays while it has the pointer or the keyboard focus.
 - Tests: reason classification on `probe-lean-extract-cut.json` for each
   of the six values; two reveals in a row where the first one's completion
   is a no-op; the editor integration tests in `vscode/` keep passing.
@@ -108,7 +111,11 @@ both callers through it.
 - **UI.** A search box in the toolbar; a result list with display name,
   kind, status and module; Enter reveals the top hit; each row has reveal,
   "as source" and "as sink". Reveal goes through Phase 0 and shows the
-  reason and action when the hit is not visible.
+  reason and action when the hit is not visible. Keyboard access: a key
+  in the search box moves the focus to the toast's first action, since
+  the toast sits at the end of the page. Nothing shows an action toast
+  before the search box (the editor reveal offers none), so Phase 0 has
+  no such key.
 - **Source and sink sets together.** In Phase 0, "as source" on top of a
   sink set (or the reverse) starts a new set, because `ExactIntent` holds
   one ID set and one direction. Add an intent with a source ID set and a

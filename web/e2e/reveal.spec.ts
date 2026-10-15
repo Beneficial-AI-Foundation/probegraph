@@ -264,6 +264,14 @@ test.describe('revealNode from search', () => {
     expect(await shownIds(page)).toContain('probe:b');
   });
 
+  test('the toast stays while it has the keyboard focus', async ({ page }) => {
+    await open(page, A_CALLEES);
+    await expect(page.locator('#toast-container')).toHaveAttribute('aria-live', 'polite');
+    expect(await reveal(page, 'probe:s', { policy: { kind: 'replace' }, offer: true })).toBe('filtered');
+    await toastAction(page, 'Show it').focus();
+    await page.waitForTimeout(9000);
+    await expect(toastAction(page, 'Show it')).toBeVisible();
+  });
 });
 
 // probe-leanblueprint project-template extract: 9 blueprint atoms, 9 Lean atoms
