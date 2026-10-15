@@ -148,8 +148,7 @@ body {
 .search-results {
   position: absolute;
   top: calc(100% + 0.25rem);
-  /* The box sits on the right of the header, so the list grows leftward */
-  right: 0;
+  /* left is set by SearchBox.place, which keeps the list in the window */
   width: max(100%, 38rem);
   max-width: calc(100vw - 2rem);
   max-height: 70vh;

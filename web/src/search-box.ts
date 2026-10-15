@@ -49,6 +49,9 @@ export class SearchBox {
     container.addEventListener('focusout', e => {
       if (!container.contains(e.relatedTarget as Node | null)) this.close();
     });
+    window.addEventListener('resize', () => {
+      if (!this.list.hidden) this.place();
+    });
     document.addEventListener('keydown', e => {
       if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey || isTextField(e.target)) return;
       e.preventDefault();
@@ -99,6 +102,21 @@ export class SearchBox {
     for (const node of this.hits) this.list.appendChild(this.row(node, twoLayers));
     if (more) this.list.appendChild(note(`First ${RESULT_LIMIT} matches. Add words to narrow the search.`));
     this.list.hidden = false;
+    this.place();
+  }
+
+  /**
+   * Align the list's right edge with the box, but keep the whole list in
+   * the window: on a narrow window the box ends too near the left edge.
+   */
+  private place(): void {
+    const margin = 16;
+    const box = this.list.offsetParent?.getBoundingClientRect();
+    if (!box) return;
+    const width = this.list.offsetWidth;
+    const right = document.documentElement.clientWidth - margin;
+    const left = Math.max(margin, Math.min(box.right - width, right - width));
+    this.list.style.left = `${left - box.left}px`;
   }
 
   private row(node: D3Node, twoLayers: boolean): HTMLElement {

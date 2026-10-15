@@ -204,15 +204,23 @@ test.describe('search box', () => {
     expect(new URL(page.url()).searchParams.get('id')).toBe('probe:a');
   });
 
-  test('the list stays inside a narrow window', async ({ page }) => {
+  test('the list stays inside a narrow window, and after a resize', async ({ page }) => {
+    // The left and right edges; polled, since the resize event can come
+    // after setViewportSize returns
+    const edges = async () => Promise.all(
+      [page.locator('#search-results'), resultButton(page, 'probe:h', 'sink')].map(async el => {
+        const box = (await el.boundingBox())!;
+        return [box.x, box.x + box.width];
+      }));
+    const inside = (width: number) => expect.poll(async () =>
+      (await edges()).every(([left, right]) => left >= 0 && right <= width)).toBe(true);
     await page.setViewportSize({ width: 1024, height: 768 });
     await open(page, A_CALLEES);
     await page.locator('#search-input').fill('h');
-    for (const el of [page.locator('#search-results'), resultButton(page, 'probe:h', 'sink')]) {
-      const box = (await el.boundingBox())!;
-      expect(box.x).toBeGreaterThanOrEqual(0);
-      expect(box.x + box.width).toBeLessThanOrEqual(1024);
-    }
+    await inside(1024);
+    // The box ends nearer the left edge than the list is wide
+    await page.setViewportSize({ width: 640, height: 768 });
+    await inside(640);
   });
 
   test('a new graph is searched, not the old one', async ({ page }) => {
