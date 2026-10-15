@@ -46,6 +46,19 @@ describe('convertAtomDictToD3Graph external dependencies', () => {
     expect(graph.links.some(l => l.target === 'probe:Unresolved.name')).toBe(false);
   });
 
+  it('keeps unresolved statement externals on the node, and only those', () => {
+    const caller = graph.nodes.find(n => n.id === 'probe:caller')!;
+    expect(caller.statement_externals).toBeUndefined();
+    const g = convertAtomDictToD3Graph({
+      'probe:a': atom({
+        "type-dependencies-external": ['probe:Lean.ParserDescr', 'probe:b'],
+        "term-dependencies-external": ['probe:Lean.Term'],
+      }),
+      'probe:b': atom({}),
+    });
+    expect(g.nodes.find(n => n.id === 'probe:a')!.statement_externals).toEqual(['probe:Lean.ParserDescr']);
+  });
+
   it('includes resolved externals in node dependencies and dependents', () => {
     const caller = graph.nodes.find(n => n.id === 'probe:caller')!;
     expect([...caller.dependencies].sort())

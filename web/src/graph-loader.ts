@@ -86,6 +86,16 @@ function resolvedExternalDeps(atom: ProbeAtom, knownIds: Set<string>): string[] 
 }
 
 /**
+ * Statement dependencies outside the project (probe-lean's
+ * `type-dependencies-external`) that do not resolve to an atom in the
+ * loaded graph, or undefined when there are none.
+ */
+function unresolvedStatementExternals(atom: ProbeAtom, knownIds: Set<string>): string[] | undefined {
+  const unresolved = [...new Set(atom["type-dependencies-external"] ?? [])].filter(dep => !knownIds.has(dep));
+  return unresolved.length > 0 ? unresolved : undefined;
+}
+
+/**
  * Role lookup for one atom's dependencies from its statement / body-or-proof
  * split. Both arrays must be present: an absent array means the extractor
  * recorded no split (no role), an empty one means no edges of that role.
@@ -341,6 +351,7 @@ function convertCodeAtoms(atoms: Record<string, ProbeAtom>): D3Graph {
       blueprint: blueprintInfo(atom),
       is_hidden: atom["is-hidden"] === true || undefined,
       is_generated: atom["is-lean-generated"] === true || atom["is-aeneas-generated"] === true || undefined,
+      statement_externals: unresolvedStatementExternals(atom, knownIds),
     };
   });
 

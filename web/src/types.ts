@@ -275,6 +275,9 @@ export interface D3Node {
   blueprint?: BlueprintInfo;  // probe-leanblueprint fields (node atoms and bound Lean atoms)
   is_hidden?: boolean;  // probe-lean `is-hidden`
   is_generated?: boolean;  // probe-lean `is-lean-generated` or `is-aeneas-generated`
+  // probe-lean `type-dependencies-external` IDs with no atom in the graph,
+  // so no link; search indexes them as statement names
+  statement_externals?: string[];
   // Derived statuses computed by DAG walk (used by File Map view)
   border_status?: BorderStatus;
   fill_status?: FillStatus;
