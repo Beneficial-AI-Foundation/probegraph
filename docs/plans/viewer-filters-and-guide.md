@@ -1,14 +1,15 @@
 # Viewer: statement/proof, private and blueprint filters, guide fixes
 
-Status (2026-10-13): Phases 0 to 2, 5a and 5c merged (#42, #43, #46, #48,
-#49, #51, #56, #57). Open: 5b (blueprint-layer filters and the code-layer
-"Blueprint-bound only" filter; `FilterOptions` has none of those fields),
-Phase 3 (blocked on probe-lean #114, still open) and Phase 4. Phase 4 is in
-#81: the ranked lists, SCC-based dependent counts (`src/reachability.ts`),
-the dependency levels strip and truncation by distance from the anchors
-(`src/truncate.ts`). Two Phase 4 items merged earlier: `removeIsolated`
-keeps the intent's anchor IDs (`src/query.ts`, `keepSet`; #46), and the
-Guide re-renders when kind or edge filters change (#48).
+Status (2026-10-15): Phases 0 to 2, 4, 5a and 5c merged (#42, #43, #46,
+#48, #49, #51, #56, #57, #81). Open: 5b (blueprint-layer filters and the
+code-layer "Blueprint-bound only" filter; `FilterOptions` has none of those
+fields) and Phase 3 (blocked on probe-lean #114, still open). Phase 4
+merged in #81: the ranked lists, SCC-based dependent counts
+(`src/reachability.ts`), the dependency levels strip and truncation by
+distance from the anchors (`src/truncate.ts`). Two Phase 4 items merged
+earlier: `removeIsolated` keeps the intent's anchor IDs (`src/query.ts`,
+`keepSet`; #46), and the Guide re-renders when kind or edge filters change
+(#48).
 Planned 2026-09-29 and revised after two Codex reviews that day; see "Review
 decisions" at the end.
 

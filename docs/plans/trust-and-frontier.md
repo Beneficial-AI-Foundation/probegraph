@@ -1,10 +1,10 @@
 # Viewer: trust base and proof frontier
 
-Status (2026-10-05): planned, nothing started. Split out of the
+Status (2026-10-15): planned, nothing started. Split out of the
 graph-insights brainstorm (`docs/archive/graph-insights.md`) after a Codex
-review the same day. Depends on `viewer-filters-and-guide.md` Phase 4 for
-the SCC-condensed DAG and the reverse-reachability bitsets; nothing but
-Phase 0 starts before that code exists.
+review on 2026-10-05. Depends on `viewer-filters-and-guide.md` Phase 4 for
+the SCC-condensed DAG and the reverse-reachability bitsets; that code
+merged in #81 (`src/reachability.ts`).
 
 Goal: for a selected node, which assumptions and which unfinished work it
 rests on; for the project, which unfinished declarations can be worked on
