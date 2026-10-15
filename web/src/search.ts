@@ -3,12 +3,13 @@
  * its module path and the names its statement mentions.
  *
  * Every field is split into lowercase tokens (`mul_by_pow_2` -> mul, by,
- * pow, 2; camel case, dots, `::` and `/` split too). A query is split the
- * same way, and every query token must match a token of some field. A
- * match on the name ranks above one on the module path, which ranks above
- * one on a statement name; within a field an exact token ranks above a
- * prefix, and a prefix above a substring. See docs/plans/graph-search.md,
- * Phase 1.
+ * pow, 2; camel case, dots, `::` and `/` split too). The name and path
+ * also keep their unsplit segments (`KeyHistory` -> keyhistory). A query
+ * is split the same way, and every query token must match a token of some
+ * field. A match on the name ranks above one on the module path, which
+ * ranks above one on a statement name; within a field an exact token
+ * ranks above a prefix, and a prefix above a substring. See
+ * docs/plans/graph-search.md, Phase 1.
  *
  * Pure module (no DOM), unit-tested in the node environment.
  */
@@ -29,6 +30,14 @@ export function tokenize(text: string): string[] {
   return (text.match(WORD) ?? []).map(t => t.toLowerCase());
 }
 
+/**
+ * Lowercase runs of letters and digits, unsplit (`KeyHistory` -> keyhistory),
+ * so a camel-case name typed in lowercase still matches.
+ */
+function segments(text: string): string[] {
+  return (text.match(/[\p{L}\p{N}]+/gu) ?? []).map(s => s.toLowerCase());
+}
+
 // ============================================================================
 // Index
 // ============================================================================
@@ -39,7 +48,10 @@ interface Entry {
   id: string;
   bareId: string;
   name: string;
+  /** Words of the name, then its unsplit segments */
   nameTokens: string[];
+  /** Number of words in the name, for the length tie-break */
+  nameLength: number;
   pathTokens: string[];
   statementTokens: string[];
 }
@@ -74,13 +86,16 @@ export function buildSearchIndex(graph: { nodes: D3Node[]; links: D3Link[] }): S
 
   const entries = graph.nodes.map(node => {
     const id = node.id.toLowerCase();
+    const nameWords = tokenize(node.display_name);
+    const path = `${node.id} ${node.relative_path ?? ''}`;
     return {
       node,
       id,
       bareId: id.replace(/^[a-z][a-z0-9+.-]*:/, ''),
       name: node.display_name.toLowerCase(),
-      nameTokens: tokenize(node.display_name),
-      pathTokens: unique([...tokenize(node.id), ...tokenize(node.relative_path ?? '')]),
+      nameTokens: unique([...nameWords, ...segments(node.display_name)]),
+      nameLength: nameWords.length,
+      pathTokens: unique([...tokenize(path), ...segments(path)]),
       statementTokens: unique([...statementNames.get(node.id) ?? []].flatMap(tokenize)),
     };
   });
@@ -130,8 +145,8 @@ type RankKey = [whole: number, cost: number, position: number, length: number, i
  * The order: the whole query equal to the ID (with or without its
  * scheme), then equal to the display name, then the sum of the token
  * costs, then the position of the first query token in the name, then the
- * number of name tokens (a shorter name fits the query more closely), then
- * the ID.
+ * number of words in the name (a shorter name fits the query more
+ * closely), then the ID.
  */
 export function search(index: SearchIndex, query: string, limit = 20): SearchHit[] {
   const whole = query.trim().toLowerCase();
@@ -143,12 +158,11 @@ export function search(index: SearchIndex, query: string, limit = 20): SearchHit
     let cost = 0;
     let position = Infinity;
     for (const [i, term] of terms.entries()) {
+      // The field costs do not overlap, so the first field that matches wins
       const name = matchIn(term, entry.nameTokens);
-      const best = Math.min(
-        NAME + name.cost,
-        PATH + matchIn(term, entry.pathTokens).cost,
-        STATEMENT + matchIn(term, entry.statementTokens).cost,
-      );
+      let best = NAME + name.cost;
+      if (best === NO_MATCH) best = PATH + matchIn(term, entry.pathTokens).cost;
+      if (best === NO_MATCH) best = STATEMENT + matchIn(term, entry.statementTokens).cost;
       if (best === NO_MATCH) {
         cost = NO_MATCH;
         break;
@@ -161,7 +175,7 @@ export function search(index: SearchIndex, query: string, limit = 20): SearchHit
     const exact = whole === entry.id || whole === entry.bareId ? 0 : whole === entry.name ? 1 : 2;
     ranked.push({
       hit: { node: entry.node, cost },
-      key: [exact, cost, position, entry.nameTokens.length, entry.node.id],
+      key: [exact, cost, position, entry.nameLength, entry.node.id],
     });
   }
   ranked.sort((a, b) => compareKeys(a.key, b.key));

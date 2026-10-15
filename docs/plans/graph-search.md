@@ -125,7 +125,11 @@ both callers through it.
   the index builds in about 65 ms in Node and holds about 400k tokens. A
   query takes 7 to 28 ms. The build is short enough to run in one piece,
   so PR 2 builds the index on the first focus of the search box rather
-  than in chunks at load.
+  than in chunks at load. The name and path also keep their unsplit
+  segments, so `keyhistory` finds `KeyHistory`. On a 13544-node graph this
+  took the build from about 40 ms to about 80 ms, and queries stayed
+  within about 10% because a query token no longer scans the path and
+  statement tokens once the name matches. Recall did not change.
 - **UI.** A search box in the toolbar; a result list with display name,
   kind, status and module; Enter reveals the top hit; each row has reveal,
   "as source" and "as sink". Reveal goes through Phase 0 and shows the

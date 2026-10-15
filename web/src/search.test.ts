@@ -94,6 +94,15 @@ describe('search', () => {
     expect(ids(nodes, 'X.new')).toEqual(['probe:X.new', 'Y.new_thing', 'Z.x_new', 'probe:X.new_spec']);
   });
 
+  it('finds a camel-case name or ID typed in lowercase', () => {
+    const nodes = [node('probe:spqr.chain.KeyHistory'), node('probe:spqr.math.natToBinaryPoly')];
+    expect(ids(nodes, 'keyhistory')).toEqual(['probe:spqr.chain.KeyHistory']);
+    expect(ids(nodes, 'nattobinarypoly')).toEqual(['probe:spqr.math.natToBinaryPoly']);
+    expect(ids(nodes, 'natToBinarypoly')).toEqual(['probe:spqr.math.natToBinaryPoly']);
+    expect(ids(nodes, 'spqr.chain.keyhistory')).toEqual(['probe:spqr.chain.KeyHistory']);
+    expect(ids(nodes, 'probe:spqr.chain.keyhistory')).toEqual(['probe:spqr.chain.KeyHistory']);
+  });
+
   it('breaks ties by name position, then name length, then ID', () => {
     const nodes = [node('A.spec_of_key'), node('A.key_spec_long'), node('B.key_spec'), node('A.key_spec')];
     expect(ids(nodes, 'key spec')).toEqual(['A.key_spec', 'B.key_spec', 'A.key_spec_long', 'A.spec_of_key']);
