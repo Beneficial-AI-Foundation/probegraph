@@ -4,12 +4,13 @@
  *
  * Every field is split into lowercase tokens (`mul_by_pow_2` -> mul, by,
  * pow, 2; camel case, dots, `::` and `/` split too). The name and path
- * also keep their unsplit segments (`KeyHistory` -> keyhistory). A query
- * is split the same way, and every query token must match a token of some
- * field. A match on the name ranks above one on the module path, which
- * ranks above one on a statement name; within a field an exact token
- * ranks above a prefix, and a prefix above a substring. See
- * docs/plans/graph-search.md, Phase 1.
+ * also keep their unsplit segments (`KeyHistory` -> keyhistory). Statement
+ * names are the names of the nodes a statement mentions, plus the IDs of
+ * the ones outside the graph. A query is split the same way, and every
+ * query token must match a token of some field. A match on the name ranks
+ * above one on the module path, which ranks above one on a statement name;
+ * within a field an exact token ranks above a prefix, and a prefix above a
+ * substring. See docs/plans/graph-search.md, Phase 1.
  *
  * Pure module (no DOM), unit-tested in the node environment.
  */
@@ -30,12 +31,14 @@ export function tokenize(text: string): string[] {
   return (text.match(WORD) ?? []).map(t => t.toLowerCase());
 }
 
-/**
- * Lowercase runs of letters and digits, unsplit (`KeyHistory` -> keyhistory),
- * so a camel-case name typed in lowercase still matches.
- */
+/** Runs of letters and digits, unsplit (`KeyHistory`, not Key and History). */
 function segments(text: string): string[] {
-  return (text.match(/[\p{L}\p{N}]+/gu) ?? []).map(s => s.toLowerCase());
+  return text.match(/[\p{L}\p{N}]+/gu) ?? [];
+}
+
+/** An ID without its URI-style scheme (`probe:`). */
+function withoutScheme(id: string): string {
+  return id.replace(/^[a-z][a-z0-9+.-]*:/i, '');
 }
 
 // ============================================================================
@@ -48,10 +51,15 @@ interface Entry {
   id: string;
   bareId: string;
   name: string;
-  /** Words of the name, then its unsplit segments */
+  /** Words of the name, in order */
   nameTokens: string[];
-  /** Number of words in the name, for the length tie-break */
-  nameLength: number;
+  /**
+   * Lowercase segments of the name made of several words (keyhistory for
+   * `KeyHistory`), so a camel-case name typed in lowercase still matches,
+   * and the position of each segment's first word in `nameTokens`
+   */
+  nameSegments: string[];
+  nameSegmentPositions: number[];
   pathTokens: string[];
   statementTokens: string[];
 }
@@ -83,19 +91,36 @@ export function buildSearchIndex(graph: { nodes: D3Node[]; links: D3Link[] }): S
     if (!set) statementNames.set(source, set = new Set());
     set.add(name);
   }
+  // Statement names outside the graph have no node, so only their ID
+  for (const node of graph.nodes) {
+    if (!node.statement_externals) continue;
+    let set = statementNames.get(node.id);
+    if (!set) statementNames.set(node.id, set = new Set());
+    for (const ext of node.statement_externals) set.add(withoutScheme(ext));
+  }
 
   const entries = graph.nodes.map(node => {
     const id = node.id.toLowerCase();
-    const nameWords = tokenize(node.display_name);
+    const nameSegments: string[] = [], nameSegmentPositions: number[] = [];
+    let position = 0;
+    for (const segment of segments(node.display_name)) {
+      const words = tokenize(segment).length;
+      if (words > 1) {
+        nameSegments.push(segment.toLowerCase());
+        nameSegmentPositions.push(position);
+      }
+      position += words;
+    }
     const path = `${node.id} ${node.relative_path ?? ''}`;
     return {
       node,
       id,
-      bareId: id.replace(/^[a-z][a-z0-9+.-]*:/, ''),
+      bareId: withoutScheme(id),
       name: node.display_name.toLowerCase(),
-      nameTokens: unique([...nameWords, ...segments(node.display_name)]),
-      nameLength: nameWords.length,
-      pathTokens: unique([...tokenize(path), ...segments(path)]),
+      nameTokens: tokenize(node.display_name),
+      nameSegments,
+      nameSegmentPositions,
+      pathTokens: unique([...tokenize(path), ...segments(path).map(t => t.toLowerCase())]),
       statementTokens: unique([...statementNames.get(node.id) ?? []].flatMap(tokenize)),
     };
   });
@@ -130,6 +155,16 @@ function matchIn(term: string, tokens: string[]): { cost: number; position: numb
   return { cost, position };
 }
 
+/** Best match of `term` in the name: its words, or else a whole segment. */
+function matchName(term: string, entry: Entry): { cost: number; position: number } {
+  const word = matchIn(term, entry.nameTokens);
+  if (word.cost === EXACT) return word;
+  const segment = matchIn(term, entry.nameSegments);
+  return segment.cost < word.cost
+    ? { cost: segment.cost, position: entry.nameSegmentPositions[segment.position] }
+    : word;
+}
+
 export interface SearchHit {
   node: D3Node;
   /** Lower is better; for tests and debugging */
@@ -159,7 +194,7 @@ export function search(index: SearchIndex, query: string, limit = 20): SearchHit
     let position = Infinity;
     for (const [i, term] of terms.entries()) {
       // The field costs do not overlap, so the first field that matches wins
-      const name = matchIn(term, entry.nameTokens);
+      const name = matchName(term, entry);
       let best = NAME + name.cost;
       if (best === NO_MATCH) best = PATH + matchIn(term, entry.pathTokens).cost;
       if (best === NO_MATCH) best = STATEMENT + matchIn(term, entry.statementTokens).cost;
@@ -175,7 +210,7 @@ export function search(index: SearchIndex, query: string, limit = 20): SearchHit
     const exact = whole === entry.id || whole === entry.bareId ? 0 : whole === entry.name ? 1 : 2;
     ranked.push({
       hit: { node: entry.node, cost },
-      key: [exact, cost, position, entry.nameLength, entry.node.id],
+      key: [exact, cost, position, entry.nameTokens.length, entry.node.id],
     });
   }
   ranked.sort((a, b) => compareKeys(a.key, b.key));

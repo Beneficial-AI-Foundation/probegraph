@@ -103,6 +103,23 @@ describe('search', () => {
     expect(ids(nodes, 'probe:spqr.chain.keyhistory')).toEqual(['probe:spqr.chain.KeyHistory']);
   });
 
+  it('indexes statement names outside the graph by their ID', () => {
+    const nodes = [node('a'), { ...node('b'), statement_externals: ['probe:Lean.ParserDescr'] }];
+    expect(ids(nodes, 'parser descr')).toEqual(['b']);
+    const lean = parseAndNormalizeGraph(
+      JSON.parse(readFileSync(resolve(__dirname, 'test-data', 'probe-lean-extract-cut.json'), 'utf8')),
+    );
+    expect(search(buildSearchIndex(lean), 'stateTrun ParserDescr').map(h => h.node.id))
+      .toEqual(['probe:Parser.Attr.stateTrun', 'probe:Parser.Attr.stateTrun_proc']);
+  });
+
+  it('ranks by the position in the name, also for a segment match or a repeated word', () => {
+    expect(ids([node('A.old_keyhistory_gc'), node('A.KeyHistory_gc')], 'keyhistory gc'))
+      .toEqual(['A.KeyHistory_gc', 'A.old_keyhistory_gc']);
+    expect(ids([node('A.foo_foo_foo_key'), node('A.bar_baz_key')], 'key'))
+      .toEqual(['A.bar_baz_key', 'A.foo_foo_foo_key']);
+  });
+
   it('breaks ties by name position, then name length, then ID', () => {
     const nodes = [node('A.spec_of_key'), node('A.key_spec_long'), node('B.key_spec'), node('A.key_spec')];
     expect(ids(nodes, 'key spec')).toEqual(['A.key_spec', 'B.key_spec', 'A.key_spec_long', 'A.spec_of_key']);
