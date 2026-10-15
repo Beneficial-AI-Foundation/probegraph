@@ -246,6 +246,51 @@ test.describe('revealNode from search', () => {
     expect(await transform(page)).toBe(stoppedAt);
   });
 
+  test('a query that draws other nodes during the centring move still fits them', async ({ page }) => {
+    await open(page, H_CALLEES);
+    await expect.poll(async () => (await shownIds(page)).length).toBe(200);
+    const leaf = (await shownIds(page)).find(id => id !== 'probe:h')!;
+    await page.waitForTimeout(7000);
+    // A query on a draws other nodes, so it starts a fit. It comes 100 ms
+    // into the 400 ms move.
+    const stoppedAt = await page.evaluate(async nodeId => {
+      (window as unknown as { __revealNode: (id: string, o: unknown) => unknown })
+        .__revealNode(nodeId, { policy: { kind: 'replace' }, center: true });
+      await new Promise(r => setTimeout(r, 100));
+      const input = document.getElementById('source-input') as HTMLInputElement;
+      input.value = 'a';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      await new Promise(r => requestAnimationFrame(r));
+      return document.querySelector('#graph-container svg > g')!.getAttribute('transform');
+    }, leaf);
+    await expect.poll(() => shownIds(page)).toEqual(['probe:a', 'probe:b']);
+    await page.waitForTimeout(800);
+    expect(await transform(page)).not.toBe(stoppedAt);
+  });
+
+  test('a reveal from the File Map and its new query are one history entry', async ({ page }) => {
+    await open(page, A_CALLEES);
+    await page.locator('#view-file-map').click();
+    await expect(page.locator('#view-file-map')).toHaveClass(/active/);
+    const fileMapUrl = page.url();
+
+    // a does not reach h, so the reveal queries h
+    expect(await reveal(page, 'probe:h', { policy: { kind: 'replace' } })).toBe('shown');
+    await expect(page.locator('#view-callgraph')).toHaveClass(/active/);
+    await page.goBack();
+    await expect(page.locator('#view-file-map')).toHaveClass(/active/);
+    expect(page.url()).toBe(fileMapUrl);
+  });
+
+  test('a reveal that unhides the hit and queries it keeps the hidden node for Back', async ({ page }) => {
+    await open(page, `${A_CALLEES}&hide=${encodeURIComponent('probe:h')}`);
+    const hiddenUrl = page.url();
+    expect(await reveal(page, 'probe:h', { policy: { kind: 'replace' } })).toBe('shown');
+    expect(new URL(page.url()).searchParams.getAll('hide')).toEqual([]);
+    await page.goBack();
+    expect(page.url()).toBe(hiddenUrl);
+  });
+
   test('a reveal while typing on a large graph applies the typed query first', async ({ page }) => {
     // Over 2000 nodes, so source/sink typing is applied after 300 ms
     const leaves = Array.from({ length: 2100 }, (_, i) => `probe:l${i}`);
