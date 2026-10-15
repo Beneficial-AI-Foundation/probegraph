@@ -5,7 +5,7 @@
  * envelopes, atom dicts, the pipeline's D3 index); it goes through the
  * viewer's own normalization and validation. Which file, and which project
  * root its paths are relative to, follow the rules in
- * docs/plans/editor-graph-navigation.md.
+ * docs/archive/editor-graph-navigation.md.
  */
 
 import * as vscode from 'vscode';

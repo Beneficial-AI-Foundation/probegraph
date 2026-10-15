@@ -1,11 +1,11 @@
 # Viewer: search and reveal
 
-Status (2026-10-13): Phase 0 started, in parallel with
-`viewer-filters-and-guide.md` Phase 4 (branch `web/reveal-path`). Phase 1
-needs Phase 0. Phase 2 needs Phase 1. Its `rank by dependents` verb reuses
-the guide Phase 4 count. Its frontier and "assumptions under X" presets
-need `trust-and-frontier.md` Phases 2 and 1. The `truncated` reason in
-Phase 0 relies on guide Phase 4 truncation to keep anchors.
+Status (2026-10-15): Phase 0 merged in #80. `revealNode` in
+`src/main.ts` serves the editor; the search half has no UI caller yet and
+is reached in e2e tests through the dev-only `window.__revealNode` hook.
+Phase 1 is next. Phase 2 needs Phase 1. Its `rank by dependents` verb
+reuses the guide Phase 4 count (merged in #81). Its frontier and
+"assumptions under X" presets need `trust-and-frontier.md` Phases 2 and 1.
 
 Goal: find a declaration by words rather than regex, and make the hit
 usable when the viewer is not showing it. Then ask structural questions

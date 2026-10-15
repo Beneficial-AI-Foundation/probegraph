@@ -11,7 +11,8 @@ tests listed in that phase. The performance numbers are at the end of
 Phase 3. The release path from Decision 2 and the MIT licence followed:
 `vscode-release.yml` creates the `vscode-v<version>` release, its tag and
 the VSIX when a merge to `main` changes the version in `vscode/package.json`;
-the first release is `vscode-v0.1.0`. Revised on
+the first release is `vscode-v0.1.0`. Archived on 2026-10-15; Phase 4
+is tracked in #83. Revised on
 2026-10-01 after a Codex review; see "Review decisions" at the end, and
 "Decisions" before that.
 
