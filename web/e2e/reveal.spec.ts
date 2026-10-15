@@ -170,6 +170,51 @@ test.describe('search box', () => {
     await expect(page.locator('#search-input')).toHaveValue('');
   });
 
+  test('Escape that closes the list does not reach the views', async ({ page }) => {
+    await open(page, A_CALLEES);
+    // The Hierarchy and Crate Map collapse on an Escape that reaches the document
+    await page.evaluate(() => {
+      (window as unknown as { escapes: number }).escapes = 0;
+      document.addEventListener('keydown', e => {
+        if (e.key === 'Escape') (window as unknown as { escapes: number }).escapes++;
+      });
+    });
+    const escapes = () => page.evaluate(() => (window as unknown as { escapes: number }).escapes);
+    await page.locator('#search-input').fill('h');
+    await page.locator('#search-input').press('Escape');
+    await expect(page.locator('#search-results')).toBeHidden();
+    await page.locator('#search-input').fill('h');
+    await page.locator('#search-input').press('ArrowDown');
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#search-results')).toBeHidden();
+    expect(await escapes()).toBe(0);
+  });
+
+  test('Enter and ArrowDown while an input method composes do nothing', async ({ page }) => {
+    await open(page, A_CALLEES);
+    await page.locator('#search-input').fill('h');
+    await expect(resultButton(page, 'probe:h')).toBeVisible();
+    await page.locator('#search-input').evaluate((input: HTMLInputElement) => {
+      for (const key of ['ArrowDown', 'Enter']) {
+        input.dispatchEvent(new KeyboardEvent('keydown', { key, isComposing: true, bubbles: true, cancelable: true }));
+      }
+    });
+    await expect(page.locator('#search-input')).toBeFocused();
+    await expect(page.locator('#search-results')).toBeVisible();
+    expect(new URL(page.url()).searchParams.get('id')).toBe('probe:a');
+  });
+
+  test('the list stays inside a narrow window', async ({ page }) => {
+    await page.setViewportSize({ width: 1024, height: 768 });
+    await open(page, A_CALLEES);
+    await page.locator('#search-input').fill('h');
+    for (const el of [page.locator('#search-results'), resultButton(page, 'probe:h', 'sink')]) {
+      const box = (await el.boundingBox())!;
+      expect(box.x).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width).toBeLessThanOrEqual(1024);
+    }
+  });
+
   test('a new graph is searched, not the old one', async ({ page }) => {
     await open(page, '');
     await page.locator('#search-input').fill('probe:l5');

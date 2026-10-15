@@ -99,7 +99,6 @@ export class SearchBox {
     for (const node of this.hits) this.list.appendChild(this.row(node, twoLayers));
     if (more) this.list.appendChild(note(`First ${RESULT_LIMIT} matches. Add words to narrow the search.`));
     this.list.hidden = false;
-    this.input.setAttribute('aria-expanded', 'true');
   }
 
   private row(node: D3Node, twoLayers: boolean): HTMLElement {
@@ -131,7 +130,6 @@ export class SearchBox {
     this.list.hidden = true;
     this.list.replaceChildren();
     this.hits = [];
-    this.input.setAttribute('aria-expanded', 'false');
   }
 
   private run(id: string, action: SearchAction): void {
@@ -141,6 +139,8 @@ export class SearchBox {
   }
 
   private onInputKey(e: KeyboardEvent): void {
+    // Enter and the arrows belong to the input method while it composes
+    if (e.isComposing) return;
     if (e.key === 'Enter' && e.altKey) {
       e.preventDefault();
       document.querySelector<HTMLButtonElement>('#toast-container .toast-action')?.focus();
@@ -157,7 +157,9 @@ export class SearchBox {
         first.focus();
       }
     } else if (e.key === 'Escape' && !this.list.hidden) {
+      // Stop it here: the Hierarchy and Crate Map collapse on Escape
       e.preventDefault();
+      e.stopPropagation();
       this.close();
     }
   }
@@ -166,6 +168,7 @@ export class SearchBox {
     const target = e.target as HTMLElement;
     if (e.key === 'Escape') {
       e.preventDefault();
+      e.stopPropagation();
       // Focus first: removing the focused button would drop the focus
       this.input.focus();
       this.close();
