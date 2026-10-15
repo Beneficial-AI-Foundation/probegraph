@@ -155,13 +155,14 @@ function matchIn(term: string, tokens: string[]): { cost: number; position: numb
   return { cost, position };
 }
 
-/** Best match of `term` in the name: its words, or else a whole segment. */
+/** Best match of `term` in the name, a word or a whole segment: lowest cost, then earliest. */
 function matchName(term: string, entry: Entry): { cost: number; position: number } {
   const word = matchIn(term, entry.nameTokens);
-  if (word.cost === EXACT) return word;
   const segment = matchIn(term, entry.nameSegments);
-  return segment.cost < word.cost
-    ? { cost: segment.cost, position: entry.nameSegmentPositions[segment.position] }
+  if (segment.cost === NO_MATCH) return word;
+  const position = entry.nameSegmentPositions[segment.position];
+  return segment.cost < word.cost || (segment.cost === word.cost && position < word.position)
+    ? { cost: segment.cost, position }
     : word;
 }
 

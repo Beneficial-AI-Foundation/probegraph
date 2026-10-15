@@ -118,6 +118,11 @@ describe('search', () => {
       .toEqual(['A.KeyHistory_gc', 'A.old_keyhistory_gc']);
     expect(ids([node('A.foo_foo_foo_key'), node('A.bar_baz_key')], 'key'))
       .toEqual(['A.bar_baz_key', 'A.foo_foo_foo_key']);
+    // A word and a segment match at the same cost: the earlier one counts
+    expect(ids([node('A.old_keyhole'), node('A.KeyHistory_keyhole')], 'keyh'))
+      .toEqual(['A.KeyHistory_keyhole', 'A.old_keyhole']);
+    expect(ids([node('A.old_keyhistory'), node('A.KeyHistory_keyhistory')], 'keyhistory'))
+      .toEqual(['A.KeyHistory_keyhistory', 'A.old_keyhistory']);
   });
 
   it('breaks ties by name position, then name length, then ID', () => {
