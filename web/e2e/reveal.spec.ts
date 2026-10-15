@@ -230,8 +230,20 @@ test.describe('revealNode from search', () => {
     // A deeper query on h draws the same nodes, so it starts no fit. It
     // comes 100 ms into the 400 ms move.
     const stoppedAt = await page.evaluate(async nodeId => {
+      // On a slow runner the layout can still run, and the reveal then
+      // waits up to 1.5 s before its move starts
+      const g = document.querySelector('#graph-container svg > g')!;
+      const at = g.getAttribute('transform');
+      const moveStarted = async () => {
+        const deadline = performance.now() + 3000;
+        while (g.getAttribute('transform') === at) {
+          if (performance.now() > deadline) throw new Error('the centring move did not start');
+          await new Promise(r => requestAnimationFrame(r));
+        }
+      };
       (window as unknown as { __revealNode: (id: string, o: unknown) => unknown })
         .__revealNode(nodeId, { policy: { kind: 'replace' }, center: true });
+      await moveStarted();
       await new Promise(r => setTimeout(r, 100));
       const slider = document.getElementById('depth-limit') as HTMLInputElement;
       slider.value = '2';
@@ -254,8 +266,20 @@ test.describe('revealNode from search', () => {
     // A query on a draws other nodes, so it starts a fit. It comes 100 ms
     // into the 400 ms move.
     const stoppedAt = await page.evaluate(async nodeId => {
+      // On a slow runner the layout can still run, and the reveal then
+      // waits up to 1.5 s before its move starts
+      const g = document.querySelector('#graph-container svg > g')!;
+      const at = g.getAttribute('transform');
+      const moveStarted = async () => {
+        const deadline = performance.now() + 3000;
+        while (g.getAttribute('transform') === at) {
+          if (performance.now() > deadline) throw new Error('the centring move did not start');
+          await new Promise(r => requestAnimationFrame(r));
+        }
+      };
       (window as unknown as { __revealNode: (id: string, o: unknown) => unknown })
         .__revealNode(nodeId, { policy: { kind: 'replace' }, center: true });
+      await moveStarted();
       await new Promise(r => setTimeout(r, 100));
       const input = document.getElementById('source-input') as HTMLInputElement;
       input.value = 'a';
