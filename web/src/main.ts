@@ -184,8 +184,17 @@ function debouncedApplyFilters(): void {
     clearTimeout(searchDebounceTimer);
   }
   searchDebounceTimer = setTimeout(() => {
+    searchDebounceTimer = null;
     applyFiltersAndUpdate();
   }, SEARCH_DEBOUNCE_MS);
+}
+
+/** Run a debounced apply now, so the render matches the filters. */
+function flushDebouncedApply(): void {
+  if (!searchDebounceTimer) return;
+  clearTimeout(searchDebounceTimer);
+  searchDebounceTimer = null;
+  applyFiltersAndUpdate();
 }
 
 /**
@@ -3801,6 +3810,9 @@ function revealContext(): RevealContext {
 function revealNode(id: string, opts: RevealOptions): RevealResult {
   const token = reveals.start();
   dropRevealEffects();
+  // The classification reads the render, which a debounced apply leaves
+  // behind the filters
+  flushDebouncedApply();
   const { policy } = opts;
   // The editor names code declarations only
   const layer: Layer | null = codeLayer?.nodes.some(n => n.id === id) ? 'code'

@@ -66,7 +66,9 @@ both callers through it.
   while A's layout settles, A's callback centres A over B's selection. A
   newer reveal also stops the reveal's own camera move in progress. A
   toast action records the URL state it was computed for. A click when
-  the URL state differs only says that the view changed.
+  the URL state differs only says that the view changed. A reveal first
+  runs a debounced filter apply that is still waiting (source/sink typing
+  on a large graph), so it never classifies against an old render.
 - **Centre on node.** `fitToView` in `src/graph.ts` is private and fits the
   whole result (or centres on the focus node when the result is too big).
   Add a public `centerOn(id)` that pans and zooms to one node at a readable

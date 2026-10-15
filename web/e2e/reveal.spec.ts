@@ -10,14 +10,14 @@ import { test, expect, type Page, type Route } from '@playwright/test';
 // h calls 300 leaves, which is over the 200-node render cap. a calls b.
 // s is a spec function (hidden by default) that calls t.
 const LEAVES = Array.from({ length: 300 }, (_, i) => `probe:l${i}`);
-const LINKS: [string, string][] = [
-  ...LEAVES.map(l => ['probe:h', l] as [string, string]),
-  ['probe:a', 'probe:b'],
-  ['probe:s', 'probe:t'],
-];
 
-function graph() {
-  const ids = ['probe:h', ...LEAVES, 'probe:a', 'probe:b', 'probe:s', 'probe:t'];
+function graph(leaves = LEAVES) {
+  const LINKS: [string, string][] = [
+    ...leaves.map(l => ['probe:h', l] as [string, string]),
+    ['probe:a', 'probe:b'],
+    ['probe:s', 'probe:t'],
+  ];
+  const ids = ['probe:h', ...leaves, 'probe:a', 'probe:b', 'probe:s', 'probe:t'];
   const nodes = ids.map(id => {
     const name = id.slice('probe:'.length);
     return {
@@ -38,9 +38,9 @@ function graph() {
 
 type Policy = { kind: 'replace' } | { kind: 'anchor'; role: 'source' | 'sink' };
 
-async function open(page: Page, query: string): Promise<void> {
+async function open(page: Page, query: string, body: unknown = graph()): Promise<void> {
   await page.route('**/reveal.json', (route: Route) =>
-    route.fulfill({ contentType: 'application/json', body: JSON.stringify(graph()) }));
+    route.fulfill({ contentType: 'application/json', body: JSON.stringify(body) }));
   await page.goto(`/probegraph/?json=reveal.json${query}`);
   await expect(page.locator('#stats')).toContainText('Total Nodes', { timeout: 15000 });
 }
@@ -219,4 +219,23 @@ test.describe('revealNode from search', () => {
     await page.waitForTimeout(2500);
     expect(await transform(page)).toBe(afterReset);
   });
+  test('a reveal while typing on a large graph applies the typed query first', async ({ page }) => {
+    // Over 2000 nodes, so source/sink typing is applied after 300 ms
+    const leaves = Array.from({ length: 2100 }, (_, i) => `probe:l${i}`);
+    await open(page, A_CALLEES, graph(leaves));
+    await expect.poll(() => shownIds(page)).toEqual(['probe:a', 'probe:b']);
+    // h does not reach b, so the reveal must query b instead
+    const reason = await page.evaluate(() => {
+      const input = document.getElementById('source-input') as HTMLInputElement;
+      input.value = 'h';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      return (window as unknown as { __revealNode: (id: string, o: unknown) => { reason: string } })
+        .__revealNode('probe:b', { policy: { kind: 'replace' } }).reason;
+    });
+    expect(reason).toBe('shown');
+    await page.waitForTimeout(800);
+    expect(await shownIds(page)).toContain('probe:b');
+  });
+
 });
+
