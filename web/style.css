@@ -138,6 +138,120 @@ body {
   color: var(--pg-text);
 }
 
+/* Search box (src/search-box.ts) */
+.search-box {
+  position: relative;
+  flex: 0 1 22rem;
+  margin: 0 1rem;
+}
+
+.search-results {
+  position: absolute;
+  top: calc(100% + 0.25rem);
+  left: 0;
+  width: max(100%, 38rem);
+  max-width: calc(100vw - 2rem);
+  max-height: 70vh;
+  overflow-y: auto;
+  z-index: 1000;
+  list-style: none;
+  margin: 0;
+  padding: 0.25rem 0;
+  background: var(--pg-surface);
+  border: 1px solid var(--pg-border);
+  border-radius: var(--pg-radius-md);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.search-result {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0 0.5rem;
+}
+
+.search-result:hover,
+.search-result:focus-within {
+  background: var(--pg-brand-soft);
+}
+
+.search-result-main {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 0.75rem;
+  align-items: baseline;
+  padding: 0.35rem 0.25rem;
+  background: transparent;
+  border: none;
+  color: var(--pg-text);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.search-result-name {
+  font-weight: 600;
+  font-size: 0.85rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-result-meta {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.3rem;
+  font-size: 0.75rem;
+  color: var(--pg-text-muted);
+  white-space: nowrap;
+}
+
+.search-result-meta .legend-dot {
+  margin-left: 0.4rem;
+}
+
+.search-result-layer {
+  padding: 0 0.3rem;
+  border: 1px solid var(--pg-border);
+  border-radius: var(--pg-radius-sm);
+}
+
+.search-result-path {
+  grid-column: 1 / -1;
+  font-size: 0.72rem;
+  color: var(--pg-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-result-anchor {
+  flex-shrink: 0;
+  background: transparent;
+  color: var(--pg-text-muted);
+  border: 1px solid var(--pg-border);
+  border-radius: var(--pg-radius-lg);
+  padding: 0.1rem 0.5rem;
+  font-size: 0.72rem;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.search-result-anchor:hover,
+.search-result-anchor:focus {
+  color: var(--pg-text);
+  border-color: var(--pg-accent);
+}
+
+.search-note {
+  padding: 0.35rem 0.75rem;
+  font-size: 0.75rem;
+  color: var(--pg-text-muted);
+}
+
 .file-input-container {
   position: relative;
 }

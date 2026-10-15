@@ -115,6 +115,117 @@ then has no visible edge to the target, but it is still one of the nearest.
 For example, "callers of t" with verified nodes hidden can show callers of a
 hidden verified function, with no edge from them to t.
 
+## Search box
+
+The search box in the header finds a declaration by name and shows it in
+the Call Graph. Press `/` anywhere outside a text field to move the focus
+to it. Unlike Source and Sink, the search box does not change the query
+while you type. It can change the query only when you pick a result.
+
+What it searches. The search box looks at every declaration of the graph.
+If the graph has a blueprint layer, it looks at both layers. The sidebar filters
+do not limit the results, so the search box also finds hidden nodes. It
+searches three fields of each declaration:
+
+1. The display name.
+2. The module path: the node ID and the file path.
+3. The statement names: the names of the declarations that the statement
+   uses. In Lean these are the type dependencies. In Verus these are the
+   `requires` and `ensures` dependencies.
+
+How it matches. The search box splits names into words at `_`, `.`, `::`,
+`/`, digits and camel-case boundaries. For example, `mul_by_pow_2` gives
+mul, by, pow and 2, and `lagrangeBasisPoly` gives lagrange, basis and poly.
+Every word of the query must match a word of some field. A word matches
+exactly, as a prefix, or as a substring. A whole camel-case name also
+matches in lowercase, so `keyhistory` finds `KeyHistory`.
+
+How it ranks. A query that is a whole node ID comes first, then a query
+that is a whole display name. Next, a match in the name ranks above a
+match in the module path. A match in the module path ranks above a match
+in a statement name. In each field, an exact word ranks above a prefix, and a
+prefix ranks above a substring. Ties go to the earlier word in the name,
+then to the shorter name, then to the ID. The plan
+[graph-search.md](../plans/graph-search.md) has the test queries for this
+order.
+
+The result list. Each row shows the display name, the declaration kind,
+the verification status and the file path. The status has a dot in the
+colour that the Call Graph uses. If the file path is empty, the row shows the
+node ID. On a graph with two layers, a `blueprint` tag marks the blueprint
+entries. The list shows the first 20 results. If there are more, the last
+line says so. Add words to the query to narrow it.
+
+Each row has three buttons:
+
+- The row itself (or Enter in the search box, for the top row) shows the
+  node. If the current query already reaches the node, the query stays.
+  If not, the viewer queries the node, its callers and its callees at the
+  current depth.
+- **as source** adds the node to the current source set, which shows what
+  the sources call. If the current query is not a set of sources, the
+  node starts a new one.
+- **as sink** adds the node to the current sink set, which shows what
+  calls the sinks. If the current query is not a set of sinks, the node
+  starts a new one. A source set and a sink set together, with the paths
+  between them, are not available yet.
+
+After any of the three, the viewer opens the node in Node Details. If
+necessary, it switches to the layer of the node and to the Call Graph
+view. If you hid the node with Shift+click, it shows the node again. When the
+layout settles, the camera centres on the node. The other filters stay as
+they are, so the node can still be hidden. In that case the action toast
+below says why. One Back undoes the whole change: the layer, the view, the
+hidden node and the query.
+
+Keys in the search box:
+
+| Key | Action |
+|---|---|
+| Enter | Show the top result |
+| ArrowDown | Move to the result list |
+| Escape | Close the result list |
+| Alt+Enter | Move to the first button of the action toast |
+
+In the result list, ArrowUp and ArrowDown move to the same button in the
+previous or next row. Tab moves between the buttons of a row. ArrowUp
+from the first row and Escape go back to the search box.
+
+Limits. The search box finds declarations only by their words. It does not
+read filter words such as `kind:lemma` yet, and it does not search
+docstrings, because no extract has them. On a large graph that is not
+loaded yet (the "Large Graph Detected" prompt), the search box says to
+load the graph first. The viewer builds the search index the first time
+the search box gets the focus, and again after each new graph. On a graph
+with 22 000 nodes this takes about 65 ms.
+
+### Action toast
+
+If the node that you picked is not drawn, a toast at the top of the page
+says why. If buttons can draw the node, the toast offers them. Nothing
+changes until you click one. The toast stays for 8 seconds, and
+longer while the pointer is on it or one of its buttons has the keyboard
+focus. Alt+Enter in the search box moves the focus to its first button.
+
+| Message | Cause | Buttons |
+|---|---|---|
+| *name* is hidden by the *X* filter | A sidebar node filter hides the node, for example Spec is off | **Show it** turns those filters off |
+| *name* is not drawn even with every node filter off | No node filter explains it | None |
+| *name* is beyond the 200-node render limit | The query reaches the node, but the render limit cut it | **Keep it in the query**, **Query this node instead**, **Draw all N nodes** |
+
+For the render limit, **Keep it in the query** adds the node to the
+current set of query nodes, which truncation always keeps. If the query
+has no such set, the viewer does not offer it. **Query this node instead**
+replaces the query with the node and its neighbours. **Draw all N nodes**
+draws the whole result for this query only. The viewer offers it only up
+to 500 nodes, because a larger layout blocks the browser for many seconds.
+**Show it** adds one Back entry that restores the filters and the query
+together.
+
+A toast button acts on the view in which the toast appeared. A new query,
+a filter or Back changes the view. After such a change, a click only shows
+"The view changed, so this action no longer applies".
+
 ## Sidebar filters
 
 **Source → Sink** is the main query. Source alone shows what a function calls,
