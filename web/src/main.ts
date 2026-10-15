@@ -3840,10 +3840,18 @@ function revealNode(id: string, opts: RevealOptions): RevealResult {
       },
     });
   } else {
-    if (viewChanged || unhidden) applyFiltersAndUpdate();
-    // A new intent replaces the switch's entry, so one Back restores the
-    // layer and its query
-    applySearchPolicy(id, node.display_name, policy, switched ? 'replace' : 'push');
+    // The view change and the unhiding go into the new intent's entry, so
+    // one Back restores the view, the hidden node and the query. A new
+    // intent replaces the switch's entry, so one Back restores the layer too.
+    let wrote = false;
+    urlWritesSuppressed++;
+    try {
+      if (viewChanged || unhidden) applyFiltersAndUpdate();
+      wrote = applySearchPolicy(id, node.display_name, policy, switched ? 'replace' : 'push');
+    } finally {
+      urlWritesSuppressed--;
+    }
+    if (!wrote) updateURLWithFilters();
   }
   return presentReveal(node, opts, token);
 }
