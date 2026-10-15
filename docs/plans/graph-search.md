@@ -76,7 +76,9 @@ both callers through it.
   force layout settles, or after 1.5 s at most, and once more when the
   layout stops (8 s at most), since the node can drift after the first
   move. Any other camera move in the meantime (the user, Reset View, a
-  query's fit) or a change of the URL state cancels the centring.
+  query's fit) or a change of the URL state cancels the centring. The
+  camera move itself checks the URL state on every frame, because a query
+  that draws the same nodes starts no fit that would stop it.
 - **History.** A search reveal on the other layer pushes one entry for the
   switch. A new intent replaces that entry, so one Back restores the
   layer and its query.

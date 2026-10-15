@@ -220,6 +220,32 @@ test.describe('revealNode from search', () => {
     await page.waitForTimeout(2500);
     expect(await transform(page)).toBe(afterReset);
   });
+  test('a query change during the centring move stops it', async ({ page }) => {
+    await open(page, H_CALLEES);
+    await expect.poll(async () => (await shownIds(page)).length).toBe(200);
+    const leaf = (await shownIds(page)).find(id => id !== 'probe:h')!;
+    // Once the layout stops, the reveal starts its camera move at once
+    await page.waitForTimeout(7000);
+    const before = await transform(page);
+    // A deeper query on h draws the same nodes, so it starts no fit. It
+    // comes 100 ms into the 400 ms move.
+    const stoppedAt = await page.evaluate(async nodeId => {
+      (window as unknown as { __revealNode: (id: string, o: unknown) => unknown })
+        .__revealNode(nodeId, { policy: { kind: 'replace' }, center: true });
+      await new Promise(r => setTimeout(r, 100));
+      const slider = document.getElementById('depth-limit') as HTMLInputElement;
+      slider.value = '2';
+      slider.dispatchEvent(new Event('input', { bubbles: true }));
+      await new Promise(r => requestAnimationFrame(r));
+      return document.querySelector('#graph-container svg > g')!.getAttribute('transform');
+    }, leaf);
+    expect(stoppedAt).not.toBe(before);
+    await page.waitForTimeout(800);
+    expect(new URL(page.url()).searchParams.get('depth')).toBe('2');
+    expect(await offCentre(page, leaf)).toBeGreaterThan(20);
+    expect(await transform(page)).toBe(stoppedAt);
+  });
+
   test('a reveal while typing on a large graph applies the typed query first', async ({ page }) => {
     // Over 2000 nodes, so source/sink typing is applied after 300 ms
     const leaves = Array.from({ length: 2100 }, (_, i) => `probe:l${i}`);

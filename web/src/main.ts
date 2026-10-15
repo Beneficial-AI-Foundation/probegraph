@@ -3879,16 +3879,18 @@ function presentReveal(node: D3Node, opts: RevealOptions, token: number): Reveal
     // Read after the reveal's own render and fit. Any later camera move
     // (the user, Reset View, a query's fit) or state change wins over the
     // reveal; a query that draws the same nodes moves no camera, hence the
-    // URL state as well.
+    // URL state as well. The camera move checks the URL state on every
+    // frame, so a change during the move stops it.
     let moves = viz.cameraMoves;
     const shownAt = generateShareableURL();
+    const sameView = () => generateShareableURL() === shownAt;
     finishReveal(reveals, token, {
       settle: () => viz.whenSettled(REVEAL_SETTLE_MS),
-      untouched: () => viz.cameraMoves === moves && generateShareableURL() === shownAt,
+      untouched: () => viz.cameraMoves === moves && sameView(),
       center: () => {
         const camera = { viz };
         revealCamera = camera;
-        const move = viz.centerOn(id);
+        const move = viz.centerOn(id, sameView);
         moves = viz.cameraMoves;
         return move.finally(() => {
           if (revealCamera === camera) revealCamera = null;

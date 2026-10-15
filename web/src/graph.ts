@@ -625,9 +625,10 @@ export class CallGraphVisualization {
   /**
    * Pan and zoom to one drawn node with the same 400 ms transition as
    * fitToView. Resolves true when the move ends, false when the node is not
-   * drawn or another camera move stops or cancels this one.
+   * drawn, another camera move stops or cancels this one, or `wanted`
+   * (checked on every frame) returns false.
    */
-  public centerOn(id: string): Promise<boolean> {
+  public centerOn(id: string, wanted: () => boolean = () => true): Promise<boolean> {
     const node = this.currentNodes.find(n => n.id === id);
     const t = node ? computeCenterTransform(node, this.width, this.height) : null;
     if (!t) return Promise.resolve(false);
@@ -637,6 +638,9 @@ export class CallGraphVisualization {
         .transition()
         .duration(400)
         .call(this.zoom.transform as any, d3.zoomIdentity.translate(t.x, t.y).scale(t.k))
+        .tween('wanted', () => () => {
+          if (!wanted()) this.svg.interrupt();
+        })
         .on('end', () => resolve(true))
         .on('interrupt', () => resolve(false))
         .on('cancel', () => resolve(false));
