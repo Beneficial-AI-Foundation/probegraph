@@ -3976,8 +3976,9 @@ let searchBox: SearchBox | null = null;
 function initSearchBox(): void {
   const input = document.getElementById('search-input') as HTMLInputElement | null;
   const list = document.getElementById('search-results');
-  if (!input || !list) return;
-  searchBox = new SearchBox(input, list, {
+  const status = document.getElementById('search-status');
+  if (!input || !list || !status) return;
+  searchBox = new SearchBox(input, list, status, {
     layers: () => codeLayer && { code: codeLayer, blueprint: blueprintLayer },
     reveal: (id, action) => revealNode(id, {
       policy: action === 'reveal' ? { kind: 'replace' } : { kind: 'anchor', role: action },

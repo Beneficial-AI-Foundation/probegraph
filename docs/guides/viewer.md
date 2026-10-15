@@ -154,7 +154,9 @@ the verification status and the file path. The status has a dot in the
 colour that the Call Graph uses. If the file path is empty, the row shows the
 node ID. On a graph with two layers, a `blueprint` tag marks the blueprint
 entries. The list shows the first 20 results. If there are more, the last
-line says so. Add words to the query to narrow it.
+line says so. Add words to the query to narrow it. A screen reader
+announces the number of matches, or that nothing matches, while the focus
+stays in the search box.
 
 Each row has three buttons:
 

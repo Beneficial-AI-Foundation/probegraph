@@ -34,6 +34,8 @@ export class SearchBox {
   constructor(
     private readonly input: HTMLInputElement,
     private readonly list: HTMLElement,
+    /** A live region that tells screen readers what the list shows */
+    private readonly status: HTMLElement,
     private readonly deps: SearchBoxDeps,
   ) {
     input.addEventListener('focus', () => this.ensureIndex());
@@ -103,6 +105,11 @@ export class SearchBox {
     if (more) this.list.appendChild(note(`First ${RESULT_LIMIT} matches. Add words to narrow the search.`));
     this.list.hidden = false;
     this.place();
+    const count = this.hits.length;
+    this.status.textContent = noGraph ? 'Load a graph to search it'
+      : count === 0 ? 'No matches'
+      : more ? `First ${RESULT_LIMIT} matches`
+      : `${count} ${count === 1 ? 'match' : 'matches'}`;
   }
 
   /**
@@ -148,6 +155,7 @@ export class SearchBox {
     this.list.hidden = true;
     this.list.replaceChildren();
     this.hits = [];
+    this.status.textContent = '';
   }
 
   private run(id: string, action: SearchAction): void {

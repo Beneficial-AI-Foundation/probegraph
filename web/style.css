@@ -145,6 +145,19 @@ body {
   margin: 0 1rem;
 }
 
+/* Read by screen readers, not shown */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .search-results {
   position: absolute;
   top: calc(100% + 0.25rem);

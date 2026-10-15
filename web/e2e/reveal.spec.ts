@@ -97,9 +97,11 @@ test.describe('search box', () => {
     await expect(first).toContainText('exec');
     await expect(first).toContainText('unknown');
     await expect(first).toContainText('src/h.rs');
+    await expect(page.locator('#search-status')).toHaveText(/^\d+ match(es)?$/);
 
     await page.locator('#search-input').press('Enter');
     await expect(page.locator('#search-results')).toBeHidden();
+    await expect(page.locator('#search-status')).toHaveText('');
     await expect(page.locator('#search-input')).toBeFocused();
     expect(new URL(page.url()).searchParams.get('id')).toBe('probe:h');
     await expect(page.locator('#node-info')).toContainText('src/h.rs');
@@ -110,6 +112,7 @@ test.describe('search box', () => {
     await page.locator('#search-input').fill('l');
     await expect(page.locator('.search-result')).toHaveCount(20);
     await expect(page.locator('.search-note')).toContainText('First 20 matches');
+    await expect(page.locator('#search-status')).toHaveText('First 20 matches');
   });
 
   test('says when nothing matches', async ({ page }) => {
@@ -117,6 +120,8 @@ test.describe('search box', () => {
     await page.locator('#search-input').fill('zzz');
     await expect(page.locator('.search-note')).toHaveText('No matches');
     await expect(page.locator('.search-result')).toHaveCount(0);
+    // The note is not focusable, so the live region announces it
+    await expect(page.locator('#search-status')).toHaveText('No matches');
   });
 
   test('arrow keys move through the rows and Escape goes back to the box', async ({ page }) => {
