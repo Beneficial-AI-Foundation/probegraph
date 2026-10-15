@@ -178,6 +178,11 @@ they are, so the node can still be hidden. In that case the action toast
 below says why. One Back undoes the whole change: the layer, the view, the
 hidden node and the query.
 
+The result list closes after any of the three, and the focus goes back to
+the search box with your query still in it. Press Alt+Enter to reach the
+action toast, or ArrowDown to open the list again. The list also closes
+when the focus leaves the search box.
+
 Keys in the search box:
 
 | Key | Action |
