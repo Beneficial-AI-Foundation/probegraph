@@ -6,7 +6,7 @@ import {
   type RevealContext, type RevealSteps,
 } from './reveal';
 import { applyFilters } from './filters';
-import { exactIntent, focusIntent, textIntent, type QueryIntent } from './intent';
+import { exactIntent, focusIntent, idPathsIntent, textIntent, type QueryIntent } from './intent';
 import { parseAndNormalizeGraph } from './graph-loader';
 import { defaultFilters } from './url-state';
 import { detectProjectLanguage, type D3Graph, type FilterOptions } from './types';
@@ -25,8 +25,8 @@ const query = exactIntent([INIT_A], 'callees', 'initA', { type: 'search' });
  * The viewer drawing `query` with types shown and the filters in `over`:
  * every node of the result, or only `rendered`.
  */
-function context(over: Partial<FilterOptions> = {}, rendered?: string[]): RevealContext {
-  const filters = { ...defaultFilters(), showTypes: true, ...over, intent: query, maxDepth: null };
+function context(over: Partial<FilterOptions> = {}, rendered?: string[], intent: QueryIntent = query): RevealContext {
+  const filters = { ...defaultFilters(), showTypes: true, ...over, intent, maxDepth: null };
   const result = applyFilters(graph, filters, language).nodes.map(n => n.id);
   return {
     graph, otherLayer: null, filters, language,
@@ -65,6 +65,23 @@ describe('classifyReveal', () => {
     expect(classifyReveal(ctx, 'probe:oppUniKemCKA.StA')).toEqual({ reason: 'outside-intent' });
   });
 
+  it('finds a source with no path to the sinks on no path', () => {
+    // initA reaches StateA; kemCKA.initA reaches neither
+    const KEM = 'probe:kemCKA.initA';
+    const paths = idPathsIntent([INIT_A, KEM], ['probe:oppUniKemCKA.StateA'], 'initA, initA', 'StateA', { type: 'search' });
+    expect(classifyReveal(context({}, undefined, paths), INIT_A)).toEqual({ reason: 'shown' });
+    expect(classifyReveal(context({}, undefined, paths), KEM)).toEqual({ reason: 'no-path' });
+  });
+
+  it('finds a node no query draws filtered, not on no path, when it is no source or sink', () => {
+    // Build artifacts are left out of every query
+    const KEM = 'probe:kemCKA.initA';
+    const paths = idPathsIntent([INIT_A], ['probe:oppUniKemCKA.StateA'], 'initA', 'StateA', { type: 'search' });
+    const built = { ...graph, nodes: graph.nodes.map(n => n.id === KEM ? { ...n, relative_path: 'target/gen.lean' } : n) };
+    expect(classifyReveal({ ...context({}, undefined, paths), graph: built }, KEM))
+      .toEqual({ reason: 'filtered', filteredBy: [] });
+  });
+
   it('finds a node of the inactive layer on the other layer', () => {
     // The blueprint layer is active and does not have the declaration
     const blueprint: D3Graph = { nodes: [], links: [], metadata: graph.metadata };
@@ -88,9 +105,27 @@ describe('searchIntent', () => {
       .toMatchObject({ ids: [INIT_A, 'probe:x'], dir: 'callees', label: 'initA, x' });
   });
 
-  it('starts a sink set after a source set', () => {
+  it('starts a paths intent with a sink next to a source set, and the reverse', () => {
     expect(searchIntent(query, 'probe:x', 'x', { kind: 'anchor', role: 'sink' }))
-      .toMatchObject({ ids: ['probe:x'], dir: 'callers', label: 'x' });
+      .toEqual(idPathsIntent([INIT_A], ['probe:x'], 'initA', 'x', { type: 'search' }));
+    const sinks = exactIntent(['probe:y'], 'callers', 'y', { type: 'guide' });
+    expect(searchIntent(sinks, 'probe:x', 'x', { kind: 'anchor', role: 'source' }))
+      .toEqual(idPathsIntent(['probe:x'], ['probe:y'], 'x', 'y', { type: 'search' }));
+  });
+
+  it('adds to either set of a paths intent, once', () => {
+    const paths = idPathsIntent([INIT_A], ['probe:y'], 'initA', 'y', { type: 'search' });
+    expect(searchIntent(paths, 'probe:x', 'x', { kind: 'anchor', role: 'source' }))
+      .toEqual(idPathsIntent([INIT_A, 'probe:x'], ['probe:y'], 'initA, x', 'y', { type: 'search' }));
+    expect(searchIntent(paths, 'probe:x', 'x', { kind: 'anchor', role: 'sink' }))
+      .toEqual(idPathsIntent([INIT_A], ['probe:y', 'probe:x'], 'initA', 'y, x', { type: 'search' }));
+    expect(searchIntent(paths, 'probe:y', 'y', { kind: 'anchor', role: 'sink' })).toBe(paths);
+  });
+
+  it('starts a source set after a neighbourhood', () => {
+    const both = exactIntent(['probe:y'], 'both', 'y', { type: 'search' });
+    expect(searchIntent(both, 'probe:x', 'x', { kind: 'anchor', role: 'source' }))
+      .toEqual(exactIntent(['probe:x'], 'callees', 'x', { type: 'search' }));
   });
 
   it('starts a source set after a text query', () => {
@@ -143,6 +178,12 @@ describe('revealActions', () => {
   it('offers no anchor for a node that is already one', () => {
     expect(revealActions({ reason: 'truncated' }, query, INIT_A, 'initA', 5000, 200).map(a => a.kind))
       .toEqual(['replace']);
+  });
+
+  it('offers to query a node on no path instead', () => {
+    expect(revealActions({ reason: 'no-path' }, query, 'probe:x', 'x', 10, 200))
+      .toEqual([{ kind: 'replace', intent: exactIntent(['probe:x'], 'both', 'x', { type: 'search' }) }]);
+    expect(revealMessage('x', { reason: 'no-path' }, 200)).toBe('x is on no path between the sources and the sinks');
   });
 });
 

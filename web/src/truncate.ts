@@ -62,6 +62,8 @@ export function truncationSeeds(
     case 'noTraversal':
       return fromIntent.length > 0 ? { anchors: fromIntent, direction: 'both' } : null;
     case 'paths':
+      // Text paths have no anchors; exact source and sink sets do
+      return fromIntent.length > 0 ? { anchors: fromIntent, direction: 'both' } : null;
     case 'crateBoundary':
       return null;
   }

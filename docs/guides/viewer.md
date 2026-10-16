@@ -164,13 +164,21 @@ Each row has three buttons:
   node. If the current query already reaches the node, the query stays.
   If not, the viewer queries the node, its callers and its callees at the
   current depth.
-- **as source** adds the node to the current source set, which shows what
-  the sources call. If the current query is not a set of sources, the
-  node starts a new one.
-- **as sink** adds the node to the current sink set, which shows what
-  calls the sinks. If the current query is not a set of sinks, the node
-  starts a new one. A source set and a sink set together, with the paths
-  between them, are not available yet.
+- **as source** adds the node to the current source set. A source set
+  alone shows what the sources call.
+- **as sink** adds the node to the current sink set. A sink set alone
+  shows what calls the sinks.
+
+A source set and a sink set together show the paths from the sources to
+the sinks. For example, click **as source** on `encode` and then **as
+sink** on `decode`. The graph then shows every declaration on a call path
+from `encode` to `decode`, and the query label says `paths encode →
+decode`. Further clicks add to either set. If the current query is not a
+set of sources, sinks or both, **as source** or **as sink** starts a new
+set. A source or sink that is on no path is not drawn, and the action
+toast says so. Source → Sink in the sidebar shows the two sets by their
+labels. If you type in one of the two inputs, the other one is cleared
+and the query becomes a text query.
 
 After any of the three, the viewer opens the node in Node Details. If
 necessary, it switches to the layer of the node and to the Call Graph
@@ -219,10 +227,12 @@ focus. Alt+Enter in the search box moves the focus to its first button.
 | *name* is hidden by the *X* filter | A sidebar node filter hides the node, for example Spec is off | **Show it** turns those filters off |
 | *name* is not drawn even with every node filter off | No node filter explains it | None |
 | *name* is beyond the 200-node render limit | The query reaches the node, but the render limit cut it | **Keep it in the query**, **Query this node instead**, **Draw all N nodes** |
+| *name* is on no path between the sources and the sinks | The node is a source or a sink, but no call path connects it to the other set | **Query this node instead** |
 
 For the render limit, **Keep it in the query** adds the node to the
 current set of query nodes, which truncation always keeps. If the query
-has no such set, the viewer does not offer it. **Query this node instead**
+has no such set, or has a source set and a sink set, the viewer does not
+offer it. **Query this node instead**
 replaces the query with the node and its neighbours. **Draw all N nodes**
 draws the whole result for this query only. The viewer offers it only up
 to 500 nodes, because a larger layout blocks the browser for many seconds.
@@ -390,6 +400,7 @@ non-default values are included. All parameters:
 | `view` | `file-map`, `crate-map` or `hierarchy`; default is Call Graph. The old `view=blueprint` opens the File Map |
 | `source`, `sink` | the Source → Sink query |
 | `id` (repeated), `dir`, `label` | an exact node set from a Guide suggestion, drill-down or cross-layer link; `dir` is `none`, `callers`, `callees` or `both`, `label` the text shown in the inputs |
+| `source-id`, `sink-id` (both repeated), `source-label`, `sink-label` | the paths from a source set to a sink set, from the search box |
 | `boundary-source`, `boundary-target` | a crate boundary query (from the Guide or the Crate Map) |
 | `sel` (repeated) | IDs of clicked (selected) nodes |
 | `files` | Include Files patterns |
@@ -408,7 +419,8 @@ non-default values are included. All parameters:
 | `rust`, `lean` | language toggles for mixed graphs (`1`/`0`) |
 | `libsignal`, `external` | source-type toggles (`1`/`0`) |
 
-Precedence when several query parameters are present: `id`, then `focus`,
+Precedence when several query parameters are present: `id`, then
+`source-id`/`sink-id`, then `focus`,
 then `boundary-*`, then `source`/`sink`. Only the active layer's state is in
 the URL.
 

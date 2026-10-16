@@ -9,7 +9,7 @@
 import type { D3Graph, FilterOptions, ProjectLanguage } from './types';
 import {
   QueryIntent, IdDirection, NONE_INTENT, textIntent, exactIntent, boundaryIntent,
-  isFocusIntent,
+  idPathsIntent, isFocusIntent,
 } from './intent';
 import { exactStatusFilter, isVerificationStatus } from './status-filter';
 
@@ -49,6 +49,7 @@ export interface ParsedURLState {
 /** Every param the viewer owns. Written params are deleted first, so a value reset to its default disappears. */
 const OWNED_PARAMS = [
   'source', 'sink', 'id', 'dir', 'label', 'boundary-source', 'boundary-target', 'focus',
+  'source-id', 'sink-id', 'source-label', 'sink-label',
   'sel', 'exclude', 'files', 'depth',
   'exec', 'proof', 'spec', 'axioms', 'types', 'proj', 'inst',
   'inner', 'pre', 'post', 'mapping', 'speclinks', 'statement', 'body',
@@ -121,6 +122,12 @@ function writeIntent(params: URLSearchParams, intent: QueryIntent, pendingFocusU
         params.set('label', intent.label);
       }
       break;
+    case 'idPaths':
+      for (const id of intent.sources) params.append('source-id', id);
+      for (const id of intent.sinks) params.append('sink-id', id);
+      params.set('source-label', intent.sourceLabel);
+      params.set('sink-label', intent.sinkLabel);
+      break;
     case 'boundary':
       params.set('boundary-source', intent.sourceGroup);
       params.set('boundary-target', intent.targetGroup);
@@ -182,13 +189,23 @@ export function writeURLState(params: URLSearchParams, s: URLViewState): void {
 }
 
 function readIntent(params: URLSearchParams): { intent: QueryIntent; focusUrl: string | null } {
-  // Precedence for old or hand-edited URLs: id > focus > boundary > source/sink
+  // Precedence for old or hand-edited URLs: id > source-id/sink-id > focus > boundary > source/sink
   const ids = params.getAll('id').filter(id => id !== '');
   if (ids.length > 0) {
     const rawDir = params.get('dir') as IdDirection | null;
     const dir = rawDir && ID_DIRECTIONS.includes(rawDir) ? rawDir : 'none';
     const label = params.get('label') ?? ids[0];
     return { intent: exactIntent(ids, dir, label, { type: 'guide' }), focusUrl: null };
+  }
+  const sourceIds = params.getAll('source-id').filter(id => id !== '');
+  const sinkIds = params.getAll('sink-id').filter(id => id !== '');
+  if (sourceIds.length > 0 || sinkIds.length > 0) {
+    const intent = idPathsIntent(
+      sourceIds, sinkIds,
+      params.get('source-label') ?? sourceIds.join(', '), params.get('sink-label') ?? sinkIds.join(', '),
+      { type: 'guide' },
+    );
+    return { intent, focusUrl: null };
   }
   const focus = params.get('focus');
   if (focus) return { intent: NONE_INTENT, focusUrl: focus };

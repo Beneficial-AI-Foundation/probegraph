@@ -314,6 +314,22 @@ describe('findPaths', () => {
     const result = findPaths(g, new Set(['a']), new Set(['c']));
     expect([...result.nodeIds].sort()).toEqual(['a', 'b', 'c']);
   });
+
+  it('linear: a sink reached through another sink is on a path', () => {
+    const g = linearGraph();
+    const result = findPaths(g, new Set(['a']), new Set(['b', 'c']));
+    expect([...result.nodeIds].sort()).toEqual(['a', 'b', 'c']);
+  });
+
+  it('cycle: a node on a path only through recursion is kept', () => {
+    // s -> m -> t, and m -> x -> m
+    const g = createGraph(
+      ['s', 'm', 't', 'x'].map(id => createNode({ id, display_name: id })),
+      [createLink('s', 'm'), createLink('m', 't'), createLink('m', 'x'), createLink('x', 'm')],
+    );
+    const result = findPaths(g, new Set(['s']), new Set(['t']));
+    expect([...result.nodeIds].sort()).toEqual(['m', 's', 't', 'x']);
+  });
 });
 
 // ============================================================================

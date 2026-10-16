@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { truncateToBudget, truncationSeeds, type TruncationDirection } from './truncate';
 import { compileQuery, executeQuery, getLinkId } from './query';
-import { exactIntent, textIntent } from './intent';
+import { exactIntent, idPathsIntent, textIntent } from './intent';
 import { defaultFilters } from './url-state';
 import type { D3Graph, D3Node, FilterOptions } from './types';
 
@@ -177,6 +177,15 @@ describe('truncateToBudget', () => {
     expect(truncationSeeds(compiled.query, compiled.anchorIds, result)).toBeNull();
     const cut = truncateToBudget(result, 1, null);
     expect(ids(cut.graph)).toEqual(['h']);
+  });
+
+  it('keeps the sources and sinks of an exact paths query', () => {
+    // Two paths from a to z; the budget keeps both ends, not the hub m
+    const g = graph([['a', 'm'], ['m', 'z'], ['a', 'n'], ['n', 'z'], ['m', 'x1'], ['m', 'x2']]);
+    const { compiled, result } = run(g, { intent: idPathsIntent(['a'], ['z'], 'a', 'z', { type: 'search' }) });
+    const seeds = truncationSeeds(compiled.query, compiled.anchorIds, result);
+    expect(seeds).toEqual({ anchors: ['a', 'z'], direction: 'both' });
+    expect(ids(truncateToBudget(result, 2, seeds).graph)).toEqual(['a', 'z']);
   });
 
   it('returns the graph unchanged within the budget', () => {

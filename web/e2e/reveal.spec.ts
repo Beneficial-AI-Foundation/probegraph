@@ -143,15 +143,39 @@ test.describe('search box', () => {
     await expect(page.locator('#search-results')).toBeHidden();
   });
 
-  test('as source joins the source set, and as sink starts a sink set', async ({ page }) => {
+  test('as source joins the source set, and as sink adds a sink set for the paths', async ({ page }) => {
     await open(page, A_CALLEES);
     await reveal(page, 'probe:h', 'source');
     await expect.poll(() => new URL(page.url()).searchParams.getAll('id')).toEqual(['probe:a', 'probe:h']);
     expect(new URL(page.url()).searchParams.get('dir')).toBe('callees');
     await reveal(page, 'probe:b', 'sink');
-    await expect.poll(() => new URL(page.url()).searchParams.getAll('id')).toEqual(['probe:b']);
-    expect(new URL(page.url()).searchParams.get('dir')).toBe('callers');
+    await expect.poll(() => new URL(page.url()).searchParams.getAll('sink-id')).toEqual(['probe:b']);
+    const params = new URL(page.url()).searchParams;
+    expect(params.getAll('source-id')).toEqual(['probe:a', 'probe:h']);
+    expect(params.has('id')).toBe(false);
+    // h reaches no sink, so only the path a -> b is drawn
     await expect.poll(() => shownIds(page)).toEqual(['probe:a', 'probe:b']);
+    await expect(page.locator('#query-label')).toHaveText('query: paths a, h → b');
+    await expect(page.locator('#source-input')).toHaveValue('a, h');
+    await expect(page.locator('#sink-input')).toHaveValue('b');
+
+    // The URL alone restores the query
+    await page.reload();
+    await expect.poll(() => shownIds(page)).toEqual(['probe:a', 'probe:b']);
+    await expect(page.locator('#query-label')).toHaveText('query: paths a, h → b');
+
+    await page.goBack();
+    await expect.poll(() => new URL(page.url()).searchParams.getAll('id')).toEqual(['probe:a', 'probe:h']);
+  });
+
+  test('a sink with no path from the sources offers to query it instead', async ({ page }) => {
+    await open(page, A_CALLEES);
+    await reveal(page, 'probe:t', 'sink');
+    await expect(page.locator('.toast-with-actions')).toContainText('t is on no path between the sources and the sinks');
+    await toastAction(page, 'Query this node instead').click();
+    // Its caller s is a spec function, hidden by default
+    await expect.poll(() => shownIds(page)).toEqual(['probe:t']);
+    expect(new URL(page.url()).searchParams.get('dir')).toBe('both');
   });
 
   test('Alt+Enter moves the focus to the first toast action', async ({ page }) => {
