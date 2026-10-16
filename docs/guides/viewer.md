@@ -639,8 +639,10 @@ involved.
 - Two suggestions fill the search box: **Unused declarations (N)** with
   `is:unused`, and **Public functions without a contract (N)** with
   `is:surface`. Each one shows only if N is above zero. N counts every
-  declaration of the layer.
-- Clicking a row or a suggestion keeps the Guide open; a toast reports the
+  declaration of the layer. These two suggestions and the **query**
+  buttons only fill the search box. They show no toast and add no Back
+  entry.
+- Clicking a row or another suggestion keeps the Guide open; a toast reports the
   result, e.g. "180 nodes: callers of GF16". When the render cap applies, it
   gives the number of nodes not shown, and when display filters (origin,
   status, language, files) removed nodes, it says how many. Browser back
