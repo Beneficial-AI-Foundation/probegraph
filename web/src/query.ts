@@ -679,6 +679,12 @@ function compileIntent(
       }
       break;
     }
+    case 'idPaths':
+      return {
+        type: 'paths',
+        from: { kind: 'nodeIds', ids: new Set(intent.sources) },
+        to: { kind: 'nodeIds', ids: new Set(intent.sinks) },
+      };
     case 'boundary':
       return {
         type: 'crateBoundary',

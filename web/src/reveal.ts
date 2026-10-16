@@ -7,7 +7,7 @@
  */
 
 import { compileQuery, executeQuery } from './query';
-import { anchorIds, exactIntent, isFocusIntent, type QueryIntent } from './intent';
+import { anchorIds, exactIntent, idPathsIntent, isFocusIntent, type QueryIntent } from './intent';
 import { filtersHiding, type EditorSelection } from './editor-selection';
 import { describeFilters } from './filter-names';
 import type { D3Graph, FilterOptions, ProjectLanguage } from './types';
@@ -21,9 +21,12 @@ import type { D3Graph, FilterOptions, ProjectLanguage } from './types';
  *   Replace the intent, or add the node as an anchor.
  * - `truncated`: in the query result, dropped by the render cap. Make it an
  *   anchor, query the node instead, or raise the cap.
+ * - `no-path`: a source or sink of a paths intent on no path between the
+ *   sets, with every node filter off too. Query the node instead.
  * - `shown`: drawn. Centre on it.
  */
-export type RevealReason = 'missing' | 'other-layer' | 'filtered' | 'outside-intent' | 'truncated' | 'shown';
+export type RevealReason =
+  | 'missing' | 'other-layer' | 'filtered' | 'outside-intent' | 'truncated' | 'no-path' | 'shown';
 
 export interface RevealResult {
   reason: RevealReason;
@@ -62,10 +65,10 @@ export function classifyReveal(ctx: RevealContext, id: string): RevealResult {
   const anchored = anchorIds(ctx.filters.intent).includes(id);
   const alone = { ...ctx.filters, intent: exactIntent([id], 'none', id, { type: 'search' }) };
   if (!anchored && drawn(alone)) return { reason: 'outside-intent' };
-  return {
-    reason: 'filtered',
-    filteredBy: filtersHiding(ctx.graph, anchored ? ctx.filters : alone, ctx.language, id),
-  };
+  const filteredBy = filtersHiding(ctx.graph, anchored ? ctx.filters : alone, ctx.language, id);
+  // A source or sink is the only anchor that its own query can leave out
+  if (filteredBy.length === 0 && ctx.filters.intent.kind === 'idPaths') return { reason: 'no-path' };
+  return { reason: 'filtered', filteredBy };
 }
 
 /**
@@ -75,7 +78,8 @@ export function classifyReveal(ctx: RevealContext, id: string): RevealResult {
  *   when the current query does not reach it. A query that reaches it
  *   stays, and a `truncated` reveal offers the replacement as an action.
  * - `anchor` (search, "as source" / "as sink"): the node joins the current
- *   exact source or sink set, or starts one.
+ *   exact source or sink set, or starts one. A source set and a sink set
+ *   together are the paths between them.
  */
 export type RevealPolicy =
   | { kind: 'editor'; selection: EditorSelection }
@@ -83,19 +87,35 @@ export type RevealPolicy =
   | { kind: 'anchor'; role: 'source' | 'sink' };
 
 /**
- * The intent a search reveal sets. A source is the existing callees query
- * and a sink the existing callers query: an anchor joins an exact set with
- * the same direction, and otherwise starts a new one (a source set and a
- * sink set together would need a paths query on ID sets, which no intent
- * expresses).
+ * The intent a search reveal sets. A source set alone is the callees
+ * query and a sink set alone the callers query. An anchor joins the set of
+ * its role in an exact source set, sink set or paths intent. It starts a
+ * paths intent next to a set of the other role, and a new set after any
+ * other intent.
  */
 export function searchIntent(
   current: QueryIntent, id: string, label: string, policy: Exclude<RevealPolicy, { kind: 'editor' }>,
 ): QueryIntent {
   if (policy.kind === 'replace') return nodeIntent(id, label);
-  const dir = policy.role === 'source' ? 'callees' : 'callers';
-  if (current.kind === 'ids' && !isFocusIntent(current) && current.dir === dir) {
-    return withAnchor(current, id, label)!;
+  const source = policy.role === 'source';
+  const dir = source ? 'callees' : 'callers';
+  if (current.kind === 'idPaths') {
+    const set = source ? current.sources : current.sinks;
+    if (set.includes(id)) return current;
+    return source
+      ? idPathsIntent([...current.sources, id], current.sinks,
+        `${current.sourceLabel}, ${label}`, current.sinkLabel, current.origin)
+      : idPathsIntent(current.sources, [...current.sinks, id],
+        current.sourceLabel, `${current.sinkLabel}, ${label}`, current.origin);
+  }
+  if (current.kind === 'ids' && !isFocusIntent(current)) {
+    if (current.dir === dir) return withAnchor(current, id, label)!;
+    const other = source ? 'callers' : 'callees';
+    if (current.dir === other) {
+      return source
+        ? idPathsIntent([id], current.ids, label, current.label, { type: 'search' })
+        : idPathsIntent(current.ids, [id], current.label, label, { type: 'search' });
+    }
   }
   return exactIntent([id], dir, label, { type: 'search' });
 }
@@ -136,7 +156,8 @@ export type RevealAction =
  * node always gets `replace`, which draws it: a lone anchor is never cut.
  * `anchor` is offered only when the anchors fit in the cap, since
  * truncation keeps the first `cap` anchors. The cap is raised only up to
- * RAISED_RENDER_CAP. `other-layer` and `outside-intent` have none here:
+ * RAISED_RENDER_CAP. A node on no path gets `replace`. `other-layer` and
+ * `outside-intent` have none here:
  * the reveal acts on them itself.
  */
 export function revealActions(
@@ -145,6 +166,8 @@ export function revealActions(
   switch (result.reason) {
     case 'filtered':
       return result.filteredBy?.length ? [{ kind: 'relax', keys: result.filteredBy }] : [];
+    case 'no-path':
+      return [{ kind: 'replace', intent: nodeIntent(id, label) }];
     case 'truncated': {
       const actions: RevealAction[] = [];
       const anchored = withAnchor(intent, id, label);
@@ -180,6 +203,7 @@ export function revealMessage(label: string, result: RevealResult, cap: number):
         : `${label} is not drawn even with every node filter off`;
     case 'outside-intent': return `${label} is outside the current query`;
     case 'truncated': return `${label} is beyond the ${cap}-node render limit`;
+    case 'no-path': return `${label} is on no path between the sources and the sinks`;
     case 'shown': return '';
   }
 }

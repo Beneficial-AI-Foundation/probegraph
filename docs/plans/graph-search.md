@@ -1,12 +1,13 @@
 # Viewer: search and reveal
 
-Status (2026-10-15): Phase 0 merged in #80. `revealNode` in
+Status (2026-10-16): Phase 0 merged in #80. `revealNode` in
 `src/main.ts` serves the editor and the search box.
 Phase 1 is in progress as three PRs (decided 2026-10-15): 1 the index and
 ranking (`src/search.ts`, no UI, merged in #89), 2 the search box and
 result list (`src/search-box.ts`, which replaces the dev-only
-`window.__revealNode` hook in the e2e tests), 3 the source-set plus
-sink-set intent. Phase 2 needs Phase 1. Its `rank by dependents` verb
+`window.__revealNode` hook in the e2e tests, merged in #91), 3 the
+source-set plus sink-set intent (`idPaths` in `src/intent.ts`, in
+review). Phase 2 needs Phase 1. Its `rank by dependents` verb
 reuses the guide Phase 4 count (merged in #81). Its frontier and
 "assumptions under X" presets need `trust-and-frontier.md` Phases 2 and 1.
 
@@ -157,6 +158,16 @@ both callers through it.
   sink ID set that compiles to the existing `paths` query with two
   `nodeIds` matchers. The AST already supports this, so it is no new
   query semantics. Decided 2026-10-13.
+  Done in PR 3 as `IdPathsIntent` (kind `idPaths`). "as source" on a
+  sink set, or "as sink" on a source set, starts it; later clicks add to
+  the set of their role. In the URL it is repeated `source-id` and
+  `sink-id` with `source-label` and `sink-label`, read after `id`. Both
+  sets are anchors, so truncation keeps them first (`truncationSeeds`
+  now seeds exact paths queries; text paths still have no seeds). A
+  source or sink on no path gets a new reveal reason, `no-path`, with
+  "Query this node instead"; before, it read "not drawn even with every
+  node filter off", which was wrong. "Keep it in the query" is not
+  offered for a paths intent, since the node's role is not known there.
 - Tests: tokenizer cases (snake, camel, dotted, digits, Lean namespaces
   with `«»`), the query fixture, and a reveal of a filtered hit ending in
   the relax action.

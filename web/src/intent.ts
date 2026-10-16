@@ -29,11 +29,20 @@ export type ExactIntent = {
   kind: 'ids'; ids: [string, ...string[]]; dir: IdDirection; label: string; origin: ExactOrigin;
 };
 
+/** The paths from an exact source set to an exact sink set. */
+export type IdPathsIntent = {
+  kind: 'idPaths';
+  sources: [string, ...string[]]; sinks: [string, ...string[]];
+  sourceLabel: string; sinkLabel: string;
+  origin: ExactOrigin;
+};
+
 export type QueryIntent =
   | { kind: 'none' }
   | { kind: 'text'; source: string; sink: string }
   | FocusIntent
   | ExactIntent
+  | IdPathsIntent
   | { kind: 'boundary'; sourceGroup: string; targetGroup: string };
 
 export const NONE_INTENT: QueryIntent = { kind: 'none' };
@@ -58,6 +67,24 @@ export function exactIntent(
   return { kind: 'ids', ids: unique as [string, ...string[]], dir, label, origin };
 }
 
+/**
+ * Paths intent between two exact sets; with one set empty, the exact
+ * intent of the other (callees of the sources, callers of the sinks).
+ */
+export function idPathsIntent(
+  sources: string[], sinks: string[], sourceLabel: string, sinkLabel: string, origin: ExactOrigin,
+): QueryIntent {
+  const from = [...new Set(sources)];
+  const to = [...new Set(sinks)];
+  if (to.length === 0) return exactIntent(from, 'callees', sourceLabel, origin);
+  if (from.length === 0) return exactIntent(to, 'callers', sinkLabel, origin);
+  return {
+    kind: 'idPaths',
+    sources: from as [string, ...string[]], sinks: to as [string, ...string[]],
+    sourceLabel, sinkLabel, origin,
+  };
+}
+
 export function boundaryIntent(sourceGroup: string, targetGroup: string): QueryIntent {
   return { kind: 'boundary', sourceGroup, targetGroup };
 }
@@ -74,6 +101,7 @@ export function isDirectionalIntent(intent: QueryIntent): boolean {
   switch (intent.kind) {
     case 'text': return intent.source.trim() !== '' || intent.sink.trim() !== '';
     case 'ids': return intent.dir !== 'none';
+    case 'idPaths': return true;
     case 'boundary': return true;
     case 'none': return false;
   }
@@ -81,6 +109,7 @@ export function isDirectionalIntent(intent: QueryIntent): boolean {
 
 /** IDs the result must keep even without visible links (exact and focus sets). */
 export function anchorIds(intent: QueryIntent): string[] {
+  if (intent.kind === 'idPaths') return [...new Set([...intent.sources, ...intent.sinks])];
   return intent.kind === 'ids' ? intent.ids : [];
 }
 
@@ -107,6 +136,8 @@ export function inputsForIntent(intent: QueryIntent): IntentInputs {
         case 'none': return empty;
       }
       return empty;
+    case 'idPaths':
+      return { source: intent.sourceLabel, sink: intent.sinkLabel, sourceExact: true, sinkExact: true };
     default:
       return empty;
   }

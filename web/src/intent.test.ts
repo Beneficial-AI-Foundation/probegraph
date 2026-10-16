@@ -7,7 +7,7 @@ import { describe, it, expect } from 'vitest';
 import {
   QueryIntent, NONE_INTENT, textIntent, focusIntent, exactIntent, boundaryIntent,
   inputsForIntent, intentAfterInputEdit, vscodeIntent, vscodeSetQueryIntent,
-  isDirectionalIntent,
+  isDirectionalIntent, idPathsIntent, anchorIds,
 } from './intent';
 import { URLViewState, defaultFilters, readURLState, writeURLState } from './url-state';
 import { exactStatusFilter } from './status-filter';
@@ -113,10 +113,34 @@ describe('intent constructors', () => {
     expect(isDirectionalIntent(exactIntent(['a'], 'none', 'a', { type: 'vscode' }))).toBe(false);
     expect(isDirectionalIntent(exactIntent(['a'], 'callers', 'a', { type: 'guide' }))).toBe(true);
     expect(isDirectionalIntent(boundaryIntent('x', 'y'))).toBe(true);
+    expect(isDirectionalIntent(idPathsIntent(['a'], ['c'], 'dup', 'func_c', { type: 'search' }))).toBe(true);
+  });
+
+  it('idPathsIntent dedupes each set and falls back to one exact set', () => {
+    const paths = idPathsIntent(['a', 'a', 'd'], ['c'], 'dup', 'func_c', { type: 'search' });
+    expect(paths).toEqual({
+      kind: 'idPaths', sources: ['a', 'd'], sinks: ['c'],
+      sourceLabel: 'dup', sinkLabel: 'func_c', origin: { type: 'search' },
+    });
+    expect(anchorIds(paths)).toEqual(['a', 'd', 'c']);
+    expect(idPathsIntent(['a'], [], 'dup', '', { type: 'search' }))
+      .toEqual(exactIntent(['a'], 'callees', 'dup', { type: 'search' }));
+    expect(idPathsIntent([], ['c'], '', 'func_c', { type: 'search' }))
+      .toEqual(exactIntent(['c'], 'callers', 'func_c', { type: 'search' }));
   });
 });
 
 describe('inputs for non-text intents', () => {
+  it('a paths intent shows both labels as exact', () => {
+    expect(inputsForIntent(idPathsIntent(['a'], ['c'], 'dup', 'func_c', { type: 'search' })))
+      .toEqual({ source: 'dup', sink: 'func_c', sourceExact: true, sinkExact: true });
+  });
+
+  it('editing one side of a paths intent drops the other label', () => {
+    const paths = idPathsIntent(['a'], ['c'], 'dup', 'func_c', { type: 'search' });
+    expect(intentAfterInputEdit(paths, 'source', 'func_b', 'func_c')).toEqual(textIntent('func_b', ''));
+  });
+
   const callers = exactIntent(['a'], 'callers', 'dup', { type: 'guide' });
   const both = exactIntent(['a'], 'both', 'dup', { type: 'vscode' });
 
@@ -180,6 +204,7 @@ describe('URL round trip per intent kind', () => {
     ['exact both, IDs with commas', exactIntent(['scip:x/y,z', 'b'], 'both', 'two', { type: 'guide' })],
     ['exact none', exactIntent(['a'], 'none', 'dup', { type: 'guide' })],
     ['boundary', boundaryIntent('SrcTranslated/Funs.lean', 'Spqr/Specs')],
+    ['exact paths, IDs with commas', idPathsIntent(['scip:x/y,z', 'a'], ['c'], 'two', 'func_c', { type: 'guide' })],
   ];
   for (const [name, intent] of cases) {
     it(name, () => {
@@ -199,6 +224,18 @@ describe('URL round trip per intent kind', () => {
   it('a pending focus load keeps focus= while the intent is none', () => {
     const params = write(defaultFilters(), { pendingFocusUrl: 'sets/f.json' });
     expect(params.get('focus')).toBe('sets/f.json');
+  });
+
+  it('a paths intent writes source-id and sink-id', () => {
+    const params = write(filtersWith({ intent: idPathsIntent(['a', 'd'], ['c'], 'dup, dup', 'func_c', { type: 'search' }) }));
+    expect(params.getAll('source-id')).toEqual(['a', 'd']);
+    expect(params.getAll('sink-id')).toEqual(['c']);
+    expect(params.has('id')).toBe(false);
+  });
+
+  it('one side of source-id and sink-id reads as an exact set, labelled by its IDs', () => {
+    const intent = readURLState(new URLSearchParams('sink-id=c&sink-id=b'), defaultFilters(), graph()).filters.intent;
+    expect(intent).toEqual(exactIntent(['c', 'b'], 'callers', 'c, b', { type: 'guide' }));
   });
 
   it('boundary no longer writes crate: source/sink', () => {
@@ -372,6 +409,15 @@ describe('compileQuery from the intent', () => {
     const f = filtersWith({ maxDepth: 1, intent: exactIntent(['b'], 'both', 'func_b', { type: 'vscode' }) });
     expect(compileQuery(f).query.type).toBe('neighborhood');
     expect(resultIds(f)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('exact paths -> paths between the two ID sets', () => {
+    const f = filtersWith({ ...all, intent: idPathsIntent(['a', 'd'], ['c'], 'dup', 'func_c', { type: 'search' }) });
+    expect(compileQuery(f).query).toMatchObject({ type: 'paths', from: { kind: 'nodeIds' }, to: { kind: 'nodeIds' } });
+    expect(resultIds(f)).toEqual(['a', 'b', 'c', 'd']);
+    // b calls c, not a
+    expect(resultIds(filtersWith({ ...all, intent: idPathsIntent(['b'], ['a'], 'func_b', 'dup', { type: 'search' }) })))
+      .toEqual([]);
   });
 
   it('exact none restricts to the IDs and keeps isolated anchors', () => {
