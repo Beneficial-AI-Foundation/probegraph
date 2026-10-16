@@ -2462,18 +2462,15 @@ const MAX_RENDERED_NODES = 200;
 
 type LabelPart = [cls: 'query-type' | 'query-dim' | 'query-param' | null, text: string];
 
-/** Matcher text; an exact ID set shows the intent's label. */
-function matcherText(m: NodeMatcher): string {
+/** Matcher text; an exact ID set shows the intent's label, for paths the label of its role. */
+function matcherText(m: NodeMatcher, role: 'source' | 'sink' = 'source'): string {
   switch (m.kind) {
     case 'pattern': return m.query;
     case 'crate': return `crate:${m.pattern}`;
     case 'nodeIds': {
       const intent = state.filters.intent;
       if (intent.kind === 'ids' && intent.label) return intent.label;
-      if (intent.kind === 'idPaths') {
-        return m.ids.size === intent.sources.length && intent.sources.every(id => m.ids.has(id))
-          ? intent.sourceLabel : intent.sinkLabel;
-      }
+      if (intent.kind === 'idPaths') return role === 'source' ? intent.sourceLabel : intent.sinkLabel;
       return `[${m.ids.size} node${m.ids.size !== 1 ? 's' : ''}]`;
     }
   }
@@ -2490,7 +2487,7 @@ function queryLabelParts(q: GraphQuery): LabelPart[] {
     case 'neighborhood':
       return [['query-type', 'neighborhood'], sp, ['query-dim', 'of'], sp, ['query-param', matcherText(q.center)], ...depth(q.maxDepth)];
     case 'paths':
-      return [['query-type', 'paths'], sp, ['query-param', matcherText(q.from)], sp, ['query-dim', '→'], sp, ['query-param', matcherText(q.to)]];
+      return [['query-type', 'paths'], sp, ['query-param', matcherText(q.from, 'source')], sp, ['query-dim', '→'], sp, ['query-param', matcherText(q.to, 'sink')]];
     case 'crateBoundary':
       return [['query-type', 'boundary'], sp, ['query-param', `crate:${q.sourceCrate}`], sp, ['query-dim', '→'], sp, ['query-param', `crate:${q.targetCrate}`]];
     case 'depthFromSelected':
