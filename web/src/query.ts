@@ -338,8 +338,10 @@ export function traverseBidirectional(
 
 /**
  * Nodes on a call path from sourceIds to sinkIds: reachable from a source
- * and reaching a sink. A path can go on past a sink to another sink.
- * Linear in the graph size.
+ * and reaching a sink. A path can go on past a sink to another sink, and
+ * a node that is only on a path through a cycle (recursion) is kept.
+ * Keeping only nodes on simple paths is NP-complete on directed graphs;
+ * this is linear in the graph size.
  */
 export function findPaths(
   graph: D3Graph,
