@@ -233,6 +233,24 @@ describe('URL round trip per intent kind', () => {
     expect(params.has('id')).toBe(false);
   });
 
+  it('a write replaces the paths params of the previous URL and keeps params it does not own', () => {
+    const ad = idPathsIntent(['a'], ['d'], 'dup', 'dup', { type: 'search' });
+    const base = write(filtersWith({ intent: ad }), {}, 'json=g.json').toString();
+    const read = (params: URLSearchParams) => readURLState(params, defaultFilters(), graph()).filters.intent;
+
+    const again = write(filtersWith({ intent: ad }), {}, base);
+    expect(again.toString()).toBe(base);
+
+    const disjoint = idPathsIntent(['b'], ['c'], 'func_b', 'func_c', { type: 'search' });
+    expect(read(write(filtersWith({ intent: disjoint }), {}, base))).toEqual({ ...disjoint, origin: { type: 'guide' } });
+
+    const text = write(filtersWith({ intent: textIntent('func_b', '') }), {}, base);
+    expect(read(text)).toEqual(textIntent('func_b', ''));
+    expect(text.get('json')).toBe('g.json');
+
+    expect(read(write(filtersWith({ intent: NONE_INTENT }), {}, base))).toEqual(NONE_INTENT);
+  });
+
   it('one side of source-id and sink-id reads as an exact set, labelled by its IDs', () => {
     const intent = readURLState(new URLSearchParams('sink-id=c&sink-id=b'), defaultFilters(), graph()).filters.intent;
     expect(intent).toEqual(exactIntent(['c', 'b'], 'callers', 'c, b', { type: 'guide' }));

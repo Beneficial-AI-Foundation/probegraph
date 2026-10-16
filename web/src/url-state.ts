@@ -49,6 +49,7 @@ export interface ParsedURLState {
 /** Every param the viewer owns. Written params are deleted first, so a value reset to its default disappears. */
 const OWNED_PARAMS = [
   'source', 'sink', 'id', 'dir', 'label', 'boundary-source', 'boundary-target', 'focus',
+  'source-id', 'sink-id', 'source-label', 'sink-label',
   'sel', 'exclude', 'files', 'depth',
   'exec', 'proof', 'spec', 'axioms', 'types', 'proj', 'inst',
   'inner', 'pre', 'post', 'mapping', 'speclinks', 'statement', 'body',
