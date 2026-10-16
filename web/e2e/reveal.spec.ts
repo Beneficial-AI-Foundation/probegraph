@@ -1,8 +1,8 @@
 /**
- * E2E tests for the search half of revealNode (docs/plans/graph-search.md,
- * Phase 0): the toast actions, their history entries, the raised render
- * cap and centring. Nothing in the UI calls it before the search box
- * (Phase 1), so the tests use the dev-only window.__revealNode hook.
+ * E2E tests for the search box and the reveal it runs
+ * (docs/plans/graph-search.md, Phases 0 and 1): the result list and its
+ * keys, the toast actions, their history entries, the raised render cap
+ * and centring.
  */
 
 import { test, expect, type Page, type Route } from '@playwright/test';
@@ -37,8 +37,6 @@ function graph(leaves = LEAVES) {
   };
 }
 
-type Policy = { kind: 'replace' } | { kind: 'anchor'; role: 'source' | 'sink' };
-
 async function open(page: Page, query: string, body: unknown = graph()): Promise<void> {
   await page.route('**/reveal.json', (route: Route) =>
     route.fulfill({ contentType: 'application/json', body: JSON.stringify(body) }));
@@ -46,10 +44,23 @@ async function open(page: Page, query: string, body: unknown = graph()): Promise
   await expect(page.locator('#stats')).toContainText('Total Nodes', { timeout: 15000 });
 }
 
-function reveal(page: Page, id: string, opts: { policy: Policy; offer?: boolean; center?: boolean }) {
-  return page.evaluate(([nodeId, o]) =>
-    (window as unknown as { __revealNode: (id: string, o: unknown) => { reason: string } })
-      .__revealNode(nodeId, o).reason, [id, opts] as const);
+type Action = 'reveal' | 'source' | 'sink';
+
+/** The search box button for `id` and `action`; the search for its ID lists it first. */
+function resultButton(page: Page, id: string, action: Action = 'reveal') {
+  return page.locator(`.search-result[data-id="${id}"] [data-action="${action}"]`);
+}
+
+/** Search for `id` and click the row's button for `action`. */
+async function reveal(page: Page, id: string, action: Action = 'reveal'): Promise<void> {
+  await page.locator('#search-input').fill(id);
+  await resultButton(page, id, action).click();
+}
+
+/** Search for `id`; the row's button is clicked inside a page.evaluate. */
+async function listResult(page: Page, id: string): Promise<void> {
+  await page.locator('#search-input').fill(id);
+  await expect(resultButton(page, id)).toBeVisible();
 }
 
 async function shownIds(page: Page): Promise<string[]> {
@@ -77,12 +88,167 @@ function offCentre(page: Page, id: string): Promise<number> {
 const A_CALLEES = `&id=${encodeURIComponent('probe:a')}&dir=callees&label=a`;
 const H_CALLEES = `&id=${encodeURIComponent('probe:h')}&dir=callees&label=h&depth=1`;
 
+test.describe('search box', () => {
+  test('lists hits with kind, status and path, and Enter reveals the top one', async ({ page }) => {
+    await open(page, A_CALLEES);
+    await page.locator('#search-input').fill('h');
+    const first = page.locator('.search-result').first();
+    await expect(first).toHaveAttribute('data-id', 'probe:h');
+    await expect(first).toContainText('exec');
+    await expect(first).toContainText('unknown');
+    await expect(first).toContainText('src/h.rs');
+    await expect(page.locator('#search-status')).toHaveText(/^\d+ match(es)?$/);
+
+    await page.locator('#search-input').press('Enter');
+    await expect(page.locator('#search-results')).toBeHidden();
+    await expect(page.locator('#search-status')).toHaveText('');
+    await expect(page.locator('#search-input')).toBeFocused();
+    expect(new URL(page.url()).searchParams.get('id')).toBe('probe:h');
+    await expect(page.locator('#node-info')).toContainText('src/h.rs');
+  });
+
+  test('shows the first 20 hits and says there are more', async ({ page }) => {
+    await open(page, '');
+    await page.locator('#search-input').fill('l');
+    await expect(page.locator('.search-result')).toHaveCount(20);
+    await expect(page.locator('.search-note')).toContainText('First 20 matches');
+    await expect(page.locator('#search-status')).toHaveText('First 20 matches');
+  });
+
+  test('says when nothing matches', async ({ page }) => {
+    await open(page, '');
+    await page.locator('#search-input').fill('zzz');
+    await expect(page.locator('.search-note')).toHaveText('No matches');
+    await expect(page.locator('.search-result')).toHaveCount(0);
+    // The note is not focusable, so the live region announces it
+    await expect(page.locator('#search-status')).toHaveText('No matches');
+  });
+
+  test('arrow keys move through the rows and Escape goes back to the box', async ({ page }) => {
+    await open(page, A_CALLEES);
+    await page.locator('#search-input').fill('l1');
+    await page.locator('#search-input').press('ArrowDown');
+    await expect(resultButton(page, 'probe:l1')).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(resultButton(page, 'probe:l1', 'source')).toBeFocused();
+    // Down keeps the column
+    await page.keyboard.press('ArrowDown');
+    await expect(page.locator('.search-result').nth(1).locator('[data-action="source"]')).toBeFocused();
+    await page.keyboard.press('ArrowUp');
+    await page.keyboard.press('ArrowUp');
+    await expect(page.locator('#search-input')).toBeFocused();
+    await page.locator('#search-input').press('ArrowDown');
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#search-input')).toBeFocused();
+    await expect(page.locator('#search-results')).toBeHidden();
+  });
+
+  test('as source joins the source set, and as sink starts a sink set', async ({ page }) => {
+    await open(page, A_CALLEES);
+    await reveal(page, 'probe:h', 'source');
+    await expect.poll(() => new URL(page.url()).searchParams.getAll('id')).toEqual(['probe:a', 'probe:h']);
+    expect(new URL(page.url()).searchParams.get('dir')).toBe('callees');
+    await reveal(page, 'probe:b', 'sink');
+    await expect.poll(() => new URL(page.url()).searchParams.getAll('id')).toEqual(['probe:b']);
+    expect(new URL(page.url()).searchParams.get('dir')).toBe('callers');
+    await expect.poll(() => shownIds(page)).toEqual(['probe:a', 'probe:b']);
+  });
+
+  test('Alt+Enter moves the focus to the first toast action', async ({ page }) => {
+    await open(page, A_CALLEES);
+    await page.locator('#search-input').fill('probe:s');
+    await page.locator('#search-input').press('Enter');
+    await expect(page.locator('.toast-with-actions')).toContainText('s is hidden by the Spec filter');
+    await page.locator('#search-input').press('Alt+Enter');
+    await expect(toastAction(page, 'Show it')).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect.poll(() => shownIds(page)).toEqual(['probe:s', 'probe:t']);
+  });
+
+  test('/ focuses the box, but not while typing in another field', async ({ page }) => {
+    await open(page, '');
+    await page.locator('#source-input').fill('a/b');
+    await expect(page.locator('#source-input')).toHaveValue('a/b');
+    await page.locator('#graph-container').click();
+    await page.keyboard.press('/');
+    await expect(page.locator('#search-input')).toBeFocused();
+    await expect(page.locator('#search-input')).toHaveValue('');
+  });
+
+  test('Escape that closes the list does not reach the views', async ({ page }) => {
+    await open(page, A_CALLEES);
+    // The Hierarchy and Crate Map collapse on an Escape that reaches the document
+    await page.evaluate(() => {
+      (window as unknown as { escapes: number }).escapes = 0;
+      document.addEventListener('keydown', e => {
+        if (e.key === 'Escape') (window as unknown as { escapes: number }).escapes++;
+      });
+    });
+    const escapes = () => page.evaluate(() => (window as unknown as { escapes: number }).escapes);
+    await page.locator('#search-input').fill('h');
+    await page.locator('#search-input').press('Escape');
+    await expect(page.locator('#search-results')).toBeHidden();
+    await page.locator('#search-input').fill('h');
+    await page.locator('#search-input').press('ArrowDown');
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#search-results')).toBeHidden();
+    expect(await escapes()).toBe(0);
+  });
+
+  test('Enter and ArrowDown while an input method composes do nothing', async ({ page }) => {
+    await open(page, A_CALLEES);
+    await page.locator('#search-input').fill('h');
+    await expect(resultButton(page, 'probe:h')).toBeVisible();
+    await page.locator('#search-input').evaluate((input: HTMLInputElement) => {
+      for (const key of ['ArrowDown', 'Enter']) {
+        input.dispatchEvent(new KeyboardEvent('keydown', { key, isComposing: true, bubbles: true, cancelable: true }));
+      }
+    });
+    await expect(page.locator('#search-input')).toBeFocused();
+    await expect(page.locator('#search-results')).toBeVisible();
+    expect(new URL(page.url()).searchParams.get('id')).toBe('probe:a');
+  });
+
+  test('the list stays inside a narrow window, and after a resize', async ({ page }) => {
+    // The left and right edges; polled, since the resize event can come
+    // after setViewportSize returns
+    const edges = async () => Promise.all(
+      [page.locator('#search-results'), resultButton(page, 'probe:h', 'sink')].map(async el => {
+        const box = (await el.boundingBox())!;
+        return [box.x, box.x + box.width];
+      }));
+    const inside = (width: number) => expect.poll(async () =>
+      (await edges()).every(([left, right]) => left >= 0 && right <= width)).toBe(true);
+    await page.setViewportSize({ width: 1024, height: 768 });
+    await open(page, A_CALLEES);
+    await page.locator('#search-input').fill('h');
+    await inside(1024);
+    // The box ends nearer the left edge than the list is wide
+    await page.setViewportSize({ width: 640, height: 768 });
+    await inside(640);
+  });
+
+  test('a new graph is searched, not the old one', async ({ page }) => {
+    await open(page, '');
+    await page.locator('#search-input').fill('probe:l5');
+    await expect(resultButton(page, 'probe:l5')).toBeVisible();
+    await page.locator('#file-input').setInputFiles({
+      name: 'reveal.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(graph(['probe:m0']))),
+    });
+    await expect.poll(() => shownIds(page)).toEqual(['probe:a', 'probe:b', 'probe:h', 'probe:m0']);
+    await page.locator('#search-input').fill('probe:l5');
+    await expect(page.locator('.search-note')).toHaveText('No matches');
+    await page.locator('#search-input').fill('m0');
+    await expect(resultButton(page, 'probe:m0')).toBeVisible();
+  });
+});
+
 test.describe('revealNode from search', () => {
   test('Show it relaxes the filter and queries the hit, and one Back undoes both', async ({ page }) => {
     await open(page, A_CALLEES);
     await expect.poll(() => shownIds(page)).toEqual(['probe:a', 'probe:b']);
 
-    expect(await reveal(page, 'probe:s', { policy: { kind: 'replace' }, offer: true })).toBe('filtered');
+    await reveal(page, 'probe:s');
     await expect(page.locator('.toast-with-actions')).toContainText('s is hidden by the Spec filter');
     const before = await historyLength(page);
     await toastAction(page, 'Show it').click();
@@ -98,7 +264,7 @@ test.describe('revealNode from search', () => {
 
   test('a toast action after the query changed does nothing', async ({ page }) => {
     await open(page, A_CALLEES);
-    expect(await reveal(page, 'probe:s', { policy: { kind: 'replace' }, offer: true })).toBe('filtered');
+    await reveal(page, 'probe:s');
     await page.locator('#source-input').fill('h');
     await page.locator('#source-input').press('Enter');
     await expect.poll(() => new URL(page.url()).searchParams.has('id')).toBe(false);
@@ -111,8 +277,10 @@ test.describe('revealNode from search', () => {
   test('an anchor reveal of a node already anchored adds no history entry', async ({ page }) => {
     await open(page, A_CALLEES);
     const before = await historyLength(page);
-    expect(await reveal(page, 'probe:a', { policy: { kind: 'anchor', role: 'source' } })).toBe('shown');
+    await reveal(page, 'probe:a', 'source');
+    await expect(page.locator('#node-info')).toContainText('src/a.rs');
     expect(await historyLength(page)).toBe(before);
+    await expect(page.locator('.toast-with-actions')).toHaveCount(0);
   });
 
   test('a truncated hit can be queried instead', async ({ page }) => {
@@ -121,7 +289,8 @@ test.describe('revealNode from search', () => {
     const shown = new Set(await shownIds(page));
     const cut = LEAVES.find(l => !shown.has(l))!;
 
-    expect(await reveal(page, cut, { policy: { kind: 'replace' }, offer: true })).toBe('truncated');
+    await reveal(page, cut);
+    await expect(page.locator('.toast-with-actions')).toContainText('beyond the 200-node render limit');
     await expect(toastAction(page, 'Keep it in the query')).toBeVisible();
     await expect(toastAction(page, 'Draw all 301 nodes')).toBeVisible();
     await toastAction(page, 'Query this node instead').click();
@@ -134,12 +303,13 @@ test.describe('revealNode from search', () => {
     const shown = new Set(await shownIds(page));
     const cut = LEAVES.find(l => !shown.has(l))!;
 
-    expect(await reveal(page, cut, { policy: { kind: 'replace' }, offer: true })).toBe('truncated');
+    await reveal(page, cut);
+    await expect(page.locator('.toast-with-actions')).toContainText('beyond the 200-node render limit');
     await toastAction(page, 'Draw all 301 nodes').click();
     await expect.poll(async () => (await shownIds(page)).length).toBe(301);
 
     // A new query, then Back to the same one: the cap is not raised again
-    expect(await reveal(page, 'probe:a', { policy: { kind: 'replace' } })).toBe('shown');
+    await reveal(page, 'probe:a');
     await expect.poll(() => shownIds(page)).toEqual(['probe:a', 'probe:b']);
     await page.goBack();
     await expect.poll(async () => (await shownIds(page)).length).toBe(200);
@@ -152,7 +322,8 @@ test.describe('revealNode from search', () => {
     const shown = new Set(await shownIds(page));
     const cut = LEAVES.find(l => !shown.has(l))!;
 
-    expect(await reveal(page, cut, { policy: { kind: 'replace' }, offer: true })).toBe('truncated');
+    await reveal(page, cut);
+    await expect(page.locator('.toast-with-actions')).toContainText('beyond the 200-node render limit');
     await toastAction(page, 'Draw all 303 nodes').click();
     await expect.poll(async () => (await shownIds(page)).length).toBe(303);
 
@@ -167,7 +338,8 @@ test.describe('revealNode from search', () => {
     await expect.poll(async () => (await shownIds(page)).length).toBe(200);
     const shown = new Set(await shownIds(page));
     const cut = LEAVES.find(l => !shown.has(l))!;
-    expect(await reveal(page, cut, { policy: { kind: 'replace' }, offer: true })).toBe('truncated');
+    await reveal(page, cut);
+    await expect(page.locator('.toast-with-actions')).toContainText('beyond the 200-node render limit');
     await toastAction(page, 'Draw all 303 nodes').click();
     await expect.poll(async () => (await shownIds(page)).length).toBe(303);
 
@@ -181,7 +353,7 @@ test.describe('revealNode from search', () => {
     await open(page, H_CALLEES);
     await expect.poll(async () => (await shownIds(page)).length).toBe(200);
     const leaf = (await shownIds(page)).find(id => id !== 'probe:h')!;
-    expect(await reveal(page, leaf, { policy: { kind: 'replace' }, center: true })).toBe('shown');
+    await reveal(page, leaf);
     await expect.poll(() => offCentre(page, leaf), { timeout: 5000 }).toBeLessThan(20);
     // The layout runs about 5 s; the reveal centres again when it stops,
     // so the node is still in the middle afterwards
@@ -198,7 +370,7 @@ test.describe('revealNode from search', () => {
     const box = (await page.locator('#graph-container svg').boundingBox())!;
     const before = await transform(page);
     // The layout still runs (about 5 s), so the reveal waits to centre
-    expect(await reveal(page, leaf, { policy: { kind: 'replace' }, center: true })).toBe('shown');
+    await reveal(page, leaf);
     await page.mouse.move(box.x + 10, box.y + 10);
     await page.mouse.wheel(0, -100);
     await page.waitForTimeout(300);
@@ -212,7 +384,7 @@ test.describe('revealNode from search', () => {
     await open(page, H_CALLEES);
     await expect.poll(async () => (await shownIds(page)).length).toBe(200);
     const leaf = (await shownIds(page)).find(id => id !== 'probe:h')!;
-    expect(await reveal(page, leaf, { policy: { kind: 'replace' }, center: true })).toBe('shown');
+    await reveal(page, leaf);
     await page.locator('#reset-view').click();
     // The fit takes 400 ms; the reveal would centre at 1.5 s
     await page.waitForTimeout(600);
@@ -226,6 +398,7 @@ test.describe('revealNode from search', () => {
     const leaf = (await shownIds(page)).find(id => id !== 'probe:h')!;
     // Once the layout stops, the reveal starts its camera move at once
     await page.waitForTimeout(7000);
+    await listResult(page, leaf);
     const before = await transform(page);
     // A deeper query on h draws the same nodes, so it starts no fit. It
     // comes 100 ms into the 400 ms move.
@@ -241,8 +414,8 @@ test.describe('revealNode from search', () => {
           await new Promise(r => requestAnimationFrame(r));
         }
       };
-      (window as unknown as { __revealNode: (id: string, o: unknown) => unknown })
-        .__revealNode(nodeId, { policy: { kind: 'replace' }, center: true });
+      document.querySelector<HTMLButtonElement>(
+        `.search-result[data-id="${nodeId}"] [data-action="reveal"]`)!.click();
       await moveStarted();
       await new Promise(r => setTimeout(r, 100));
       const slider = document.getElementById('depth-limit') as HTMLInputElement;
@@ -263,6 +436,7 @@ test.describe('revealNode from search', () => {
     await expect.poll(async () => (await shownIds(page)).length).toBe(200);
     const leaf = (await shownIds(page)).find(id => id !== 'probe:h')!;
     await page.waitForTimeout(7000);
+    await listResult(page, leaf);
     // A query on a draws other nodes, so it starts a fit. It comes 100 ms
     // into the 400 ms move.
     const stoppedAt = await page.evaluate(async nodeId => {
@@ -277,8 +451,8 @@ test.describe('revealNode from search', () => {
           await new Promise(r => requestAnimationFrame(r));
         }
       };
-      (window as unknown as { __revealNode: (id: string, o: unknown) => unknown })
-        .__revealNode(nodeId, { policy: { kind: 'replace' }, center: true });
+      document.querySelector<HTMLButtonElement>(
+        `.search-result[data-id="${nodeId}"] [data-action="reveal"]`)!.click();
       await moveStarted();
       await new Promise(r => setTimeout(r, 100));
       const input = document.getElementById('source-input') as HTMLInputElement;
@@ -299,7 +473,7 @@ test.describe('revealNode from search', () => {
     const fileMapUrl = page.url();
 
     // a does not reach h, so the reveal queries h
-    expect(await reveal(page, 'probe:h', { policy: { kind: 'replace' } })).toBe('shown');
+    await reveal(page, 'probe:h');
     await expect(page.locator('#view-callgraph')).toHaveClass(/active/);
     await page.goBack();
     await expect(page.locator('#view-file-map')).toHaveClass(/active/);
@@ -309,7 +483,7 @@ test.describe('revealNode from search', () => {
   test('a reveal that unhides the hit and queries it keeps the hidden node for Back', async ({ page }) => {
     await open(page, `${A_CALLEES}&hide=${encodeURIComponent('probe:h')}`);
     const hiddenUrl = page.url();
-    expect(await reveal(page, 'probe:h', { policy: { kind: 'replace' } })).toBe('shown');
+    await reveal(page, 'probe:h');
     expect(new URL(page.url()).searchParams.getAll('hide')).toEqual([]);
     await page.goBack();
     expect(page.url()).toBe(hiddenUrl);
@@ -321,22 +495,23 @@ test.describe('revealNode from search', () => {
     await open(page, A_CALLEES, graph(leaves));
     await expect.poll(() => shownIds(page)).toEqual(['probe:a', 'probe:b']);
     // h does not reach b, so the reveal must query b instead
-    const reason = await page.evaluate(() => {
+    await listResult(page, 'probe:b');
+    await page.evaluate(() => {
       const input = document.getElementById('source-input') as HTMLInputElement;
       input.value = 'h';
       input.dispatchEvent(new Event('input', { bubbles: true }));
-      return (window as unknown as { __revealNode: (id: string, o: unknown) => { reason: string } })
-        .__revealNode('probe:b', { policy: { kind: 'replace' } }).reason;
+      document.querySelector<HTMLButtonElement>(
+        '.search-result[data-id="probe:b"] [data-action="reveal"]')!.click();
     });
-    expect(reason).toBe('shown');
     await page.waitForTimeout(800);
+    await expect(page.locator('.toast-with-actions')).toHaveCount(0);
     expect(await shownIds(page)).toContain('probe:b');
   });
 
   test('the toast stays while it has the keyboard focus', async ({ page }) => {
     await open(page, A_CALLEES);
     await expect(page.locator('#toast-container')).toHaveAttribute('aria-live', 'polite');
-    expect(await reveal(page, 'probe:s', { policy: { kind: 'replace' }, offer: true })).toBe('filtered');
+    await reveal(page, 'probe:s');
     await toastAction(page, 'Show it').focus();
     await page.waitForTimeout(9000);
     await expect(toastAction(page, 'Show it')).toBeVisible();
@@ -359,7 +534,9 @@ test('a reveal on the other layer and its new query are one history entry', asyn
   await expect(page.locator('#layer-code')).toHaveClass(/active/);
   const codeUrl = page.url();
 
-  expect(await reveal(page, 'probe:blueprint:addition_assoc', { policy: { kind: 'replace' } })).toBe('shown');
+  await page.locator('#search-input').fill('probe:blueprint:addition_assoc');
+  await expect(page.locator('.search-result').first().locator('.search-result-layer')).toHaveText('blueprint');
+  await reveal(page, 'probe:blueprint:addition_assoc');
   await expect(page.locator('#layer-blueprint')).toHaveClass(/active/);
   await page.goBack();
   await expect(page.locator('#layer-code')).toHaveClass(/active/);

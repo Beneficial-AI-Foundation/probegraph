@@ -32,6 +32,20 @@
         <button id="view-crate-map" class="view-btn">Crate Map</button>
         <button id="view-hierarchy" class="view-btn">Hierarchy <small style="opacity:0.7">(testing)</small></button>
       </div>
+      <div class="search-box">
+        <input
+          type="search"
+          id="search-input"
+          class="search-input"
+          placeholder="Search declarations ( / )"
+          autocomplete="off"
+          spellcheck="false"
+          aria-label="Search declarations by name, module or statement"
+          aria-controls="search-results"
+        />
+        <ul id="search-results" class="search-results" hidden></ul>
+        <p id="search-status" class="visually-hidden" role="status"></p>
+      </div>
       <div class="file-input-container">
         <label for="file-input" class="file-input-label">
           Load Graph JSON
@@ -318,6 +332,7 @@
             <li><strong>Select:</strong> Click a node to see details</li>
             <li><strong>Hide:</strong> Shift+click a node</li>
             <li id="instructions-drilldown" style="display:none"><strong>Open in code:</strong> Double-click a blueprint entry</li>
+            <li><strong>Search:</strong> Press / and type a name to find a node</li>
             <li><strong>Source/Sink:</strong> Enter function names to explore call paths</li>
           </ul>
         </div>

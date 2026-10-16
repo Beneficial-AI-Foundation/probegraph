@@ -1,11 +1,12 @@
 # Viewer: search and reveal
 
 Status (2026-10-15): Phase 0 merged in #80. `revealNode` in
-`src/main.ts` serves the editor; the search half has no UI caller yet and
-is reached in e2e tests through the dev-only `window.__revealNode` hook.
+`src/main.ts` serves the editor and the search box.
 Phase 1 is in progress as three PRs (decided 2026-10-15): 1 the index and
-ranking (`src/search.ts`, no UI), 2 the search box and result list, 3 the
-source-set plus sink-set intent. Phase 2 needs Phase 1. Its `rank by dependents` verb
+ranking (`src/search.ts`, no UI, merged in #89), 2 the search box and
+result list (`src/search-box.ts`, which replaces the dev-only
+`window.__revealNode` hook in the e2e tests), 3 the source-set plus
+sink-set intent. Phase 2 needs Phase 1. Its `rank by dependents` verb
 reuses the guide Phase 4 count (merged in #81). Its frontier and
 "assumptions under X" presets need `trust-and-frontier.md` Phases 2 and 1.
 
@@ -138,6 +139,18 @@ both callers through it.
   the toast sits at the end of the page. Nothing shows an action toast
   before the search box (the editor reveal offers none), so Phase 0 has
   no such key.
+  Decisions in PR 2 (2026-10-15): the box sits in the header and `/`
+  focuses it from outside a text field, since a search box is the first
+  thing a new user looks for. The index covers both layers, so a hit on
+  the layer not shown switches layer through Phase 0. The toast key is
+  Alt+Enter: Alt with a letter opens browser menus in Firefox on Linux
+  and Windows, and Enter already reveals. The row shows the file path
+  where this plan said module: IDs have no common module syntax across
+  Rust, Lean and blueprint extracts, and the file path tells apart nodes
+  with one display name (SPQR has a dozen `mvcgen_spec`). The list shows
+  20 rows and says when there are more. Every row action reveals with
+  the toast and with centring; the list closes and the focus returns to
+  the box, so Alt+Enter reaches the toast.
 - **Source and sink sets together.** In Phase 0, "as source" on top of a
   sink set (or the reverse) starts a new set, because `ExactIntent` holds
   one ID set and one direction. Add an intent with a source ID set and a

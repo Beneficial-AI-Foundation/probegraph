@@ -18,6 +18,7 @@ import {
   type RevealAction, type RevealContext, type RevealPolicy, type RevealResult,
 } from './reveal';
 import { showActionToast } from './action-toast';
+import { SearchBox } from './search-box';
 import { escapeHtml } from './html';
 import { StatusGroup, exactStatusFilter, groupCheckState, withGroupChecked } from './status-filter';
 import {
@@ -792,6 +793,8 @@ function init(): void {
 
   // Initialize the guide panel
   initGuidePanel();
+
+  initSearchBox();
 
   // Try to auto-load graph.json if it exists (skipped in VS Code mode)
   if (!isVSCodeEnvironment()) {
@@ -2323,6 +2326,7 @@ function loadGraph(graph: D3Graph, message: string, layer?: Layer): void {
   inactiveLayer = null;
   if (layer && blueprintLayer) replaceURLLayer(layer);
   cancelReveals();
+  searchBox?.invalidate();
 
   // Seed tiers and the ?entrypoints= payload belong to the previous graph;
   // bumping the generation invalidates any of its in-flight fetches
@@ -3963,11 +3967,25 @@ function runRevealAction(action: RevealAction, node: D3Node, policy: RevealPolic
   }
 }
 
-// The e2e tests drive the search half of revealNode through this hook
-// until the search box (graph-search.md Phase 1) calls it. Dev builds only.
-if (import.meta.env.DEV) {
-  (window as unknown as { __revealNode: unknown }).__revealNode =
-    (id: string, opts: RevealOptions) => revealNode(id, opts);
+// ============================================================================
+// Search box
+// ============================================================================
+
+let searchBox: SearchBox | null = null;
+
+function initSearchBox(): void {
+  const input = document.getElementById('search-input') as HTMLInputElement | null;
+  const list = document.getElementById('search-results');
+  const status = document.getElementById('search-status');
+  if (!input || !list || !status) return;
+  searchBox = new SearchBox(input, list, status, {
+    layers: () => codeLayer && { code: codeLayer, blueprint: blueprintLayer },
+    reveal: (id, action) => revealNode(id, {
+      policy: action === 'reveal' ? { kind: 'replace' } : { kind: 'anchor', role: action },
+      center: true,
+      offer: true,
+    }),
+  });
 }
 
 // ============================================================================
