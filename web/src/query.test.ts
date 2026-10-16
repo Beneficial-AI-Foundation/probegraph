@@ -314,6 +314,11 @@ describe('findPaths', () => {
     const result = findPaths(g, new Set(['a']), new Set(['c']));
     expect([...result.nodeIds].sort()).toEqual(['a', 'b', 'c']);
   });
+  it('linear: a sink reached through another sink is on a path', () => {
+    const g = linearGraph();
+    const result = findPaths(g, new Set(['a']), new Set(['b', 'c']));
+    expect([...result.nodeIds].sort()).toEqual(['a', 'b', 'c']);
+  });
 });
 
 // ============================================================================

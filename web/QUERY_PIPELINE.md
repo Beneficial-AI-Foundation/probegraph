@@ -97,7 +97,7 @@ Text intents:
 | empty | non-empty | `callers` |
 | same string | same string | `neighborhood` |
 | `crate:A` | `crate:B` | `crateBoundary` (`exact: false`, substring) |
-| different | different | `paths` (DFS from every source to every sink) |
+| different | different | `paths` (nodes reachable from a source that reach a sink) |
 
 `crateBoundary` keeps the links whose caller is in the source crate and
 callee in the target crate, plus their endpoints.
@@ -233,7 +233,7 @@ Nine pure functions in `query.ts`, none depending on global state:
 | `traverseForward` | `(graph, startIds, maxDepth) → TraversalResult` | BFS on forward adjacency |
 | `traverseBackward` | `(graph, startIds, maxDepth) → TraversalResult` | BFS on reverse adjacency |
 | `traverseBidirectional` | `(graph, centerIds, maxDepth) → TraversalResult` | BFS on undirected adjacency |
-| `findPaths` | `(graph, sourceIds, sinkIds) → TraversalResult` | DFS with backtracking |
+| `findPaths` | `(graph, sourceIds, sinkIds) → TraversalResult` | Forward reach from the sources intersected with backward reach from the sinks |
 | `crateBoundary` | `(graph, srcCrate, tgtCrate, exact) → TraversalResult` | Edge scan matching crate pairs |
 | `filterLinksByType` | `(links, filter) → D3Link[]` | Type and role predicate |
 | `depthFilterLinks` | `(links, calleeDepths?, callerDepths?) → D3Link[]` | BFS-tree edge predicate |

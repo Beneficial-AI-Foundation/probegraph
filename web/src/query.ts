@@ -336,53 +336,45 @@ export function traverseBidirectional(
   return { nodeIds: new Set(depths.keys()), undirectedDepths: depths };
 }
 
-/** DFS path finding from sourceIds to sinkIds, returns all nodes on any valid path. */
+/**
+ * Nodes on a call path from sourceIds to sinkIds: reachable from a source
+ * and reaching a sink. A path can go on past a sink to another sink.
+ * Linear in the graph size.
+ */
 export function findPaths(
   graph: D3Graph,
   sourceIds: Set<string>,
   sinkIds: Set<string>,
 ): TraversalResult {
-  const forwardAdj = new Map<string, Set<string>>();
+  const forwardAdj = new Map<string, string[]>();
+  const backwardAdj = new Map<string, string[]>();
   for (const link of graph.links) {
     const { sourceId, targetId } = getLinkId(link);
-    if (!forwardAdj.has(sourceId)) forwardAdj.set(sourceId, new Set());
-    forwardAdj.get(sourceId)!.add(targetId);
+    let out = forwardAdj.get(sourceId);
+    if (!out) forwardAdj.set(sourceId, out = []);
+    out.push(targetId);
+    let into = backwardAdj.get(targetId);
+    if (!into) backwardAdj.set(targetId, into = []);
+    into.push(sourceId);
   }
 
-  const nodesOnPaths = new Set<string>();
-
-  for (const startId of sourceIds) {
-    const currentPath: string[] = [];
-    const visited = new Set<string>();
-
-    function dfs(nodeId: string): boolean {
-      if (sinkIds.has(nodeId)) {
-        nodesOnPaths.add(nodeId);
-        for (const p of currentPath) nodesOnPaths.add(p);
-        return true;
-      }
-      if (visited.has(nodeId)) return false;
-      visited.add(nodeId);
-      currentPath.push(nodeId);
-
-      let found = false;
-      const neighbors = forwardAdj.get(nodeId);
-      if (neighbors) {
-        for (const nId of neighbors) {
-          if (dfs(nId)) found = true;
+  const reach = (starts: Set<string>, adj: Map<string, string[]>): Set<string> => {
+    const seen = new Set(starts);
+    const stack = [...starts];
+    while (stack.length > 0) {
+      for (const next of adj.get(stack.pop()!) ?? []) {
+        if (!seen.has(next)) {
+          seen.add(next);
+          stack.push(next);
         }
       }
-
-      currentPath.pop();
-      visited.delete(nodeId);
-      if (found) nodesOnPaths.add(nodeId);
-      return found;
     }
+    return seen;
+  };
 
-    dfs(startId);
-  }
-
-  return { nodeIds: nodesOnPaths };
+  const fromSources = reach(sourceIds, forwardAdj);
+  const toSinks = reach(sinkIds, backwardAdj);
+  return { nodeIds: new Set([...fromSources].filter(id => toSinks.has(id))) };
 }
 
 /**
