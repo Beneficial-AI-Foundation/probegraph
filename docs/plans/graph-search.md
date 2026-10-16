@@ -6,11 +6,11 @@ Phase 1 is done, in three PRs: 1 the index and ranking (`src/search.ts`,
 no UI, #89), 2 the search box and result list (`src/search-box.ts`,
 which replaces the dev-only `window.__revealNode` hook in the e2e tests,
 #91), 3 the source-set plus sink-set intent (`idPaths` in
-`src/intent.ts`, #93). Phase 2 is next, in three PRs; see "Decisions
-(2026-10-16)" in its section. PR 1 (query words and `paths`,
-`src/query-words.ts`) is in review. Its `rank by dependents` verb
-reuses the guide Phase 4 count (merged in #81). Its frontier and
-"assumptions under X" presets need `trust-and-frontier.md` Phases 2 and 1.
+`src/intent.ts`, #93). Phase 2 was pruned on 2026-10-16 to two PRs.
+PR 1 (query words and `paths`, `src/query-words.ts`) merged in #97.
+PR 2 (`top N by dependents` and the `is:` words) is next. `by
+dependents` reuses the guide Phase 4 count (merged in #81). `is:frontier` waits for
+`trust-and-frontier.md` Phase 2.
 
 Goal: find a declaration by words rather than regex, and make the hit
 usable when the viewer is not showing it. Then ask structural questions
@@ -175,103 +175,202 @@ both callers through it.
 
 ## Phase 2: structural queries
 
-Questions like "the ten most connected declarations", "lemmas nobody
-uses" and "paths from module X to module Y" have no input today. jq can
-answer the first one but not the other two without recursive scripts.
+Questions like "which unfinished lemma blocks the most work", "lemmas
+nobody uses" and "paths from module X to module Y" have no input today.
+jq can answer the first one but not the other two without recursive
+scripts.
+
+Pruned on 2026-10-16, after PR 1 (#97) and a measurement on real
+extracts (below). The rule: add a query only when it answers a question
+that the viewer cannot answer today, and prefer a filter word to a new
+verb.
 
 - **No external engine.** Cypher (Neo4j, or an embedded engine in WASM)
   reads well. But it does not know the kind, status, link-type and role
   rules that `src/query.ts` applies. Its answers then disagree with the
   view. Extend the existing `GraphQuery` AST instead.
-- **Two result shapes.** A ranking or a selection returns a node list,
-  shown in the Phase 1 result list with the same reveal, "as source" and
-  "as sink" actions. A traversal returns a subgraph through the existing
-  executor. New query types:
-  - `rank`: top N by direct callers, direct callees, or unique transitive
-    dependents (the Phase 4 count in `viewer-filters-and-guide.md`, one
-    implementation). Ties break by ID.
-  - `select`: nodes matching a predicate, ordered by ID. First predicate:
-    `noCallers` (in-degree 0 in the visible relation).
-  - `paths` between two node sets already exists (`findPaths`). Add a
-    `module` matcher next to `crate` so the sets can be module paths.
-- **Syntax.** One verb, then the filter words the viewer already has.
-  The grammar maps one to one onto the AST and stays small enough that a
-  later LLM layer can produce it from English:
+- **One input.** The search box is the query box. A text that starts
+  with a verb and parses gets a first row that runs it. The search
+  results for the same text stay below it.
+- **Two verbs.**
+  - `paths from <words> to <words>`: done in PR 1. It runs as the text
+    intent with Source and Sink.
+  - `top N by dependents <words>`: the N declarations that pass the
+    filter words, ranked by unique transitive dependents (the count of
+    the Guide lists, `rankByTransitiveDependents`, one implementation).
+    Ties break by ID. The result is a node list.
+- **Filter words** (done in PR 1): `kind:`, `status:`, `module:`,
+  `file:`, `level:`, `crate:`. A text of filter words alone lists the
+  declarations that pass them, by ID. That is the `select` of the
+  earlier plan, so `select` is not a verb.
+- **`is:` words.** One new key that names a fixed set of predicates.
+  Each name calls one function, so a query and the Guide cannot
+  disagree:
+  - `is:unfinished`: `isUnfinished` of the Guide (unverified or failed,
+    not an axiom). A declaration without a status is not unfinished,
+    while `status:unverified` counts it, as the sidebar does. The docs
+    say so.
+  - `is:assumption`: `isAssumption` of the Guide (an axiom, or trusted).
+  - `is:unused`: no callers, not an entry point (`is_entry_point`), not
+    generated and not hidden (`is_generated`, `is_hidden`).
+  - `is:surface`: a public function without a contract. In Verus, a
+    public (`is_public_api`) exec function with no `requires` or
+    `ensures` edges. In Aeneas projects, a public Rust function with no
+    Lean translation (`mapping_id` empty).
+  - Later, `is:frontier`, once `trust-and-frontier.md` Phase 2 defines
+    it.
+- **Structure words ignore the sidebar filters.** `level:`, `is:unused`
+  and `by dependents` use every node and every dependency of the layer,
+  as the Guide counts and the Dependency levels strip do. A lemma whose
+  only caller is a hidden spec function is not unused. This replaces
+  rule 6 of the decisions below, which assumed that the Guide counts
+  only the links the Edge Types boxes show. They do not.
+- **Node-list results** use the Phase 1 result list with its reveal,
+  "as source" and "as sink" buttons. They add one "Show all in the Call
+  Graph" button, which sets an exact ID set without direction. That
+  intent already keeps isolated anchors, so an `is:unused` list does not
+  render empty.
+- **Guide lists fill the search box.** Each Guide list gets its query:
 
   ```
-  top 10 by dependents kind:lemma
-  unused kind:proof module:field
-  paths from module:edwards to module:field
+  top 5 by dependents is:unfinished
+  top 5 by dependents is:assumption
+  top 5 by dependents kind:lemma
   ```
 
-  Only `crate:` exists as a prefix today (`matchesQuery` in
-  `src/filters.ts`). Add `kind:`, `status:`, `module:` and `file:` there,
-  so the search box and the query box share one parser.
-- **"Unused" is not "isolated".** An unused lemma calls other lemmas, so
-  its degree is above zero. `unused` is `noCallers` minus entry points
-  (`is_entry_point`) and minus top-level theorems the user marks as
-  goals. True singletons (degree 0) are a separate, rarer `select`.
-- **Isolated results must stay visible.** `removeIsolated` drops nodes
-  with no visible links, so a subgraph of `unused` nodes renders empty.
-  Node-list results bypass it. Subgraph results keep the anchors (the
-  fix already planned in guide Phase 4).
-- **Guide presets.** The Guide lists (`topConnected`,
-  `unverifiedHotspots`, `failedNodes`) become saved queries in this
-  syntax, and clicking one fills the query box. The user can then edit
-  it, for example add `module:`.
-- **First presets.** Chosen for an engineer who explores a new project:
-  each answers a question the Guide cannot answer today, and each needs
-  at most one new predicate.
-  - Surface: public API (`is_public_api`) without a contract. In Verus,
-    exec functions with no `requires` or `ensures` edges. In Aeneas
-    projects, Rust functions with no Lean translation (`mapping_id`
-    empty) and Lean defs with no spec theorem (`specs` empty).
-  - Frontier: unfinished nodes whose dependencies are all done. The
-    definition and counts come from `trust-and-frontier.md` Phase 2.
-  - Blockers of X: the unfinished nodes in the dependency cone of one
-    target.
-  - Module matrix: edge counts from module to module, the crate
-    boundary at module level. A table, not a node list.
-  - Unused: as defined above.
-- **Level filter.** `level:N` selects the nodes at dependency level N
-  (level 0 has no dependencies, as in the Guide Dependency levels strip).
-  It combines with the other filters, for example `level:0 kind:lemma
-  status:unverified`. This replaces a click on a level in the strip,
-  which stays display-only, because one level can exceed the render cap.
-  Decided 2026-10-13.
-- **Later presets.** Dependency levels and the longest chain from an entry point.
-  Mutual-recursion groups (SCCs of size two or more). Assumptions under
-  X (axioms, trusted, `external_body`, from `trust-and-frontier.md`
-  Phase 1). Largest declarations by line count and highest fan-out.
-  Lemmas used exactly once. Near-duplicates from `similar_lemmas`. Spec
-  functions that no contract uses. In Lean, lemmas that appear in
-  statements against lemmas that appear only in proofs (guide Phase 2
-  edge roles).
-- Tests: parser round trip (text → AST → text) for each verb. `unused` on
-  a fixture with an entry point and a lemma that only calls others.
-  `paths` between two modules on `probe-lean-extract-cut.json`. A rank
-  that matches the Guide count for the same graph.
+  On a graph without lemmas the last one is `top 5 by dependents`, as
+  the Guide list already ranks every node there. The user can then edit
+  the query, for example add `module:` or raise N.
+- **Recipes, not presets.** "Blockers of X" (the unfinished nodes that X
+  depends on) is X in Source with the Failed and Unverified status boxes.
+  The viewer.md text gives this recipe instead of a new query.
+
+Cut on 2026-10-16, with the reason:
+
+- `top N by callers` and `by callees`. The direct callers rank much like
+  the dependents (2 to 8 of the top 10 are the same on the extracts
+  below), with basic types on top. The callees count is a rough measure
+  of size.
+- The module matrix (was PR 3). The Crate Map shows the same at crate
+  level, and `paths from module:A to module:B` answers one cell.
+- Goals for `unused`, and true singletons as a separate query.
+- Lean defs without a spec theorem in `is:surface`. 45 to 50% of the
+  Lean defs in every extract below have no spec theorem, mostly helpers,
+  so the list says little.
+- The "later presets" list (longest chain, SCCs, largest declarations,
+  lemmas used once, near-duplicates, unused spec functions, statement
+  against proof lemmas). Several repeat existing features: the levels
+  strip and `level:`, and `similar_lemmas` in Node Details. A preset
+  comes back only when a real question needs it.
+
+Measurement (2026-10-16), on seven local extracts: Verus dalek (2220
+nodes), Aeneas dalek (2292), Aeneas SPQR (3508), Lean SecureMessaging
+(2313), its blueprint layer (151), Lean Cedar (5016) and Lean lean-zip
+(831).
+
+- `top by dependents` over every node lists basic types and helpers
+  (`pow2`, `GF16`, `FieldElement51`, projections), so it says little
+  without a filter word. With `kind:lemma` it lists the foundation
+  lemmas, as the Guide keystones list does. With `is:unfinished` it is
+  the most useful: Aeneas dalek has
+  `complete_addition_denominators_ne_zero` with 81 dependents, SPQR has
+  `PolyDecoder::decoded_message` with 35. In SecureMessaging, the
+  unfinished top is Verso document helpers (`defTitle`, `leanPill`), so
+  `module:` matters there.
+- Uncalled lemmas: Verus dalek 34 of 865, a list worth reading. SPQR 472
+  of 1102, but 384 of them are generated or hidden (mostly Aeneas
+  `@[step]` lemmas, which a tactic uses by attribute), hence the
+  exclusion in `is:unused`. Cedar 2959 of 2968, because that extract has
+  empty proof dependencies for theorems. That is an extract problem, not
+  a query problem. Lemmas used through `@[simp]` or `@[grind]` also look
+  uncalled. The docs say so.
+- `is_public_api` is set only in the two dalek extracts (157 and 146
+  public functions). Verus dalek has 47 public exec functions without
+  `requires` or `ensures` edges, Aeneas dalek 46 public Rust functions
+  without a Lean translation. SPQR and the Lean extracts have no public
+  API data, so `is:surface` lists nothing there, and the docs say so.
+
+The `top` grammar (decided 2026-10-16): `top [N] by dependents [filter
+words]`.
+
+- N is optional, 10 by default (a query exists to show more than the
+  five of a Guide list), a whole number from 1 to 200. 200 is the render
+  limit, so "Show all in the Call Graph" draws all N without truncation.
+  The list still shows 20 rows with its "First 20 matches" note. Another
+  N gives "top takes a number from 1 to 200".
+- `by dependents` is required, although it is the only ranking. Without
+  it the query does not say what it ranks, and the count is transitive
+  dependents, not direct callers. A later ranking needs no change of
+  grammar. A text without it gives "Not a query yet: top [N] by
+  dependents [filter words]", as `paths` does.
+- Only filter words follow. Plain words would need a third matching
+  rule (the search box ranks words, Source and Sink match a display-name
+  substring), and `module:`, `file:` and `kind:` cover the practical
+  cases. A plain word gives "top takes filter words only, for example
+  module:field". No filter word ranks every node.
+- Ties break by node ID, as in the Guide, so the cut at N is fixed.
+- Above the size limit of `transitiveDependentCounts` the list says
+  "Dependent counts are not available for this graph, because it is too
+  large", with the numbers the Guide gives.
+- `top` counts on the layer the viewer shows, as the Guide does, while
+  the search box searches both layers. The docs say so.
+
+Where queries show, and "Show all" (decided 2026-10-16):
+
+- No new panel. Each Guide ranked list gets a "query" button next to its
+  title that fills the search box with the list's query, focuses it and
+  opens the result list. The rows keep their action (the callers of the
+  node). The Guide suggestion chips get "Unused declarations (N)" and
+  "Public functions without a contract (N)", each only when N is above
+  zero, and a click fills the search box with `is:unused` or
+  `is:surface`. The box placeholder becomes "Search or query ( / )".
+- A Guide list names only the kinds the Declaration Kind boxes show,
+  but the search box ignores the sidebar filters. So with the Verus
+  defaults (Spec off) the filled query can list a spec function that
+  the Guide list hides. The docs say so. The filled query gets no hidden
+  `kind:` words, so the box rule stays simple.
+- "Show all in the Call Graph" appears under a node-list result when the
+  whole result, not only the 20 rows shown, has at most 200 nodes (the
+  render limit, so truncation never picks an arbitrary subset). Above,
+  the list says "N matches, more than the 200-node render limit. Add
+  filter words to show them in the Call Graph." For `top` N is at most
+  200, so the button is always there.
+- A click sets an exact ID set without direction, labelled with the query
+  text (`nodes top 10 by dependents is:unfinished`), switches to the Call
+  Graph and adds one Back entry. The graph draws the links among the
+  nodes and keeps the isolated ones. The sidebar filters still apply,
+  and the toast reports the result with the Guide's result message (for
+  example "37 nodes, 3 hidden by filters").
+- A query of filter words alone can match nodes on both layers. Show all
+  draws the matches on the layer the viewer shows, and its label gives
+  that count ("Show all 37 in the Call Graph"). If every match is on the
+  other layer, it switches layer, as a reveal does. `top` counts on the
+  shown layer, so it has no such case.
+
+PR 2 then holds all of Phase 2 that is left: `top N by dependents`, the
+`is:` words, the node-list results with "Show all in the Call Graph",
+the Guide query buttons and chips, and the new placeholder. Its viewer.md text gives each `is:` word
+with its exact definition and what it leaves out, the `top` grammar,
+how ties break, the size limit above which `by dependents` is not
+available (`transitiveDependentCounts` returns null above its cap), the
+"Blockers of X" recipe, how the Guide fills the search box (with the
+Declaration Kind difference), and when "Show all" appears and what it
+draws.
+
+Tests: parser round trip for `top`. Each `is:` word on a small fixture,
+including an entry point, a generated lemma and a lemma that only calls
+others. A `top` result that matches the Guide list for the same graph.
 
 ### Decisions (2026-10-16)
 
-These settle the points the section above left open.
+These settled the points that the first version of this section left
+open. Rules 2, 4, 5 and 6 are replaced by the pruned section above.
 
 1. **One input.** The search box is the query box. If the first word is
-   a verb (`top`, `unused`, `paths`) and the rest parses, the first row
-   of the result list runs the query. The lexical hits for the same
-   words stay below it, so a declaration named `paths_from` stays
-   findable. Rankings and selections are node lists. They use the
-   Phase 1 result list, with its reveal, "as source" and "as sink"
-   buttons. They add one "Show all in the Call Graph" button, which sets
-   an exact ID set without direction. That intent already keeps isolated
-   anchors, so the "isolated results must stay visible" item needs no
-   new code. A Guide preset fills the search box.
-2. **No goals yet.** `unused` is `noCallers` minus entry points. There is
-   no way to mark goals, and `is_entry_point` already covers
-   `@[blueprint]` Lean atoms, so the main theorems of a blueprint
-   project drop out. In a project without them, the top-level theorems
-   are listed as unused. If real graphs show that this is noisy, add
-   goals.
+   a verb and the rest parses, the first row of the result list runs the
+   query. The lexical hits for the same words stay below it, so a
+   declaration named `paths_from` stays findable.
+2. Replaced: `unused` is now `is:unused`.
 3. **`module:` is a path-segment match on the file path.** `/`, `.` and
    `::` are the same separator, and the extension is dropped. The query
    segments must appear in order as whole segments, anywhere in the path.
@@ -281,48 +380,9 @@ These settle the points the section above left open.
    chapter, as in `blueprint/Addition`. IDs have no common module syntax (see
    the PR 2 decisions of Phase 1), so the ID is not used. `file:` is a
    glob on the file name, as Include Files is today.
-4. **The module matrix is a Guide table, and last.** It is the only
-   preset that is not a node list, and the Crate Map already shows the
-   same at crate level. A cell runs `paths from module:A to module:B`.
-   It is the first candidate to drop.
-5. **Three PRs.**
-   - PR 1: the parser, the filter words `kind:`, `status:`, `module:`,
-     `file:` and `level:`, and the `module` matcher, so that `paths from
-     module:A to module:B` runs. The search box filters its lexical hits
-     by the same words (`lagrange kind:theorem`).
-   - PR 2: `rank` and `select`, the first presets, the node-list
-     results, and the Guide lists as saved queries. The first presets
-     are top N by callers, callees or dependents, `unused`, and surface.
-   - PR 3: the module matrix.
-6. **`noCallers` uses the Guide rule.** The relation is the one that
-   `refreshGuidePanel` gives `buildGraphSummary` (`src/main.ts`): the
-   links the Edge Types boxes show, and the Declaration Kind filter as
-   `isCandidate`. So `unused` and `rank` agree with the Guide counts. PR 2
-   must check whether `isCandidate` limits the callers or only the nodes
-   listed: a lemma whose only caller is a hidden spec function is not
-   unused, so the callers must not be limited. PR 2 records what it
-   finds here.
-
-User docs. Each PR documents what users see or type in
-`docs/guides/viewer.md`, in the same PR, with an example for each item:
-
-- PR 1: a "Query words" part in the Search box section. It gives the
-  `paths` verb and its grammar (PR 2 adds `top` and `unused`), and each
-  filter word with what it matches.
-  For `module:` it gives the segment rule with a Lean, a Rust and a
-  blueprint example. For `level:N` it points to the Dependency levels
-  strip. It also says how a verb query and lexical hits share the list,
-  and it gives the error for a query that does not parse.
-- PR 2: each verb and preset with its exact definition. For `unused`,
-  that is what it leaves out (entry points) and what it keeps
-  (top-level theorems without `@[blueprint]`). It also gives which
-  edges count as callers (rule 6), how ties break, and the "Show all in
-  the Call Graph" button. It gives the size limit above which `top N by
-  dependents` is not available (`transitiveDependentCounts` returns
-  null above its cap). It also says how the Guide lists now fill the
-  search box.
-- PR 3: the module matrix table. It says what a cell counts, which
-  filters apply, and what a click runs.
+4. Replaced: the module matrix is cut.
+5. Replaced: Phase 2 is two PRs, PR 1 (#97) and PR 2.
+6. Replaced: see "Structure words ignore the sidebar filters".
 
 The reasons stay in this plan, and the viewer.md text links here for
 them.
@@ -339,7 +399,7 @@ Decisions in PR 1 (2026-10-16):
   the crate boundary query, as in the sidebar.
 - PR 1 parses only `paths`. A text is a verb query only if it starts with
   `paths from`, so a search for a declaration named `paths` stays a
-  search. `top` and `unused` come with their executors in PR 2.
+  search. `top` comes with its executor in PR 2.
 - `kind:` matches the `kind` field as a glob, and `kind:lemma` means
   `proof` or `theorem`, so the examples above work in Verus and Lean.
 - `status:` is the exact status, not the sidebar group, so that
