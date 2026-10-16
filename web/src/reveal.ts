@@ -67,7 +67,7 @@ export function classifyReveal(ctx: RevealContext, id: string): RevealResult {
   if (!anchored && drawn(alone)) return { reason: 'outside-intent' };
   const filteredBy = filtersHiding(ctx.graph, anchored ? ctx.filters : alone, ctx.language, id);
   // A source or sink is the only anchor that its own query can leave out
-  if (filteredBy.length === 0 && ctx.filters.intent.kind === 'idPaths') return { reason: 'no-path' };
+  if (anchored && filteredBy.length === 0 && ctx.filters.intent.kind === 'idPaths') return { reason: 'no-path' };
   return { reason: 'filtered', filteredBy };
 }
 

@@ -73,6 +73,15 @@ describe('classifyReveal', () => {
     expect(classifyReveal(context({}, undefined, paths), KEM)).toEqual({ reason: 'no-path' });
   });
 
+  it('finds a node no query draws filtered, not on no path, when it is no source or sink', () => {
+    // Build artifacts are left out of every query
+    const KEM = 'probe:kemCKA.initA';
+    const paths = idPathsIntent([INIT_A], ['probe:oppUniKemCKA.StateA'], 'initA', 'StateA', { type: 'search' });
+    const built = { ...graph, nodes: graph.nodes.map(n => n.id === KEM ? { ...n, relative_path: 'target/gen.lean' } : n) };
+    expect(classifyReveal({ ...context({}, undefined, paths), graph: built }, KEM))
+      .toEqual({ reason: 'filtered', filteredBy: [] });
+  });
+
   it('finds a node of the inactive layer on the other layer', () => {
     // The blueprint layer is active and does not have the declaration
     const blueprint: D3Graph = { nodes: [], links: [], metadata: graph.metadata };
