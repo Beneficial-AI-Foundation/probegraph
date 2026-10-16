@@ -2,12 +2,12 @@
 
 Status (2026-10-16): Phase 0 merged in #80. `revealNode` in
 `src/main.ts` serves the editor and the search box.
-Phase 1 is in progress as three PRs (decided 2026-10-15): 1 the index and
-ranking (`src/search.ts`, no UI, merged in #89), 2 the search box and
-result list (`src/search-box.ts`, which replaces the dev-only
-`window.__revealNode` hook in the e2e tests, merged in #91), 3 the
-source-set plus sink-set intent (`idPaths` in `src/intent.ts`, in
-review). Phase 2 needs Phase 1. Its `rank by dependents` verb
+Phase 1 is done, in three PRs: 1 the index and ranking (`src/search.ts`,
+no UI, #89), 2 the search box and result list (`src/search-box.ts`,
+which replaces the dev-only `window.__revealNode` hook in the e2e tests,
+#91), 3 the source-set plus sink-set intent (`idPaths` in
+`src/intent.ts`, #93). Phase 2 is next, in three PRs; see "Decisions
+(2026-10-16)" in its section. Its `rank by dependents` verb
 reuses the guide Phase 4 count (merged in #81). Its frontier and
 "assumptions under X" presets need `trust-and-frontier.md` Phases 2 and 1.
 
@@ -250,6 +250,80 @@ answer the first one but not the other two without recursive scripts.
   a fixture with an entry point and a lemma that only calls others.
   `paths` between two modules on `probe-lean-extract-cut.json`. A rank
   that matches the Guide count for the same graph.
+
+### Decisions (2026-10-16)
+
+These settle the points the section above left open.
+
+1. **One input.** The search box is the query box. If the first word is
+   a verb (`top`, `unused`, `paths`) and the rest parses, the first row
+   of the result list runs the query. The lexical hits for the same
+   words stay below it, so a declaration named `paths_from` stays
+   findable. Rankings and selections are node lists. They use the
+   Phase 1 result list, with its reveal, "as source" and "as sink"
+   buttons. They add one "Show all in the Call Graph" button, which sets
+   an exact ID set without direction. That intent already keeps isolated
+   anchors, so the "isolated results must stay visible" item needs no
+   new code. A Guide preset fills the search box.
+2. **No goals yet.** `unused` is `noCallers` minus entry points. There is
+   no way to mark goals, and `is_entry_point` already covers
+   `@[blueprint]` Lean atoms, so the main theorems of a blueprint
+   project drop out. In a project without them, the top-level theorems
+   are listed as unused. If real graphs show that this is noisy, add
+   goals.
+3. **`module:` is a path-segment match on the file path.** `/`, `.` and
+   `::` are the same separator, and the extension is dropped. The query
+   segments must appear in order as whole segments, anywhere in the path.
+   A Lean file path is the module path: `SecureMessaging/AEAD/Defs.lean`
+   is `SecureMessaging.AEAD.Defs`. A Rust file path names the module, as
+   in `src/backend/serial/u64/field.rs`. A blueprint path names the
+   chapter, as in `blueprint/Addition`. IDs have no common module syntax (see
+   the PR 2 decisions of Phase 1), so the ID is not used. `file:` is a
+   glob on the file name, as Include Files is today.
+4. **The module matrix is a Guide table, and last.** It is the only
+   preset that is not a node list, and the Crate Map already shows the
+   same at crate level. A cell runs `paths from module:A to module:B`.
+   It is the first candidate to drop.
+5. **Three PRs.**
+   - PR 1: the parser, the filter words `kind:`, `status:`, `module:`,
+     `file:` and `level:`, and the `module` matcher, so that `paths from
+     module:A to module:B` runs. The search box filters its lexical hits
+     by the same words (`lagrange kind:theorem`).
+   - PR 2: `rank` and `select`, the first presets, the node-list
+     results, and the Guide lists as saved queries. The first presets
+     are top N by callers, callees or dependents, `unused`, and surface.
+   - PR 3: the module matrix.
+6. **`noCallers` uses the Guide rule.** The relation is the one that
+   `refreshGuidePanel` gives `buildGraphSummary` (`src/main.ts`): the
+   links the Edge Types boxes show, and the Declaration Kind filter as
+   `isCandidate`. So `unused` and `rank` agree with the Guide counts. PR 2
+   must check whether `isCandidate` limits the callers or only the nodes
+   listed: a lemma whose only caller is a hidden spec function is not
+   unused, so the callers must not be limited. PR 2 records what it
+   finds here.
+
+User docs. Each PR documents what users see or type in
+`docs/guides/viewer.md`, in the same PR, with an example for each item:
+
+- PR 1: a "Query words" part in the Search box section. It gives the
+  verbs and their grammar, and each filter word with what it matches.
+  For `module:` it gives the segment rule with a Lean, a Rust and a
+  blueprint example. For `level:N` it points to the Dependency levels
+  strip. It also says how a verb query and lexical hits share the list,
+  and it gives the error for a query that does not parse.
+- PR 2: each verb and preset with its exact definition. For `unused`,
+  that is what it leaves out (entry points) and what it keeps
+  (top-level theorems without `@[blueprint]`). It also gives which
+  edges count as callers (rule 6), how ties break, and the "Show all in
+  the Call Graph" button. It gives the size limit above which `top N by
+  dependents` is not available (`transitiveDependentCounts` returns
+  null above its cap). It also says how the Guide lists now fill the
+  search box.
+- PR 3: the module matrix table. It says what a cell counts, which
+  filters apply, and what a click runs.
+
+The reasons stay in this plan, and the viewer.md text links here for
+them.
 
 ## Later (not scheduled)
 
