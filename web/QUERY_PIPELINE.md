@@ -74,6 +74,8 @@ A `NodeMatcher` identifies the start nodes:
 type NodeMatcher =
   | { kind: 'pattern'; query: string }   // substring or glob against display_name
   | { kind: 'crate';   pattern: string } // crate: prefix query
+  | { kind: 'words';   text: string; pattern: string; filters: FilterWord[] }
+      // filter words (kind:, module:, ... in query-words.ts) plus a pattern
   | { kind: 'nodeIds'; ids: Set<string> } // exact IDs (Guide, VS Code, cross-layer links)
 ```
 

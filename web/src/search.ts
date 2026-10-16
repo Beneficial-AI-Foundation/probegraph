@@ -183,14 +183,28 @@ type RankKey = [whole: number, cost: number, position: number, length: number, i
  * costs, then the position of the first query token in the name, then the
  * number of words in the name (a shorter name fits the query more
  * closely), then the ID.
+ *
+ * With `accept`, only the nodes it accepts. A query without words then
+ * gives every accepted node, ordered by ID.
  */
-export function search(index: SearchIndex, query: string, limit = 20): SearchHit[] {
+export function search(
+  index: SearchIndex, query: string, limit = 20, accept?: (node: D3Node) => boolean,
+): SearchHit[] {
   const whole = query.trim().toLowerCase();
   const terms = unique(tokenize(query));
-  if (terms.length === 0) return [];
+  if (terms.length === 0) {
+    if (!accept) return [];
+    return index.entries
+      .filter(e => accept(e.node))
+      .map(e => e.node)
+      .sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+      .slice(0, limit)
+      .map(node => ({ node, cost: 0 }));
+  }
 
   const ranked: { hit: SearchHit; key: RankKey }[] = [];
   for (const entry of index.entries) {
+    if (accept && !accept(entry.node)) continue;
     let cost = 0;
     let position = Infinity;
     for (const [i, term] of terms.entries()) {

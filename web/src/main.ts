@@ -2467,6 +2467,7 @@ function matcherText(m: NodeMatcher, role: 'source' | 'sink' = 'source'): string
   switch (m.kind) {
     case 'pattern': return m.query;
     case 'crate': return `crate:${m.pattern}`;
+    case 'words': return m.text;
     case 'nodeIds': {
       const intent = state.filters.intent;
       if (intent.kind === 'ids' && intent.label) return intent.label;
@@ -3986,6 +3987,13 @@ function initSearchBox(): void {
       policy: action === 'reveal' ? { kind: 'replace' } : { kind: 'anchor', role: action },
       center: true,
       offer: true,
+    }),
+    // As if typed into Source and Sink, as one Back entry
+    runQuery: (source, sink) => setIntent(textIntent(source, sink), {
+      history: 'push',
+      before: () => {
+        if (activeView !== 'callgraph') switchView('callgraph', { apply: false });
+      },
     }),
   });
 }

@@ -19,6 +19,7 @@ import {
 } from './filters';
 import { compileStatusPredicate } from './status-filter';
 import { QueryIntent, anchorIds, isDirectionalIntent, isFocusIntent } from './intent';
+import { FilterWord, compileFilterWords, graphWordContext, parseWords } from './query-words';
 
 // ============================================================================
 // 1. Types
@@ -27,6 +28,8 @@ import { QueryIntent, anchorIds, isDirectionalIntent, isFocusIntent } from './in
 export type NodeMatcher =
   | { kind: 'pattern'; query: string }
   | { kind: 'crate'; pattern: string }
+  // Filter words (query-words.ts) plus a plain pattern, empty for none
+  | { kind: 'words'; text: string; pattern: string; filters: FilterWord[] }
   | { kind: 'nodeIds'; ids: Set<string> };
 
 export type GraphQuery =
@@ -173,8 +176,13 @@ function nodeMatchesIncludeFilePattern(node: D3Node, patterns: IncludeFilePatter
   );
 }
 
+/** A query that is one `crate:` word with one value, nothing else. */
 function isCrateQuery(query: string): boolean {
-  return query.startsWith('crate:');
+  const parsed = parseWords(query);
+  if (!parsed.ok) return false;
+  const { plain, filters } = parsed.value;
+  return plain.length === 0 && filters.length === 1
+    && filters[0].key === 'crate' && filters[0].values.length === 1;
 }
 
 export function getLinkId(link: D3Link): { sourceId: string; targetId: string } {
@@ -538,6 +546,14 @@ function resolveMatcher(
         if (matchesQuery(node, `crate:${matcher.pattern}`)) out.add(node.id);
       }
       break;
+    case 'words': {
+      const passes = compileFilterWords(matcher.filters, graphWordContext(fullGraph));
+      for (const node of fullGraph.nodes) {
+        if (!passes(node)) continue;
+        if (matcher.pattern === '' || matchesQuery(node, matcher.pattern)) out.add(node.id);
+      }
+      break;
+    }
     case 'nodeIds':
       for (const id of matcher.ids) out.add(id);
       break;
@@ -548,10 +564,20 @@ function resolveMatcher(
 // 5. Compiler
 // ============================================================================
 
+/**
+ * Matcher for a Source or Sink text. A text with filter words gets a
+ * `words` matcher; a text whose filter words do not parse, or that has
+ * none, stays a plain pattern as before.
+ */
 function buildMatcher(queryStr: string): NodeMatcher {
   const q = queryStr.trim().toLowerCase();
   if (isCrateQuery(q)) {
     return { kind: 'crate', pattern: q.slice(6) };
+  }
+  const parsed = parseWords(q);
+  if (parsed.ok && parsed.value.filters.length > 0) {
+    const { plain, filters } = parsed.value;
+    return { kind: 'words', text: q, pattern: plain.join(' '), filters };
   }
   return { kind: 'pattern', query: q };
 }
