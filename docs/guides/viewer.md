@@ -120,7 +120,9 @@ hidden verified function, with no edge from them to t.
 The search box in the header finds a declaration by name and shows it in
 the Call Graph. Press `/` anywhere outside a text field to move the focus
 to it. Unlike Source and Sink, the search box does not change the query
-while you type. It can change the query only when you pick a result.
+while you type. It can change the query only when you pick a result. The
+search box also reads filter words, such as `kind:theorem`, and the
+`paths` query. See [Query words](#query-words).
 
 What it searches. The search box looks at every declaration of the graph.
 If the graph has a blueprint layer, it looks at both layers. The sidebar filters
@@ -197,7 +199,7 @@ Keys in the search box:
 
 | Key | Action |
 |---|---|
-| Enter | Show the top result |
+| Enter | Run the query of the first row, or show the top result |
 | ArrowDown | Move to the result list |
 | Escape | Close the result list |
 | Alt+Enter | Move to the first button of the action toast |
@@ -206,13 +208,89 @@ In the result list, ArrowUp and ArrowDown move to the same button in the
 previous or next row. Tab moves between the buttons of a row. ArrowUp
 from the first row and Escape go back to the search box.
 
-Limits. The search box finds declarations only by their words. It does not
-read filter words such as `kind:lemma` yet, and it does not search
-docstrings, because no extract has them. On a large graph that is not
+Limits. The search box finds declarations by their words and by the
+filter words below. It does not search docstrings, because no extract
+has them. On a large graph that is not
 loaded yet (the "Large Graph Detected" prompt), the search box says to
 load the graph first. The viewer builds the search index the first time
 the search box gets the focus, and again after each new graph. On a graph
 with 22 000 nodes this takes about 65 ms.
+
+### Query words
+
+A query word narrows the search or runs a query. You can type query
+words in the search box and in the Source and Sink inputs.
+
+Filter words. A filter word has the form `key:value`. For example,
+`lagrange kind:theorem` finds the theorems with `lagrange` in their name.
+A value can list alternatives with commas: `status:failed,unverified`
+matches either status. A declaration must pass every filter word of the
+query. The keys and the case of the values do not matter.
+
+| Word | Matches | Example |
+|---|---|---|
+| `kind:` | The declaration kind, as the result row shows it. `kind:lemma` matches `proof` and `theorem` | `kind:def` |
+| `status:` | The exact verification status: `verified`, `transitively-verified`, `trusted`, `failed` or `unverified`. A declaration without a status counts as `unverified` | `status:failed` |
+| `module:` | Whole segments of the file path, in order (see below) | `module:serial.u64` |
+| `file:` | A glob on the file name, as Include Files reads it. With a `/`, a glob on the file path | `file:edwards.rs`, `file:*.lean` |
+| `level:` | The dependency level, as the [Dependency levels](#dependency-levels) strip counts it | `level:0` |
+| `crate:` | A substring of the crate name | `crate:dalek` |
+
+The `module:` rule. The viewer splits the value and the file path into
+segments at `/`, `.` and `::`, and drops the file extension. The segments of the value must
+appear one after the other as whole segments, anywhere in the path. The
+case does not matter. Examples:
+
+- Lean: the file path is the module path. `module:SecureMessaging.AEAD`
+  and `module:AEAD.Defs` match `SecureMessaging/AEAD/Defs.lean`.
+- Rust: the file path names the module. `module:serial::u64::field`
+  matches `src/backend/serial/u64/field.rs`. `module:serial.field` does
+  not match it, because `u64` is between the two segments.
+- Blueprint: the file path names the chapter. `module:Addition` matches
+  `blueprint/Addition`.
+
+`module:` does not read the node ID, because IDs have no common module
+syntax across Rust, Lean and blueprint extracts. The plan
+[graph-search.md](../plans/graph-search.md) gives the reasons.
+
+`level:` uses every node and every dependency of the layer, as the strip
+does. The kind and edge-type filters do not change the levels.
+
+In the search box, the filter words narrow the result list. The sidebar
+filters still do not. If the query has filter words only, the list shows
+every declaration that passes them, ordered by node ID. For example,
+`kind:axiom` lists the axioms. In Source and Sink, a text with filter words
+selects the declarations that pass them. The other words of the text
+match the display name, as before. For example, `decompress module:edwards`
+in Source shows what the `decompress` functions in `edwards.rs` call.
+
+The `paths` query. Type `paths from <words> to <words>` in the search
+box, for example `paths from module:edwards to module:field`. The first
+row of the list then shows the query with a `query` tag. Enter, or a
+click on the row, runs it. The viewer puts the words after `from` into
+Source and the words after `to` into Sink, as if you typed them there,
+and switches to the Call Graph. The graph shows every declaration on a
+call path from the first set to the second. One Back undoes the query.
+
+The search box treats a text as a query only if it starts with `paths
+from`. Below the query row, the list still shows the search results for
+the same text, so a declaration named `paths_from` stays easy to find. If
+each side is one `crate:` word, for example `paths from crate:a to
+crate:b`, the query shows the calls that cross from crate `a` to crate
+`b`, as Source and Sink do for two crates.
+
+Errors. If a query cannot run, the list says why above the results, and a
+screen reader announces it:
+
+| Message | Cause |
+|---|---|
+| Not a query yet: paths from \<words\> to \<words\> | The text starts with `paths from`, but has no `to` or an empty side |
+| *key*: needs a value, for example *word* | A filter word without a value, such as `kind:` |
+| status:*value* is not a status. Use verified, transitively-verified, trusted, failed or unverified | An unknown status |
+| level:*value* is not a level. Use a whole number, for example level:0 | A level that is not a whole number |
+
+In Source and Sink, a text whose filter word has one of these errors is
+read as plain text, which usually matches nothing.
 
 ### Action toast
 
@@ -256,7 +334,9 @@ Matching rules:
   against `path`, then the function name (`edwards::decompress`);
 - queries containing `.` also match against full node IDs, so Lean dotted
   names like `Scalar52.add_spec` resolve;
-- `crate:name` matches by crate.
+- `crate:name` matches by crate;
+- filter words such as `kind:theorem` and `module:edwards` select by kind,
+  status, module, file and level (see [Query words](#query-words)).
 
 **Depth** limits hops from the source/sink; 0 means unlimited.
 

@@ -7,7 +7,8 @@ no UI, #89), 2 the search box and result list (`src/search-box.ts`,
 which replaces the dev-only `window.__revealNode` hook in the e2e tests,
 #91), 3 the source-set plus sink-set intent (`idPaths` in
 `src/intent.ts`, #93). Phase 2 is next, in three PRs; see "Decisions
-(2026-10-16)" in its section. Its `rank by dependents` verb
+(2026-10-16)" in its section. PR 1 (query words and `paths`,
+`src/query-words.ts`) is in review. Its `rank by dependents` verb
 reuses the guide Phase 4 count (merged in #81). Its frontier and
 "assumptions under X" presets need `trust-and-frontier.md` Phases 2 and 1.
 
@@ -306,7 +307,8 @@ User docs. Each PR documents what users see or type in
 `docs/guides/viewer.md`, in the same PR, with an example for each item:
 
 - PR 1: a "Query words" part in the Search box section. It gives the
-  verbs and their grammar, and each filter word with what it matches.
+  `paths` verb and its grammar (PR 2 adds `top` and `unused`), and each
+  filter word with what it matches.
   For `module:` it gives the segment rule with a Lean, a Rust and a
   blueprint example. For `level:N` it points to the Dependency levels
   strip. It also says how a verb query and lexical hits share the list,
@@ -324,6 +326,33 @@ User docs. Each PR documents what users see or type in
 
 The reasons stay in this plan, and the viewer.md text links here for
 them.
+
+Decisions in PR 1 (2026-10-16):
+
+- `paths from A to B` runs as the text intent with Source A and Sink B.
+  It needs no new intent kind, and the URL, history and sidebar already
+  handle that intent. So Source and Sink read the filter words too, which
+  is the "one parser" of the Syntax item. A side with filter words gets a
+  `words` matcher in `src/query.ts`: the filter words, plus the plain
+  words as the old display-name pattern. A text whose filter word does
+  not parse stays the old pattern. One `crate:` word on each side stays
+  the crate boundary query, as in the sidebar.
+- PR 1 parses only `paths`. A text is a verb query only if it starts with
+  `paths from`, so a search for a declaration named `paths` stays a
+  search. `top` and `unused` come with their executors in PR 2.
+- `kind:` matches the `kind` field as a glob, and `kind:lemma` means
+  `proof` or `theorem`, so the examples above work in Verus and Lean.
+- `status:` is the exact status, not the sidebar group, so that
+  `status:verified` matches what the result row shows. A node without a
+  status counts as `unverified`, as in the sidebar.
+- `module:` segments must be consecutive (`serial.u64` matches,
+  `serial.field` does not match `serial/u64/field.rs`), and case does not
+  matter.
+- Comma alternatives work for every key. A query of filter words only
+  lists the matching nodes by ID. This is close to `select`, but without
+  a predicate on the edges.
+- `level:` uses `graphCondensation` and `dependencyLevels` on the whole
+  layer, the same numbers as the Guide strip, cached per graph.
 
 ## Later (not scheduled)
 
