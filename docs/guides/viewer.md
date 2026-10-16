@@ -224,7 +224,8 @@ words in the search box and in the Source and Sink inputs.
 Filter words. A filter word has the form `key:value`. For example,
 `lagrange kind:theorem` finds the theorems with `lagrange` in their name.
 A value can list alternatives with commas: `status:failed,unverified`
-matches either status. A declaration must pass every filter word of the
+matches either status. The viewer ignores an empty alternative, so
+`crate:dalek,` is the same as `crate:dalek`. A declaration must pass every filter word of the
 query. The keys and the case of the values do not matter.
 
 | Word | Matches | Example |
@@ -274,7 +275,9 @@ call path from the first set to the second. One Back undoes the query.
 
 The search box treats a text as a query only if it starts with `paths
 from`. Below the query row, the list still shows the search results for
-the same text, so a declaration named `paths_from` stays easy to find. If
+the same text, so a declaration named `paths_from` stays easy to find.
+If the text has no search results, the list shows only the query row,
+and a screen reader announces "Query ready. Press Enter to run it". If
 each side is one `crate:` word, for example `paths from crate:a to
 crate:b`, the query shows the calls that cross from crate `a` to crate
 `b`, as Source and Sink do for two crates.

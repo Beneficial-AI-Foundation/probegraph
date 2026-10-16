@@ -122,7 +122,8 @@ export class SearchBox {
     if (noGraph) this.verb = null;
     if (this.verb) this.list.appendChild(queryRow(this.verb));
     if (error && !noGraph) this.list.appendChild(note(error, 'search-error'));
-    if (noGraph || (this.hits.length === 0 && !error)) {
+    // Under a query row, "No matches" would read as a query without paths
+    if (noGraph || (this.hits.length === 0 && !error && !this.verb)) {
       this.list.appendChild(note(noGraph ? 'Load a graph to search it' : 'No matches'));
     }
     const twoLayers = this.blueprintIds.size > 0;
@@ -135,8 +136,10 @@ export class SearchBox {
       : count === 0 ? 'No matches'
       : more ? `First ${RESULT_LIMIT} matches`
       : `${count} ${count === 1 ? 'match' : 'matches'}`;
-    const prefix = noGraph ? '' : this.verb ? 'Query ready. ' : error ? `${error}. ` : '';
-    this.status.textContent = prefix + matches;
+    this.status.textContent = noGraph ? matches
+      : this.verb ? (count === 0 ? 'Query ready. Press Enter to run it' : `Query ready. ${matches}`)
+      : error ? `${error}. ${matches}`
+      : matches;
   }
 
   /**

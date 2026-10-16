@@ -204,6 +204,8 @@ describe('Source and Sink with filter words', () => {
       node('a1', { crate_name: 'a' }), node('a2', { crate_name: 'a' }), node('b1', { crate_name: 'b' }),
     ], [['a1', 'a2'], ['a2', 'b1']]);
     expect(run(g, 'crate:a', 'crate:b')).toEqual(['a2', 'b1']);
+    // An empty comma value is dropped, as in the search box
+    expect(run(g, 'crate:a,', 'crate:,b')).toEqual(['a2', 'b1']);
     // With another word it is a paths query
     expect(run(g, 'crate:a kind:def', 'crate:b')).toEqual(['a1', 'a2', 'b1']);
   });

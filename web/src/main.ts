@@ -2125,8 +2125,17 @@ function copyGraph(graph: D3Graph): D3Graph {
 }
 
 /**
+ * Set crate_name on every node with language-aware extraction (Lean:
+ * two-level module path, Rust/Verus: top-level crate).
+ */
+function fillCrateNames(graph: D3Graph): void {
+  const language = detectProjectLanguage(graph);
+  for (const node of graph.nodes) node.crate_name = extractCrateName(node, language);
+}
+
+/**
  * Make `layer` state.fullGraph and rebuild everything derived from it:
- * caches, filter panels, crate names, derived statuses, file list. Leaves
+ * caches, filter panels, derived statuses, file list. Leaves
  * state.filters at the layer's defaults (graphDefaultFilters); the caller
  * restores or reads the filters it wants.
  */
@@ -2159,12 +2168,6 @@ function showLayer(layer: Layer): void {
   renderKindFilters(state.projectLanguage);
   renderCallTypeFilters(state.projectLanguage);
   updateLanguageLabels(state.projectLanguage);
-
-  // Backfill crate_name on every node using language-aware extraction
-  // (Lean: two-level module path, Rust/Verus: top-level crate)
-  for (const node of state.fullGraph.nodes) {
-    node.crate_name = extractCrateName(node, state.projectLanguage);
-  }
 
   const isLarge = isLargeGraph(state.fullGraph);
 
@@ -2324,6 +2327,9 @@ function loadGraph(graph: D3Graph, message: string, layer?: Layer): void {
   // Deep copy the graph to prevent D3 from mutating original data
   codeLayer = copyGraph(graph);
   blueprintLayer = graph.blueprintLayer ? copyGraph(graph.blueprintLayer) : null;
+  // Both layers, not only the shown one: the search box reads both
+  fillCrateNames(codeLayer);
+  if (blueprintLayer) fillCrateNames(blueprintLayer);
   inactiveLayer = null;
   if (layer && blueprintLayer) replaceURLLayer(layer);
   cancelReveals();

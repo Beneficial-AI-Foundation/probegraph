@@ -147,7 +147,9 @@ test.describe('search box', () => {
     await input.fill('paths from file:a.rs to file:b.rs');
     const row = page.locator('.search-query');
     await expect(row).toContainText('paths from file:a.rs to file:b.rs');
-    await expect(page.locator('#search-status')).toHaveText(/^Query ready\. /);
+    // The text has no search hits; that must not read as a query without paths
+    await expect(page.locator('#search-status')).toHaveText('Query ready. Press Enter to run it');
+    await expect(page.locator('.search-note')).toHaveCount(0);
     // ArrowDown reaches the query row first
     await input.press('ArrowDown');
     await expect(row.locator('[data-action="query"]')).toBeFocused();
@@ -588,6 +590,18 @@ test.describe('revealNode from search', () => {
 
 // probe-leanblueprint project-template extract: 9 blueprint atoms, 9 Lean atoms
 const BLUEPRINT = readFileSync(new URL('../src/test-data/blueprint-project-template.json', import.meta.url));
+
+test('crate: finds the declarations of the layer that is not shown', async ({ page }) => {
+  await page.goto('/probegraph/');
+  await page.locator('#file-input').setInputFiles({
+    name: 'extract.json', mimeType: 'application/json', buffer: BLUEPRINT,
+  });
+  await expect(page.locator('circle.node')).toHaveCount(9, { timeout: 15000 });
+  await expect(page.locator('#layer-blueprint')).toHaveClass(/active/);
+  // The 9 Lean atoms are in ProjectTemplate/..., on the code layer
+  await page.locator('#search-input').fill('crate:ProjectTemplate');
+  await expect(page.locator('.search-result')).toHaveCount(9);
+});
 
 test('a reveal on the other layer and its new query are one history entry', async ({ page }) => {
   await page.goto('/probegraph/');

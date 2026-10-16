@@ -176,15 +176,6 @@ function nodeMatchesIncludeFilePattern(node: D3Node, patterns: IncludeFilePatter
   );
 }
 
-/** A query that is one `crate:` word with one value, nothing else. */
-function isCrateQuery(query: string): boolean {
-  const parsed = parseWords(query);
-  if (!parsed.ok) return false;
-  const { plain, filters } = parsed.value;
-  return plain.length === 0 && filters.length === 1
-    && filters[0].key === 'crate' && filters[0].values.length === 1;
-}
-
 export function getLinkId(link: D3Link): { sourceId: string; targetId: string } {
   const sourceId = typeof link.source === 'string' ? link.source : link.source.id;
   const targetId = typeof link.target === 'string' ? link.target : link.target.id;
@@ -565,21 +556,20 @@ function resolveMatcher(
 // ============================================================================
 
 /**
- * Matcher for a Source or Sink text. A text with filter words gets a
- * `words` matcher; a text whose filter words do not parse, or that has
- * none, stays a plain pattern as before.
+ * Matcher for a Source or Sink text. A text that is one `crate:` word
+ * with one value gets a `crate` matcher, another text with filter words
+ * gets a `words` matcher, and a text whose filter words do not parse, or
+ * that has none, stays a plain pattern as before.
  */
 function buildMatcher(queryStr: string): NodeMatcher {
   const q = queryStr.trim().toLowerCase();
-  if (isCrateQuery(q)) {
-    return { kind: 'crate', pattern: q.slice(6) };
-  }
   const parsed = parseWords(q);
-  if (parsed.ok && parsed.value.filters.length > 0) {
-    const { plain, filters } = parsed.value;
-    return { kind: 'words', text: q, pattern: plain.join(' '), filters };
+  if (!parsed.ok || parsed.value.filters.length === 0) return { kind: 'pattern', query: q };
+  const { plain, filters } = parsed.value;
+  if (plain.length === 0 && filters.length === 1 && filters[0].key === 'crate' && filters[0].values.length === 1) {
+    return { kind: 'crate', pattern: filters[0].values[0] };
   }
-  return { kind: 'pattern', query: q };
+  return { kind: 'words', text: q, pattern: plain.join(' '), filters };
 }
 
 /**
@@ -732,15 +722,12 @@ function compileTextQuery(source: string, sink: string, maxDepth: number | null)
     if (sourceQuery === sinkQuery) {
       return { type: 'neighborhood', center: buildMatcher(sourceQuery), maxDepth };
     }
-    if (isCrateQuery(sourceQuery) && isCrateQuery(sinkQuery)) {
-      return {
-        type: 'crateBoundary',
-        sourceCrate: sourceQuery.slice(6),
-        targetCrate: sinkQuery.slice(6),
-        exact: false,
-      };
+    const from = buildMatcher(sourceQuery);
+    const to = buildMatcher(sinkQuery);
+    if (from.kind === 'crate' && to.kind === 'crate') {
+      return { type: 'crateBoundary', sourceCrate: from.pattern, targetCrate: to.pattern, exact: false };
     }
-    return { type: 'paths', from: buildMatcher(sourceQuery), to: buildMatcher(sinkQuery) };
+    return { type: 'paths', from, to };
   }
   if (hasSource) return { type: 'callees', from: buildMatcher(sourceQuery), maxDepth };
   if (hasSink) return { type: 'callers', to: buildMatcher(sinkQuery), maxDepth };
