@@ -265,6 +265,22 @@ body {
   color: var(--pg-text-muted);
 }
 
+.search-note.search-error {
+  color: var(--pg-text);
+}
+
+.search-query {
+  border-bottom: 1px solid var(--pg-border);
+}
+
+.search-query-tag {
+  padding: 0 0.3rem;
+  border: 1px solid var(--pg-accent);
+  border-radius: var(--pg-radius-sm);
+  font-size: 0.72rem;
+  color: var(--pg-accent);
+}
+
 .file-input-container {
   position: relative;
 }

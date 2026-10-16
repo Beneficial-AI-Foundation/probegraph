@@ -124,6 +124,52 @@ test.describe('search box', () => {
     await expect(page.locator('#search-status')).toHaveText('No matches');
   });
 
+  test('filter words narrow the hits, and a bad filter word says why', async ({ page }) => {
+    await open(page, '');
+    // s is the only spec function; it is hidden by the Spec filter and still found
+    await page.locator('#search-input').fill('kind:spec');
+    await expect(page.locator('.search-result')).toHaveCount(1);
+    await expect(page.locator('.search-result').first()).toHaveAttribute('data-id', 'probe:s');
+    await page.locator('#search-input').fill('l1 file:l10.rs');
+    await expect(page.locator('.search-result')).toHaveCount(1);
+    await expect(page.locator('.search-result').first()).toHaveAttribute('data-id', 'probe:l10');
+    await page.locator('#search-input').fill('h status:done');
+    await expect(page.locator('.search-error')).toContainText('status:done is not a status');
+    await expect(page.locator('.search-result')).toHaveCount(0);
+    await expect(page.locator('#search-status')).toContainText('status:done is not a status');
+  });
+
+  test('paths from ... to ... runs as a Source and Sink query, and Back undoes it', async ({ page }) => {
+    await open(page, A_CALLEES);
+    const input = page.locator('#search-input');
+    await input.fill('paths from file:a.rs');
+    await expect(page.locator('.search-error')).toHaveText('Not a query yet: paths from <words> to <words>');
+    await input.fill('paths from file:a.rs to file:b.rs');
+    const row = page.locator('.search-query');
+    await expect(row).toContainText('paths from file:a.rs to file:b.rs');
+    // The text has no search hits; that must not read as a query without paths
+    await expect(page.locator('#search-status')).toHaveText('Query ready. Press Enter to run it');
+    await expect(page.locator('.search-note')).toHaveCount(0);
+    // ArrowDown reaches the query row first
+    await input.press('ArrowDown');
+    await expect(row.locator('[data-action="query"]')).toBeFocused();
+    await page.keyboard.press('ArrowUp');
+    await expect(input).toBeFocused();
+
+    await input.press('Enter');
+    await expect(page.locator('#search-results')).toBeHidden();
+    await expect(input).toBeFocused();
+    await expect(input).toHaveValue('paths from file:a.rs to file:b.rs');
+    await expect(page.locator('#query-label')).toHaveText('query: paths file:a.rs → file:b.rs');
+    await expect(page.locator('#source-input')).toHaveValue('file:a.rs');
+    await expect(page.locator('#sink-input')).toHaveValue('file:b.rs');
+    const params = new URL(page.url()).searchParams;
+    expect([params.get('source'), params.get('sink'), params.get('id')]).toEqual(['file:a.rs', 'file:b.rs', null]);
+
+    await page.goBack();
+    await expect.poll(() => new URL(page.url()).searchParams.get('id')).toBe('probe:a');
+  });
+
   test('arrow keys move through the rows and Escape goes back to the box', async ({ page }) => {
     await open(page, A_CALLEES);
     await page.locator('#search-input').fill('l1');
@@ -544,6 +590,18 @@ test.describe('revealNode from search', () => {
 
 // probe-leanblueprint project-template extract: 9 blueprint atoms, 9 Lean atoms
 const BLUEPRINT = readFileSync(new URL('../src/test-data/blueprint-project-template.json', import.meta.url));
+
+test('crate: finds the declarations of the layer that is not shown', async ({ page }) => {
+  await page.goto('/probegraph/');
+  await page.locator('#file-input').setInputFiles({
+    name: 'extract.json', mimeType: 'application/json', buffer: BLUEPRINT,
+  });
+  await expect(page.locator('circle.node')).toHaveCount(9, { timeout: 15000 });
+  await expect(page.locator('#layer-blueprint')).toHaveClass(/active/);
+  // The 9 Lean atoms are in ProjectTemplate/..., on the code layer
+  await page.locator('#search-input').fill('crate:ProjectTemplate');
+  await expect(page.locator('.search-result')).toHaveCount(9);
+});
 
 test('a reveal on the other layer and its new query are one history entry', async ({ page }) => {
   await page.goto('/probegraph/');

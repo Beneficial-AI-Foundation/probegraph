@@ -1,16 +1,22 @@
 /**
  * The search box in the header: lexical search (search.ts) over both
- * layers, a result list, and a reveal of the chosen hit. See
- * docs/plans/graph-search.md, Phase 1, and the "Search box" section of
- * docs/guides/viewer.md.
+ * layers, a result list, and a reveal of the chosen hit. Filter words
+ * (query-words.ts) narrow the hits, and a `paths from ... to ...` text
+ * gets a first row that runs it as a Source and Sink query. See
+ * docs/plans/graph-search.md, Phases 1 and 2, and the "Search box"
+ * section of docs/guides/viewer.md.
  *
- * Keys in the search box: Enter reveals the top hit, ArrowDown moves to
+ * Keys in the search box: Enter runs the query or reveals the top hit, ArrowDown moves to
  * the result list, Escape closes it, and Alt+Enter moves the focus to the
  * first button of the reveal's toast. In the list, ArrowUp and ArrowDown
  * move between rows and Escape goes back to the box. `/` anywhere outside
  * a text field focuses the box.
  */
 
+import {
+  compileFilterWords, formatVerbQuery, graphWordContext, parseVerbQuery, parseWords,
+  type VerbQuery, type WordContext,
+} from './query-words';
 import { buildSearchIndex, search, type SearchIndex } from './search';
 import { statusColor } from './theme';
 import type { D3Graph, D3Node } from './types';
@@ -22,14 +28,19 @@ export interface SearchBoxDeps {
   /** The loaded layers; null before a graph loads */
   layers(): { code: D3Graph; blueprint: D3Graph | null } | null;
   reveal(id: string, action: SearchAction): void;
+  /** Run a text query with these Source and Sink texts */
+  runQuery(source: string, sink: string): void;
 }
 
 const RESULT_LIMIT = 20;
 
 export class SearchBox {
   private index: SearchIndex | null = null;
+  private context: WordContext | null = null;
   private blueprintIds = new Set<string>();
   private hits: D3Node[] = [];
+  /** The verb query of the text, run by its row and by Enter */
+  private verb: VerbQuery | null = null;
 
   constructor(
     private readonly input: HTMLInputElement,
@@ -65,6 +76,7 @@ export class SearchBox {
   /** A new graph: the next focus or query builds the index again. */
   invalidate(): void {
     this.index = null;
+    this.context = null;
     this.blueprintIds.clear();
     this.close();
   }
@@ -79,6 +91,7 @@ export class SearchBox {
       nodes: [...code.nodes, ...blueprint?.nodes ?? []],
       links: [...code.links, ...blueprint?.links ?? []],
     });
+    this.context = blueprint ? graphWordContext(code, blueprint) : graphWordContext(code);
     return this.index;
   }
 
@@ -89,15 +102,28 @@ export class SearchBox {
       return;
     }
     const index = this.ensureIndex();
-    // One more than shown, to know whether there are more
-    const hits = index ? search(index, query, RESULT_LIMIT + 1).map(h => h.node) : [];
+    const verb = parseVerbQuery(query);
+    const words = parseWords(query);
+    this.verb = verb?.ok ? verb.value : null;
+    const error = verb && !verb.ok ? verb.error : !words.ok ? words.error : null;
+    let hits: D3Node[] = [];
+    if (index && words.ok) {
+      const { plain, filters } = words.value;
+      const accept = filters.length > 0 ? compileFilterWords(filters, this.context!) : undefined;
+      // One more than shown, to know whether there are more
+      hits = search(index, plain.join(' '), RESULT_LIMIT + 1, accept).map(h => h.node);
+    }
     this.hits = hits.slice(0, RESULT_LIMIT);
-    this.render(index === null, hits.length > RESULT_LIMIT);
+    this.render(index === null, hits.length > RESULT_LIMIT, error);
   }
 
-  private render(noGraph: boolean, more: boolean): void {
+  private render(noGraph: boolean, more: boolean, error: string | null): void {
     this.list.replaceChildren();
-    if (noGraph || this.hits.length === 0) {
+    if (noGraph) this.verb = null;
+    if (this.verb) this.list.appendChild(queryRow(this.verb));
+    if (error && !noGraph) this.list.appendChild(note(error, 'search-error'));
+    // Under a query row, "No matches" would read as a query without paths
+    if (noGraph || (this.hits.length === 0 && !error && !this.verb)) {
       this.list.appendChild(note(noGraph ? 'Load a graph to search it' : 'No matches'));
     }
     const twoLayers = this.blueprintIds.size > 0;
@@ -106,10 +132,14 @@ export class SearchBox {
     this.list.hidden = false;
     this.place();
     const count = this.hits.length;
-    this.status.textContent = noGraph ? 'Load a graph to search it'
+    const matches = noGraph ? 'Load a graph to search it'
       : count === 0 ? 'No matches'
       : more ? `First ${RESULT_LIMIT} matches`
       : `${count} ${count === 1 ? 'match' : 'matches'}`;
+    this.status.textContent = noGraph ? matches
+      : this.verb ? (count === 0 ? 'Query ready. Press Enter to run it' : `Query ready. ${matches}`)
+      : error ? `${error}. ${matches}`
+      : matches;
   }
 
   /**
@@ -155,6 +185,7 @@ export class SearchBox {
     this.list.hidden = true;
     this.list.replaceChildren();
     this.hits = [];
+    this.verb = null;
     this.status.textContent = '';
   }
 
@@ -162,6 +193,12 @@ export class SearchBox {
     this.input.focus();
     this.close();
     this.deps.reveal(id, action);
+  }
+
+  private runVerb(verb: VerbQuery): void {
+    this.input.focus();
+    this.close();
+    this.deps.runQuery(verb.from, verb.to);
   }
 
   private onInputKey(e: KeyboardEvent): void {
@@ -174,10 +211,11 @@ export class SearchBox {
       e.preventDefault();
       if (this.list.hidden) this.update();
       const top = this.hits[0];
-      if (top) this.run(top.id, 'reveal');
+      if (this.verb) this.runVerb(this.verb);
+      else if (top) this.run(top.id, 'reveal');
     } else if (e.key === 'ArrowDown') {
       if (this.list.hidden) this.update();
-      const first = this.list.querySelector<HTMLButtonElement>('.search-result-main');
+      const first = this.list.querySelector<HTMLButtonElement>('.search-result button');
       if (first) {
         e.preventDefault();
         first.focus();
@@ -211,12 +249,18 @@ export class SearchBox {
       if (e.key === 'ArrowUp') this.input.focus();
       return;
     }
+    // The query row has one button; from it or to it, go to the main button
     const action = target.dataset.action ?? 'reveal';
-    next.querySelector<HTMLButtonElement>(`[data-action="${action}"]`)?.focus();
+    (next.querySelector<HTMLButtonElement>(`[data-action="${action}"]`)
+      ?? next.querySelector<HTMLButtonElement>('button'))?.focus();
   }
 
   private onListClick(e: MouseEvent): void {
     const target = (e.target as HTMLElement).closest<HTMLElement>('button[data-action]');
+    if (target?.dataset.action === 'query') {
+      if (this.verb) this.runVerb(this.verb);
+      return;
+    }
     const id = target?.closest<HTMLElement>('.search-result')?.dataset.id;
     if (target && id) this.run(id, target.dataset.action as SearchAction);
   }
@@ -228,7 +272,18 @@ function isTextField(target: EventTarget | null): boolean {
     || (target.tagName === 'INPUT' && !['checkbox', 'radio', 'button', 'range', 'file'].includes((target as HTMLInputElement).type));
 }
 
-function button(className: string, action: SearchAction, title: string, text = ''): HTMLButtonElement {
+/** The first row of a verb query: one button that runs it. */
+function queryRow(verb: VerbQuery): HTMLElement {
+  const li = document.createElement('li');
+  li.className = 'search-result search-query';
+  const text = formatVerbQuery(verb);
+  const run = button('search-result-main', 'query', `Run ${text} in the Call Graph`);
+  run.append(span('search-query-tag', 'query'), span('search-result-name', text));
+  li.append(run);
+  return li;
+}
+
+function button(className: string, action: SearchAction | 'query', title: string, text = ''): HTMLButtonElement {
   const b = document.createElement('button');
   b.type = 'button';
   b.className = className;
@@ -245,9 +300,9 @@ function span(className: string, text: string): HTMLSpanElement {
   return s;
 }
 
-function note(text: string): HTMLElement {
+function note(text: string, extraClass = ''): HTMLElement {
   const li = document.createElement('li');
-  li.className = 'search-note';
+  li.className = extraClass ? `search-note ${extraClass}` : 'search-note';
   li.textContent = text;
   return li;
 }
