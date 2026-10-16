@@ -295,6 +295,14 @@ export const MAX_REACHABILITY_COMPONENTS = 20_000;
  */
 export const MAX_REACHABILITY_WORDS = 250_000_000;
 
+/** Components and component links of a condensation, for size messages. */
+export function condensedSize(c: Condensation): { components: number; links: number } {
+  return {
+    components: c.members.length,
+    links: c.dependencies.reduce((sum, deps) => sum + deps.length, 0),
+  };
+}
+
 /**
  * Whether the dependent counts of a condensed graph fit in the limits
  * (MAX_REACHABILITY_COMPONENTS and MAX_REACHABILITY_WORDS).

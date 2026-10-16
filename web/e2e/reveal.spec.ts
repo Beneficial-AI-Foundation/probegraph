@@ -128,7 +128,7 @@ test.describe('search box', () => {
     await open(page, '');
     // s is the only spec function; it is hidden by the Spec filter and still found
     await page.locator('#search-input').fill('kind:spec');
-    await expect(page.locator('.search-result')).toHaveCount(1);
+    await expect(page.locator('.search-result[data-id]')).toHaveCount(1);
     await expect(page.locator('.search-result').first()).toHaveAttribute('data-id', 'probe:s');
     await page.locator('#search-input').fill('l1 file:l10.rs');
     await expect(page.locator('.search-result')).toHaveCount(1);
@@ -168,6 +168,72 @@ test.describe('search box', () => {
 
     await page.goBack();
     await expect.poll(() => new URL(page.url()).searchParams.get('id')).toBe('probe:a');
+  });
+
+  test('top N by dependents lists the ranking, and Show all draws it as one Back entry', async ({ page }) => {
+    await open(page, A_CALLEES);
+    const input = page.locator('#search-input');
+    // Every leaf, b and t have one dependent; ties break by ID
+    await input.fill('top 3 by dependents');
+    await expect(page.locator('.search-heading')).toHaveText('Top 3 of 305 by unique transitive dependents');
+    const ids = page.locator('.search-result[data-id]');
+    await expect(ids).toHaveCount(3);
+    expect(await ids.evaluateAll(els => els.map(el => (el as HTMLElement).dataset.id)))
+      .toEqual(['probe:b', 'probe:l0', 'probe:l1']);
+    await expect(ids.first().locator('.search-result-count')).toHaveText('1 dependent');
+    await expect(page.locator('.search-show-all')).toHaveText('Show all 3 in the Call Graph');
+    await expect(page.locator('#search-status')).toHaveText(
+      'Top 3 of 305 by unique transitive dependents. Press Enter to show them in the Call Graph');
+
+    await input.press('Enter');
+    await expect(page.locator('#search-results')).toBeHidden();
+    await expect.poll(() => shownIds(page)).toEqual(['probe:b', 'probe:l0', 'probe:l1']);
+    await expect(page.locator('#query-label')).toHaveText('query: nodes top 3 by dependents');
+    await expect(page.locator('.toast').last()).toHaveText('3 nodes: top 3 by dependents');
+    await page.goBack();
+    await expect.poll(() => new URL(page.url()).searchParams.get('id')).toBe('probe:a');
+  });
+
+  test('Show all says how many nodes the filters hide, and keeps isolated ones', async ({ page }) => {
+    await open(page, A_CALLEES);
+    const input = page.locator('#search-input');
+    // h, a and s have no callers; s is a spec function, hidden by default
+    await input.fill('is:unused');
+    expect(await page.locator('.search-result[data-id]').evaluateAll(els => els.map(el => (el as HTMLElement).dataset.id)))
+      .toEqual(['probe:a', 'probe:h', 'probe:s']);
+    await page.locator('.search-show-all button').click();
+    await expect.poll(() => shownIds(page)).toEqual(['probe:a', 'probe:h']);
+    await expect(page.locator('.toast').last()).toHaveText('2 nodes: is:unused (1 hidden by filters)');
+  });
+
+  test('top errors, and a node list above the render limit has no Show all', async ({ page }) => {
+    await open(page, '');
+    const input = page.locator('#search-input');
+    await input.fill('top 0 by dependents');
+    await expect(page.locator('.search-error')).toHaveText('top takes a number from 1 to 200');
+    await input.fill('top 5 by dependents h');
+    await expect(page.locator('.search-error')).toHaveText('top takes filter words only, for example module:field');
+    await input.fill('top 5');
+    await expect(page.locator('.search-error')).toHaveText('Not a query yet: top [N] by dependents [filter words]');
+    await input.fill('kind:exec');
+    await expect(page.locator('.search-note').last())
+      .toHaveText('304 matches, more than the 200-node render limit. Add filter words to show them in the Call Graph.');
+    await expect(page.locator('.search-show-all')).toHaveCount(0);
+    await expect(page.locator('.search-note', { hasText: 'First 20 of 304 matches.' })).toHaveCount(1);
+  });
+
+  test('a Guide query button and chip fill the search box', async ({ page }) => {
+    await open(page, '');
+    await page.locator('#tab-guide').click();
+    const section = page.locator('.guide-section').filter({ hasText: 'Most depended on' });
+    await section.locator('.guide-query').click();
+    const input = page.locator('#search-input');
+    await expect(input).toHaveValue('top 5 by dependents');
+    await expect(input).toBeFocused();
+    await expect(page.locator('.search-result[data-id]')).toHaveCount(5);
+    await page.locator('.guide-chip', { hasText: 'Unused declarations (3)' }).click();
+    await expect(input).toHaveValue('is:unused');
+    await expect(page.locator('.search-result[data-id]')).toHaveCount(3);
   });
 
   test('arrow keys move through the rows and Escape goes back to the box', async ({ page }) => {
@@ -600,7 +666,25 @@ test('crate: finds the declarations of the layer that is not shown', async ({ pa
   await expect(page.locator('#layer-blueprint')).toHaveClass(/active/);
   // The 9 Lean atoms are in ProjectTemplate/..., on the code layer
   await page.locator('#search-input').fill('crate:ProjectTemplate');
-  await expect(page.locator('.search-result')).toHaveCount(9);
+  await expect(page.locator('.search-result[data-id]')).toHaveCount(9);
+});
+
+test('Show all of a list on the other layer switches layer, and one Back undoes both', async ({ page }) => {
+  await page.goto('/probegraph/');
+  await page.locator('#file-input').setInputFiles({
+    name: 'extract.json', mimeType: 'application/json', buffer: BLUEPRINT,
+  });
+  await expect(page.locator('circle.node')).toHaveCount(9, { timeout: 15000 });
+  const blueprintUrl = page.url();
+  await page.locator('#search-input').fill('crate:ProjectTemplate');
+  await expect(page.locator('.search-show-all')).toHaveText('Show all 9 in the Call Graph');
+  await page.locator('#search-input').press('Enter');
+  await expect(page.locator('#layer-code')).toHaveClass(/active/);
+  await expect(page.locator('#query-label')).toHaveText('query: nodes crate:ProjectTemplate');
+  await expect(page.locator('.toast').last()).toContainText('crate:ProjectTemplate');
+  await page.goBack();
+  await expect(page.locator('#layer-blueprint')).toHaveClass(/active/);
+  expect(page.url()).toBe(blueprintUrl);
 });
 
 test('a reveal on the other layer and its new query are one history entry', async ({ page }) => {

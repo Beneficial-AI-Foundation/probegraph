@@ -2,11 +2,14 @@
  * The search box in the header: lexical search (search.ts) over both
  * layers, a result list, and a reveal of the chosen hit. Filter words
  * (query-words.ts) narrow the hits, and a `paths from ... to ...` text
- * gets a first row that runs it as a Source and Sink query. See
+ * gets a first row that runs it as a Source and Sink query. A `top` query
+ * and a text of filter words alone give a node list, which "Show all in
+ * the Call Graph" draws as an exact ID set. See
  * docs/plans/graph-search.md, Phases 1 and 2, and the "Search box"
  * section of docs/guides/viewer.md.
  *
- * Keys in the search box: Enter runs the query or reveals the top hit, ArrowDown moves to
+ * Keys in the search box: Enter runs the query, shows the node list in
+ * the Call Graph, or reveals the top hit, ArrowDown moves to
  * the result list, Escape closes it, and Alt+Enter moves the focus to the
  * first button of the reveal's toast. In the list, ArrowUp and ArrowDown
  * move between rows and Escape goes back to the box. `/` anywhere outside
@@ -14,12 +17,13 @@
  */
 
 import {
-  compileFilterWords, formatVerbQuery, graphWordContext, parseVerbQuery, parseWords,
-  type VerbQuery, type WordContext,
+  compileFilterWords, formatVerbQuery, formatWords, graphWordContext, parseVerbQuery, parseWords, runTop, TOP_MAX,
+  type PathsQuery, type TopQuery, type WordContext,
 } from './query-words';
 import { buildSearchIndex, search, type SearchIndex } from './search';
 import { statusColor } from './theme';
 import type { D3Graph, D3Node } from './types';
+import type { Layer } from './url-state';
 
 /** What a row's button asks for; the `anchor` policies of revealNode. */
 export type SearchAction = 'reveal' | 'source' | 'sink';
@@ -27,20 +31,50 @@ export type SearchAction = 'reveal' | 'source' | 'sink';
 export interface SearchBoxDeps {
   /** The loaded layers; null before a graph loads */
   layers(): { code: D3Graph; blueprint: D3Graph | null } | null;
+  /** The layer the viewer shows */
+  shownLayer(): Layer;
   reveal(id: string, action: SearchAction): void;
   /** Run a text query with these Source and Sink texts */
   runQuery(source: string, sink: string): void;
+  /** Draw these nodes of `layer` in the Call Graph, labelled with the query text */
+  showAll(ids: string[], layer: Layer, label: string): void;
 }
 
 const RESULT_LIMIT = 20;
+/** Most nodes "Show all" draws: the render limit, so truncation never picks a subset. */
+const SHOW_ALL_LIMIT = TOP_MAX;
+
+/** What "Show all in the Call Graph" draws. */
+interface ShowAll {
+  ids: string[];
+  layer: Layer;
+  label: string;
+}
+
+/** The result list of one text, before rendering. */
+interface Results {
+  /** Every node of the list; the list shows the first RESULT_LIMIT */
+  nodes: D3Node[];
+  /** Whether more nodes matched than `nodes` holds (lexical search only) */
+  more: boolean;
+  /** Unique transitive dependents of each row, for a `top` list */
+  counts?: Map<string, number>;
+  /** A line above the rows, for a `top` list */
+  heading?: string;
+  /** The Show all button, or why there is none */
+  showAll?: ShowAll | string;
+  error: string | null;
+}
 
 export class SearchBox {
   private index: SearchIndex | null = null;
   private context: WordContext | null = null;
   private blueprintIds = new Set<string>();
   private hits: D3Node[] = [];
-  /** The verb query of the text, run by its row and by Enter */
-  private verb: VerbQuery | null = null;
+  /** The `paths` query of the text, run by its row and by Enter */
+  private verb: PathsQuery | null = null;
+  /** The Show all button of a node list, run by it and by Enter */
+  private showAll: ShowAll | null = null;
 
   constructor(
     private readonly input: HTMLInputElement,
@@ -103,43 +137,115 @@ export class SearchBox {
     }
     const index = this.ensureIndex();
     const verb = parseVerbQuery(query);
-    const words = parseWords(query);
-    this.verb = verb?.ok ? verb.value : null;
-    const error = verb && !verb.ok ? verb.error : !words.ok ? words.error : null;
-    let hits: D3Node[] = [];
-    if (index && words.ok) {
-      const { plain, filters } = words.value;
-      const accept = filters.length > 0 ? compileFilterWords(filters, this.context!) : undefined;
-      // One more than shown, to know whether there are more
-      hits = search(index, plain.join(' '), RESULT_LIMIT + 1, accept).map(h => h.node);
-    }
-    this.hits = hits.slice(0, RESULT_LIMIT);
-    this.render(index === null, hits.length > RESULT_LIMIT, error);
+    const results = !index ? null
+      : verb?.ok && verb.value.verb === 'top' ? this.topResults(verb.value)
+      : this.searchResults(index, query, verb && !verb.ok ? verb.error : null);
+    this.verb = index && verb?.ok && verb.value.verb === 'paths' ? verb.value : null;
+    this.showAll = results && typeof results.showAll === 'object' ? results.showAll : null;
+    this.hits = results?.nodes.slice(0, RESULT_LIMIT) ?? [];
+    this.render(results);
   }
 
-  private render(noGraph: boolean, more: boolean, error: string | null): void {
-    this.list.replaceChildren();
-    if (noGraph) this.verb = null;
-    if (this.verb) this.list.appendChild(queryRow(this.verb));
-    if (error && !noGraph) this.list.appendChild(note(error, 'search-error'));
-    // Under a query row, "No matches" would read as a query without paths
-    if (noGraph || (this.hits.length === 0 && !error && !this.verb)) {
-      this.list.appendChild(note(noGraph ? 'Load a graph to search it' : 'No matches'));
+  /** Lexical hits; a text of filter words alone is a node list. */
+  private searchResults(index: SearchIndex, query: string, verbError: string | null): Results {
+    const words = parseWords(query);
+    const error = verbError ?? (!words.ok ? words.error : null);
+    if (!words.ok) return { nodes: [], more: false, error };
+    const { plain, filters } = words.value;
+    const accept = filters.length > 0 ? compileFilterWords(filters, this.context!) : undefined;
+    if (plain.length > 0 || !accept) {
+      // One more than shown, to know whether there are more
+      const nodes = search(index, plain.join(' '), RESULT_LIMIT + 1, accept).map(h => h.node);
+      return { nodes: nodes.slice(0, RESULT_LIMIT), more: nodes.length > RESULT_LIMIT, error };
     }
+    const nodes = search(index, '', Infinity, accept).map(h => h.node);
+    return { nodes, more: false, error, showAll: this.showAllFor(nodes, formatWords(words.value)) };
+  }
+
+  /**
+   * Show all for a filter-word list: the matches on the shown layer, or on
+   * the other layer when the shown one has none.
+   */
+  private showAllFor(nodes: D3Node[], label: string): ShowAll | string | undefined {
+    if (nodes.length === 0) return undefined;
+    const onBlueprint = (n: D3Node) => this.blueprintIds.has(n.id);
+    const shown = this.shownLayer();
+    let layer = shown;
+    let ids = nodes.filter(n => onBlueprint(n) === (shown === 'blueprint')).map(n => n.id);
+    if (ids.length === 0) {
+      layer = shown === 'code' ? 'blueprint' : 'code';
+      ids = nodes.map(n => n.id);
+    }
+    if (ids.length > SHOW_ALL_LIMIT) {
+      return `${ids.length} matches, more than the ${SHOW_ALL_LIMIT}-node render limit. `
+        + 'Add filter words to show them in the Call Graph.';
+    }
+    return { ids, layer, label };
+  }
+
+  /** The layer `top` ranks on: the shown one, if the graph has it. */
+  private shownLayer(): Layer {
+    return this.blueprintIds.size > 0 ? this.deps.shownLayer() : 'code';
+  }
+
+  private topResults(q: TopQuery): Results {
+    const layers = this.deps.layers()!;
+    const layer = this.shownLayer();
+    const graph = layer === 'blueprint' ? layers.blueprint! : layers.code;
+    const result = runTop(graph, q, this.context!);
+    if (!result.ok) {
+      const error = 'Dependent counts are not available for this graph, because it is too large. '
+        + `After merging cycles it has ${result.components.toLocaleString('en-US')} components `
+        + `and ${result.links.toLocaleString('en-US')} links`;
+      return { nodes: [], more: false, error };
+    }
+    const nodes = result.rows.map(r => r.node);
+    const counts = new Map(result.rows.map(r => [r.node.id, r.count]));
+    const heading = result.total === 0 ? undefined
+      : `Top ${nodes.length} of ${result.total} by unique transitive dependents`
+        + (this.blueprintIds.size > 0 ? `, on the ${layer} layer` : '');
+    const showAll = nodes.length > 0 ? { ids: nodes.map(n => n.id), layer, label: formatVerbQuery(q) } : undefined;
+    return { nodes, more: false, counts, heading, showAll, error: null };
+  }
+
+  private render(results: Results | null): void {
+    this.list.replaceChildren();
+    if (!results) {
+      this.list.appendChild(note('Load a graph to search it'));
+      this.open('Load a graph to search it');
+      return;
+    }
+    const { error, heading, counts } = results;
+    if (this.verb) this.list.appendChild(queryRow(this.verb));
+    if (error) this.list.appendChild(note(error, 'search-error'));
+    if (heading) this.list.appendChild(note(heading, 'search-heading'));
+    // Under a query row, "No matches" would read as a query without paths
+    if (this.hits.length === 0 && !error && !this.verb) this.list.appendChild(note('No matches'));
     const twoLayers = this.blueprintIds.size > 0;
-    for (const node of this.hits) this.list.appendChild(this.row(node, twoLayers));
-    if (more) this.list.appendChild(note(`First ${RESULT_LIMIT} matches. Add words to narrow the search.`));
+    for (const node of this.hits) this.list.appendChild(this.row(node, twoLayers, counts?.get(node.id)));
+    const total = results.nodes.length;
+    const cut = results.more || total > RESULT_LIMIT;
+    if (results.more) this.list.appendChild(note(`First ${RESULT_LIMIT} matches. Add words to narrow the search.`));
+    else if (cut) this.list.appendChild(note(`First ${RESULT_LIMIT} of ${total} matches.`));
+    if (typeof results.showAll === 'string') this.list.appendChild(note(results.showAll));
+    else if (this.showAll) this.list.appendChild(showAllRow(this.showAll.ids.length));
+
+    const count = this.hits.length;
+    const matches = count === 0 ? 'No matches'
+      : results.more ? `First ${RESULT_LIMIT} matches`
+      : cut ? `First ${RESULT_LIMIT} of ${total} matches`
+      : `${count} ${count === 1 ? 'match' : 'matches'}`;
+    this.open(this.verb ? (count === 0 ? 'Query ready. Press Enter to run it' : `Query ready. ${matches}`)
+      : error ? `${error}. ${matches}`
+      : heading ? `${heading}. Press Enter to show them in the Call Graph`
+      : this.showAll ? `${matches}. Press Enter to show them in the Call Graph`
+      : matches);
+  }
+
+  private open(status: string): void {
     this.list.hidden = false;
     this.place();
-    const count = this.hits.length;
-    const matches = noGraph ? 'Load a graph to search it'
-      : count === 0 ? 'No matches'
-      : more ? `First ${RESULT_LIMIT} matches`
-      : `${count} ${count === 1 ? 'match' : 'matches'}`;
-    this.status.textContent = noGraph ? matches
-      : this.verb ? (count === 0 ? 'Query ready. Press Enter to run it' : `Query ready. ${matches}`)
-      : error ? `${error}. ${matches}`
-      : matches;
+    this.status.textContent = status;
   }
 
   /**
@@ -156,7 +262,7 @@ export class SearchBox {
     this.list.style.left = `${left - box.left}px`;
   }
 
-  private row(node: D3Node, twoLayers: boolean): HTMLElement {
+  private row(node: D3Node, twoLayers: boolean, dependents?: number): HTMLElement {
     const li = document.createElement('li');
     li.className = 'search-result';
     li.dataset.id = node.id;
@@ -169,6 +275,9 @@ export class SearchBox {
     const meta = span('search-result-meta', '');
     if (twoLayers && this.blueprintIds.has(node.id)) meta.append(span('search-result-layer', 'blueprint'));
     meta.append(span('', node.kind), dot, span('', status));
+    if (dependents !== undefined) {
+      meta.append(span('search-result-count', `${dependents} ${dependents === 1 ? 'dependent' : 'dependents'}`));
+    }
     const where = span('search-result-path', node.relative_path || node.id);
     where.title = node.relative_path || node.id;
     main.append(name, meta, where);
@@ -186,6 +295,7 @@ export class SearchBox {
     this.list.replaceChildren();
     this.hits = [];
     this.verb = null;
+    this.showAll = null;
     this.status.textContent = '';
   }
 
@@ -195,10 +305,23 @@ export class SearchBox {
     this.deps.reveal(id, action);
   }
 
-  private runVerb(verb: VerbQuery): void {
+  private runVerb(verb: PathsQuery): void {
     this.input.focus();
     this.close();
     this.deps.runQuery(verb.from, verb.to);
+  }
+
+  private runShowAll(showAll: ShowAll): void {
+    this.input.focus();
+    this.close();
+    this.deps.showAll(showAll.ids, showAll.layer, showAll.label);
+  }
+
+  /** Put a query into the box and open its result list, as a Guide button does. */
+  fill(text: string): void {
+    this.input.value = text;
+    this.input.focus();
+    this.update();
   }
 
   private onInputKey(e: KeyboardEvent): void {
@@ -212,6 +335,7 @@ export class SearchBox {
       if (this.list.hidden) this.update();
       const top = this.hits[0];
       if (this.verb) this.runVerb(this.verb);
+      else if (this.showAll) this.runShowAll(this.showAll);
       else if (top) this.run(top.id, 'reveal');
     } else if (e.key === 'ArrowDown') {
       if (this.list.hidden) this.update();
@@ -261,6 +385,10 @@ export class SearchBox {
       if (this.verb) this.runVerb(this.verb);
       return;
     }
+    if (target?.dataset.action === 'show-all') {
+      if (this.showAll) this.runShowAll(this.showAll);
+      return;
+    }
     const id = target?.closest<HTMLElement>('.search-result')?.dataset.id;
     if (target && id) this.run(id, target.dataset.action as SearchAction);
   }
@@ -273,7 +401,7 @@ function isTextField(target: EventTarget | null): boolean {
 }
 
 /** The first row of a verb query: one button that runs it. */
-function queryRow(verb: VerbQuery): HTMLElement {
+function queryRow(verb: PathsQuery): HTMLElement {
   const li = document.createElement('li');
   li.className = 'search-result search-query';
   const text = formatVerbQuery(verb);
@@ -283,7 +411,20 @@ function queryRow(verb: VerbQuery): HTMLElement {
   return li;
 }
 
-function button(className: string, action: SearchAction | 'query', title: string, text = ''): HTMLButtonElement {
+/** The last row of a node list: one button that draws it. */
+function showAllRow(count: number): HTMLElement {
+  const li = document.createElement('li');
+  li.className = 'search-result search-show-all';
+  const text = `Show all ${count} in the Call Graph`;
+  const run = button('search-result-main', 'show-all', `${text}, as one query of exactly these nodes`);
+  run.append(span('search-result-name', text));
+  li.append(run);
+  return li;
+}
+
+function button(
+  className: string, action: SearchAction | 'query' | 'show-all', title: string, text = '',
+): HTMLButtonElement {
   const b = document.createElement('button');
   b.type = 'button';
   b.className = className;
