@@ -121,8 +121,8 @@ The search box in the header finds a declaration by name and shows it in
 the Call Graph. Press `/` anywhere outside a text field to move the focus
 to it. Unlike Source and Sink, the search box does not change the query
 while you type. It can change the query only when you pick a result. The
-search box also reads filter words, such as `kind:theorem`, and the
-`paths` query. See [Query words](#query-words).
+search box also reads filter words, such as `kind:theorem` and
+`is:unused`, and the `paths` and `top` queries. See [Query words](#query-words).
 
 What it searches. The search box looks at every declaration of the graph.
 If the graph has a blueprint layer, it looks at both layers. The sidebar filters
@@ -199,7 +199,7 @@ Keys in the search box:
 
 | Key | Action |
 |---|---|
-| Enter | Run the query of the first row, or show the top result |
+| Enter | Run the `paths` query of the first row, or click **Show all in the Call Graph**, or show the top result |
 | ArrowDown | Move to the result list |
 | Escape | Close the result list |
 | Alt+Enter | Move to the first button of the action toast |
@@ -236,6 +236,7 @@ query. The keys and the case of the values do not matter.
 | `file:` | A glob on the file name, as Include Files reads it. With a `/`, a glob on the file path | `file:edwards.rs`, `file:*.lean` |
 | `level:` | The dependency level, as the [Dependency levels](#dependency-levels) strip counts it | `level:0` |
 | `crate:` | A substring of the crate name | `crate:dalek` |
+| `is:` | A fixed property: `unfinished`, `assumption`, `unused` or `surface` (see below) | `is:unused` |
 
 The `module:` rule. The viewer splits the value and the file path into
 segments at `/`, `.` and `::`, and drops the file extension. The segments of the value must
@@ -257,10 +258,34 @@ syntax across Rust, Lean and blueprint extracts. The plan
 `level:` uses every node and every dependency of the layer, as the strip
 does. The kind and edge-type filters do not change the levels.
 
+The `is:` words. Each name is one fixed rule. The Guide uses the same
+rules, so a query and a Guide list cannot disagree.
+
+| Word | Matches | Leaves out |
+|---|---|---|
+| `is:unfinished` | A declaration with the status unverified or failed, as the Guide's Unfinished work list | Axioms. A declaration without a status, although `status:unverified` counts it |
+| `is:assumption` | An axiom, or a declaration with the status trusted, as the Guide's Assumptions list | |
+| `is:unused` | A declaration that no other declaration of the layer depends on | Entry points, generated declarations (`@[step]` lemmas of Aeneas, Lean auxiliaries) and hidden declarations. A call to itself does not count |
+| `is:surface` | A public function without a contract (see below) | Graphs without public API data |
+
+`is:surface` depends on the extract. In a Verus extract, it matches a
+public exec function with no `requires` and no `ensures` dependency. In
+an Aeneas extract (Rust and Lean in one graph), it matches a public Rust
+function with no Lean translation. Only probe-rust and probe-verus mark
+the public API, so other graphs list nothing.
+
+`is:unused` reads every dependency of the layer. The sidebar filters do not
+change it. For example, a lemma that only a hidden spec function uses is
+not unused. A Lean lemma that the extract shows without callers can still
+be in use, through `@[simp]` or `@[grind]`, because the extract does not
+record uses by attribute. A lemma that calls others but has no callers is
+unused.
+
 In the search box, the filter words narrow the result list. The sidebar
 filters still do not. If the query has filter words only, the list shows
 every declaration that passes them, ordered by node ID. For example,
-`kind:axiom` lists the axioms. In Source and Sink, a text with filter words
+`kind:axiom` lists the axioms. Such a list is a node list, see
+[Show all](#show-all-in-the-call-graph). In Source and Sink, a text with filter words
 selects the declarations that pass them. The other words of the text
 match the display name, as before. For example, `decompress module:edwards`
 in Source shows what the `decompress` functions in `edwards.rs` call.
@@ -282,12 +307,73 @@ each side is one `crate:` word, for example `paths from crate:a to
 crate:b`, the query shows the calls that cross from crate `a` to crate
 `b`, as Source and Sink do for two crates.
 
+The `top` query. Type `top [N] by dependents [filter words]` in the
+search box, for example `top 10 by dependents is:unfinished`. The list
+shows the N declarations that pass the filter words and have the most
+unique transitive dependents. A unique transitive dependent of a node is
+a declaration that reaches the node through dependencies, counted once.
+This is the count of the Guide's ranked lists. Ties break by node ID, as
+in the Guide. Each row gives the count, for example `81 dependents`. A
+line above the rows says how many declarations passed the filter words,
+for example "Top 10 of 37 by unique transitive dependents".
+
+- N is optional. It is 10 if you leave it out, and it must be a whole
+  number from 1 to 200. The list shows the first 20 rows. **Show all in
+  the Call Graph** draws all N.
+- `by dependents` is required. It is the only ranking.
+- Only filter words can follow, for example `module:field` or
+  `kind:lemma`. Without filter words, `top` ranks every declaration. That
+  list usually starts with basic types and helpers, so add a filter word.
+- `top` counts every node and dependency of the layer that the viewer
+  shows, as the Guide does. The sidebar filters do not change the counts
+  or the rows. The search box finds declarations on both layers, but `top`
+  ranks only the shown layer. On a graph with two layers, the line above
+  the rows names the layer.
+- The search box treats a text as a `top` query only if `top` is followed
+  by a number, by `by`, or by nothing. So `top_level` and `top level` stay
+  searches.
+- On a graph that is too large for the dependent counts, the list says
+  "Dependent counts are not available for this graph, because it is too
+  large", with the size. The limit is the same as for the Guide lists, see
+  [Guide tab](#guide-tab).
+
+A recipe for "the blockers of X", the unfinished declarations that X
+depends on: put X in Source, and in the status filter keep only Failed
+and Unverified.
+
+#### Show all in the Call Graph
+
+A `top` query and a text of filter words alone give a node list. Under a
+node list, a **Show all N in the Call Graph** row draws the whole list.
+Enter in the search box does the same. The viewer then sets a query of
+exactly these nodes, with the query text as its label, for example `query:
+nodes top 10 by dependents is:unfinished`. It switches to the Call Graph
+and adds one Back entry. The graph draws the links among the listed nodes,
+and it also draws the nodes without links among them. The sidebar filters
+still apply. The toast gives the result, for example "8 nodes: is:unused
+(2 hidden by filters)".
+
+The row appears only if the whole list has at most 200 nodes, the render
+limit. Then the render limit never drops a node. For a larger list, the
+last line says "N matches, more than the 200-node render limit. Add
+filter words to show them in the Call Graph.", and Enter shows the top
+result. For `top`, N is at most 200, so the row is there whenever the list has a row.
+
+A list of filter words can match declarations on both layers. Show all
+draws the matches on the layer that the viewer shows, and its count is
+the count on that layer. If every match is on the other layer, Show all
+switches to it, as a reveal does. One Back then restores the layer too.
+
 Errors. If a query cannot run, the list says why above the results, and a
 screen reader announces it:
 
 | Message | Cause |
 |---|---|
 | Not a query yet: paths from \<words\> to \<words\> | The text starts with `paths from`, but has no `to` or an empty side |
+| Not a query yet: top [N] by dependents [filter words] | The text starts with `top`, but `by dependents` is missing |
+| top takes a number from 1 to 200 | N is 0 or above 200 |
+| top takes filter words only, for example module:field | A plain word after `by dependents` |
+| is:*value* is not known. Use unfinished, assumption, unused, surface | An unknown `is:` name |
 | *key*: needs a value, for example *word* | A filter word without a value, such as `kind:` |
 | status:*value* is not a status. Use verified, transitively-verified, trusted, failed or unverified | An unknown status |
 | level:*value* is not a level. Use a whole number, for example level:0 | A level that is not a whole number |
@@ -539,6 +625,21 @@ involved.
   edges in that direction.
 - "Show only transitively verified" selects that status alone (graphs without
   it get "Show only verified").
+- Each ranked list has a **query** button next to its title. It puts the
+  list's query into the search box and opens the result list there:
+  `top 5 by dependents is:unfinished`, `top 5 by dependents is:assumption`
+  and `top 5 by dependents kind:lemma`. On a graph without lemmas the last
+  one is `top 5 by dependents`, and on the blueprint layer it uses
+  `kind:blueprint-theorem`. Edit the query to see more, for example raise
+  N or add `module:`. See [Query words](#query-words).
+- The Guide list names only the declaration kinds that the Declaration
+  Kind boxes show, but the search box ignores the sidebar filters. So the
+  query can list a declaration that the Guide list hides. For example, in
+  Verus with Spec off, the query can list a spec function.
+- Two suggestions fill the search box: **Unused declarations (N)** with
+  `is:unused`, and **Public functions without a contract (N)** with
+  `is:surface`. Each one shows only if N is above zero. N counts every
+  declaration of the layer.
 - Clicking a row or a suggestion keeps the Guide open; a toast reports the
   result, e.g. "180 nodes: callers of GF16". When the render cap applies, it
   gives the number of nodes not shown, and when display filters (origin,
