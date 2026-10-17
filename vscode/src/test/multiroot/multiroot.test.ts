@@ -61,28 +61,27 @@ suite('Extension with two workspace folders', () => {
         await firstConfig.update('indexPath', '.vscode/missing.json', vscode.ConfigurationTarget.WorkspaceFolder);
         await sleep(500);
 
-        // A pipeline that leaves a trace if it is ever started
-        const probegraph = fs.mkdtempSync(path.join(os.tmpdir(), 'fake probegraph; '));
-        const ranFile = path.join(probegraph, 'ran.txt');
-        const binary = path.join(probegraph, 'target', 'release', 'pipeline');
-        fs.mkdirSync(path.dirname(binary), { recursive: true });
+        // A probe-verus that leaves a trace if it is ever started
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'fake probe-verus; '));
+        const ranFile = path.join(dir, 'ran.txt');
+        const binary = path.join(dir, 'probe-verus');
         fs.writeFileSync(binary, `#!/bin/sh\ntouch '${ranFile}'\n`, { mode: 0o755 });
         const config = vscode.workspace.getConfiguration('callGraph');
-        await config.update('defaultScipCallgraphPath', probegraph, vscode.ConfigurationTarget.Workspace);
+        await config.update('probeVerusPath', binary, vscode.ConfigurationTarget.Workspace);
         try {
             // The active editor is a Rust file, but in the other folder: it says
-            // nothing about "first", so no pipeline runs and the command returns
+            // nothing about "first", so probe-verus is not run and the command returns
             await openFile(second, 'src', 'lib.rs');
             const outcome = await Promise.race([
                 vscode.commands.executeCommand('callGraph.regenerateIndex').then(() => 'returned'),
                 sleep(5000).then(() => 'still running'),
             ]);
             assert.strictEqual(outcome, 'returned');
-            assert.ok(!fs.existsSync(ranFile), 'the pipeline was started for a folder the editor is not in');
+            assert.ok(!fs.existsSync(ranFile), 'probe-verus was started for a folder the editor is not in');
         } finally {
-            await config.update('defaultScipCallgraphPath', undefined, vscode.ConfigurationTarget.Workspace);
+            await config.update('probeVerusPath', undefined, vscode.ConfigurationTarget.Workspace);
             await firstConfig.update('indexPath', undefined, vscode.ConfigurationTarget.WorkspaceFolder);
-            fs.rmSync(probegraph, { recursive: true, force: true });
+            fs.rmSync(dir, { recursive: true, force: true });
         }
     });
 });

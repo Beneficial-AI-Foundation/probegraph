@@ -24,58 +24,42 @@ The extension is not on the Marketplace yet. Download
 then in VS Code run **Extensions: Install from VSIX…** from the Command
 Palette (`Ctrl+Shift+P`) and pick the file.
 
-### 1. Install Prerequisites
+### 1. Install probe-verus
 
-**verus-analyzer** (for SCIP generation):
-```bash
-# Install from: https://github.com/verus-lang/verus-analyzer
-```
+"Regenerate Index" runs [probe-verus](https://github.com/Beneficial-AI-Foundation/probe-verus),
+which indexes the project with verus-analyzer, runs Verus and writes the
+graph. Install it with the installer script from its
+[releases](https://github.com/Beneficial-AI-Foundation/probe-verus/releases)
+(it puts `probe-verus` on PATH), or set `callGraph.probeVerusPath` to the
+binary. The extension passes `extract -o`, which needs a release newer than
+v8.0.1 ([probe-verus#51](https://github.com/Beneficial-AI-Foundation/probe-verus/pull/51)).
 
-**scip CLI** (for converting SCIP to JSON):
-```bash
-# Download pre-built binaries from:
-# https://github.com/sourcegraph/scip/releases
+probe-verus needs verus-analyzer, scip and Verus. **Call Graph: Check
+Prerequisites** runs `probe-verus setup --status` and offers to install
+whatever is missing with `probe-verus setup --from-project`, which also
+picks the Verus release the project pins. Nothing from the probegraph repo
+is needed.
 
-# Or build from source:
-git clone https://github.com/sourcegraph/scip.git --depth=1
-cd scip
-go build ./cmd/scip
-```
-
-**Optional: cargo verus** (for verification status):
-```bash
-# Install from: https://github.com/verus-lang/verus
-```
-
-### 2. Clone probegraph
-
-```bash
-git clone --recurse-submodules https://github.com/Beneficial-AI-Foundation/probegraph.git
-cd probegraph
-cargo build --release --workspace
-```
-
-### 3. Configure the Extension
-
-Open VS Code settings (`Ctrl+,`) and set:
-
-```json
-{
-  "callGraph.defaultScipCallgraphPath": "/path/to/probegraph"
-}
-```
-
-Or add to your project's `.vscode/settings.json`.
-
-### 4. Generate the Index
+### 2. Generate the Index
 
 1. Open your Verus/Rust project in VS Code
 2. Open Command Palette (`Ctrl+Shift+P`)
 3. Run: **"Call Graph: Regenerate Index"**
-4. Wait for the pipeline to complete (~30-60 seconds)
+4. Wait for `probe-verus extract` to finish. Verification dominates (a
+   minute or two on a mid-sized crate); `callGraph.skipVerification` skips
+   it and loses the verification colours. Output goes to the "Call Graph
+   Pipeline" output channel; the status bar shows the run.
 
-For a Lean project, or a Rust project with a probe extract, skip the pipeline
-and point `callGraph.indexPath` at the extract instead:
+The extract is written to `callGraph.indexPath` (default
+`.vscode/call_graph_index.json`), replacing it only when the run succeeds.
+probe-verus also leaves its intermediate files (`_atoms`, `_specs`,
+`_proofs`) under `<package>/.verilib/probes/`, whatever `-o` says, so
+`.verilib/` is worth adding to the project's `.gitignore`. An extract made
+outside the extension works too: run `probe-verus extract .` in the project
+and point `callGraph.indexPath` at
+`.verilib/probes/verus_<package>_<version>.json`.
+
+For a Lean project, point `callGraph.indexPath` at the probe-lean extract:
 
 ```json
 { "callGraph.indexPath": ".verilib/probes/probe-lean-extract.json" }
@@ -89,13 +73,18 @@ extension, which gives them the `lean4` language ID the commands key on.
 The graph file must be inside the workspace folder. Its paths are read
 relative to the project root: `callGraph.projectRoot` if set, else the
 index's own project root when that is a directory inside the folder, else
-(for a Lean graph) the Lake project containing the index file, else the
-folder itself. "Open in Editor" opens files under the project root only, so
-in Restricted Mode `callGraph.projectRoot` is read from user settings, not
-the workspace's. The status bar shows what is loaded and when it was
+the Lake project (Lean) or Cargo package (Rust) the index file belongs to,
+else the folder itself. probe-verus runs on a Cargo package, so on a
+workspace folder that is a Cargo workspace it moves to the single member, or
+to the one `callGraph.package` names, and writes paths relative to that; the
+extension follows the same rule when reading the extract, as long as the
+member is inside the folder (one outside it, `../other`, needs
+`callGraph.projectRoot`). "Open in Editor" opens files under the project
+root only, so in Restricted Mode `callGraph.projectRoot` is read from user
+settings, not the workspace's. The status bar shows what is loaded and when it was
 extracted.
 
-### 5. Explore Call Graphs
+### 3. Explore Call Graphs
 
 1. Open a Rust or Lean file
 2. Put the cursor in a declaration
@@ -125,9 +114,9 @@ and offers to turn it off.
 | `Call Graph: Show Call Graph (Bidirectional)` | The same, kept for older keybindings |
 | `Call Graph: Show Dependencies` | Open graph explorer showing callees |
 | `Call Graph: Show Dependents` | Open graph explorer showing callers |
-| `Call Graph: Regenerate Index` | Run the probegraph pipeline (trusted workspaces only; the index is replaced only when the run succeeds) |
-| `Call Graph: Cancel Pipeline` | Stop the running pipeline |
-| `Call Graph: Check Prerequisites` | Verify all required tools are installed |
+| `Call Graph: Regenerate Index` | Run `probe-verus extract` (trusted workspaces only; the index is replaced only when the run succeeds) |
+| `Call Graph: Cancel Regenerate` | Stop the running probe-verus, with the verus-analyzer and `cargo verus` it started; a second cancel kills what did not exit |
+| `Call Graph: Check Prerequisites` | Find probe-verus and check its tools (`probe-verus setup --status`); offers to install the missing ones |
 
 ### Graph Explorer UI
 
@@ -165,13 +154,17 @@ The embedded web app provides:
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `callGraph.depth` | `3` | Initial depth for call graph traversal |
-| `callGraph.indexPath` | `.vscode/call_graph_index.json` | Path to the graph, inside the workspace folder: a pipeline index or a probe extract |
-| `callGraph.projectRoot` | `""` | Directory the graph's paths are relative to, if not the index's own root, the Lake root or the folder |
-| `callGraph.defaultScipCallgraphPath` | `""` | Path to probegraph repository (its `pipeline` binary is found through `CARGO_TARGET_DIR` and `cargo metadata`) |
+| `callGraph.indexPath` | `.vscode/call_graph_index.json` | Path to the graph, inside the workspace folder; "Regenerate Index" writes a probe-verus extract here |
+| `callGraph.projectRoot` | `""` | Directory the graph's paths are relative to, if not the index's own root, the Lake or Cargo root or the folder |
+| `callGraph.probeVerusPath` | `probe-verus` | The probe-verus binary: a name on PATH or a path (`~` expanded). User settings only in Restricted Mode |
 | `callGraph.autoRegenerateOnSave` | `false` | Auto-regenerate on Rust file save |
 | `callGraph.debounceDelayMs` | `3000` | Delay before auto-regeneration (ms) |
-| `callGraph.skipVerification` | `false` | Skip Verus verification (faster) |
-| `callGraph.skipSimilarLemmas` | `true` | Skip similar lemmas enrichment |
+| `callGraph.skipVerification` | `false` | `probe-verus extract --skip-verify`: faster, no verification status |
+| `callGraph.useRustAnalyzer` | `false` | `probe-verus extract --rust-analyzer`: index with rust-analyzer, for plain Rust projects |
+| `callGraph.package` | `""` | In a Cargo workspace with several members, the package to extract (`--package`) |
+
+`callGraph.defaultScipCallgraphPath` is no longer read; the pipeline binary
+from the probegraph repo was replaced by probe-verus.
 
 ## 🎨 Node Colors (Verification Status)
 
@@ -188,14 +181,14 @@ The embedded web app provides:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                    BUILD TIME (pipeline)                         │
+│               BUILD TIME (probe-verus extract)                   │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                  │
-│  Source Code → verus-analyzer scip → SCIP JSON → D3 Graph JSON  │
+│  Source Code → verus-analyzer scip → atoms (functions + calls)  │
 │                                        ↓                        │
-│                              cargo verus verify                  │
+│                 Verus verification → per-function status        │
 │                                        ↓                        │
-│                         call_graph_index.json                   │
+│                 extract envelope → call_graph_index.json        │
 │                                                                  │
 └─────────────────────────────────────────────────────────────────┘
 
@@ -215,42 +208,46 @@ The embedded web app provides:
 
 ### Index Structure
 
-The pre-computed index contains:
-- All function nodes with metadata (file, line, mode, etc.)
-- **dependencies**: What each function calls (O(1) lookup)
-- **dependents**: What calls each function (O(1) lookup)
-- **verification_status**: `verified`, `failed`, or `unverified`
+The graph file is a probe extract (schema 2): a `source` block with the
+repository and commit, and `data` with one atom per function naming its
+file, lines, mode, dependencies and verification status (`verified`,
+`failed`, `unverified`). The extension and the viewer read it directly.
 
 ## 🐛 Troubleshooting
 
 ### "Call graph index not found"
 Run **"Call Graph: Regenerate Index"** to generate the index.
 
-### "Pipeline command not found"
-Set `callGraph.defaultScipCallgraphPath` to your probegraph repository path:
-```json
-{
-  "callGraph.defaultScipCallgraphPath": "/home/user/git/probegraph"
-}
-```
+### "probe-verus was not found"
+Install it from the probe-verus
+[releases](https://github.com/Beneficial-AI-Foundation/probe-verus/releases),
+or point `callGraph.probeVerusPath` at the binary (user settings, not the
+workspace's, in Restricted Mode). VS Code may need a restart to see a new
+PATH entry.
 
-### "verus-analyzer not found"
-Ensure `verus-analyzer` is in your PATH:
+### "probe-verus extract failed"
+The "Call Graph Pipeline" output channel has probe-verus's output. A
+verification failure in the project is not a failure of the extract; the
+affected functions are shown red. When a tool is missing, probe-verus says
+so there; **Check Prerequisites** in the message (or **Call Graph: Check
+Prerequisites**) runs `probe-verus setup --status` and offers to install
+what is missing with `probe-verus setup --from-project <folder>`. The same
+from a terminal:
 ```bash
-which verus-analyzer
+probe-verus setup --status
+probe-verus setup --from-project .
+probe-verus extract . -o /tmp/graph.json
 ```
 
-### "scip not found"
-Install the SCIP CLI from [sourcegraph/scip](https://github.com/sourcegraph/scip):
-```bash
-# Download from releases:
-# https://github.com/sourcegraph/scip/releases
+### "This probe-verus predates `extract -o`"
+Releases up to v8.0.1 have no `-o`; install a newer one from the
+[releases](https://github.com/Beneficial-AI-Foundation/probe-verus/releases).
 
-# Or build from source:
-git clone https://github.com/sourcegraph/scip.git --depth=1
-cd scip
-go build ./cmd/scip
-```
+### "Index updated, but verification was skipped"
+probe-verus skips verification when `cargo verus` is not installed and
+still exits 0, so the index is current but its verification statuses are
+whatever an earlier run left (or none). **Check Prerequisites** in the
+message offers to install it; then regenerate.
 
 ### Graph shows but no nodes visible
 - Check that the index was generated successfully
@@ -258,7 +255,7 @@ go build ./cmd/scip
 - Enter a Source or Sink query to filter
 
 ### Debug Information
-- View pipeline output: `Output` panel → `Call Graph Pipeline`
+- View probe-verus output: `Output` panel → `Call Graph Pipeline`
 - View logs: `Help > Toggle Developer Tools` → Console tab
 
 ## 🛠️ Development
@@ -288,7 +285,8 @@ to `CHANGELOG.md` (CI fails the PR without it), then merge. On the push to
 `main`, `.github/workflows/vscode-release.yml` sees that no `vscode-v<version>`
 release exists, runs the tests, packages the VSIX and creates the release and
 its tag from the merge commit, with that changelog section as the notes. A
-merge that leaves the version alone releases nothing.
+merge that leaves the version alone releases nothing, so changes that should
+not ship yet go under `## [Unreleased]` and the bump comes later.
 
 ### Running in Development
 
@@ -306,7 +304,7 @@ src/
 ├── indexLoader.ts         # Read and validate the graph; index path and project root rules
 ├── cursorSymbol.ts        # The declaration at the cursor, from document symbols
 ├── webviewLoader.ts       # The viewer in a panel; host side of the selection protocol
-├── pipelineRunner.ts      # Run probegraph pipeline
+├── generator.ts           # Run probe-verus extract; prerequisites and tool install
 └── test/
     ├── unit/              # Plain mocha
     ├── workspace/         # In VS Code, on test-fixtures/quicksort
@@ -319,7 +317,8 @@ webview/                   # Built viewer (not tracked)
 
 ## 📚 Related Projects
 
-- [probegraph](https://github.com/Beneficial-AI-Foundation/probegraph) - Call graph generation from SCIP indices
+- [probegraph](https://github.com/Beneficial-AI-Foundation/probegraph) - The viewer this extension embeds
+- [probe-verus](https://github.com/Beneficial-AI-Foundation/probe-verus) - Produces the graph: SCIP indexing plus Verus verification status
 - [SCIP](https://github.com/sourcegraph/scip) - Source Code Intelligence Protocol
 - [verus-analyzer](https://github.com/verus-lang/verus-analyzer) - Fork of rust-analyzer with Verus support
 - [Verus](https://github.com/verus-lang/verus) - Verified Rust for low-level systems code
