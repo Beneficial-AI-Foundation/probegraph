@@ -1,6 +1,7 @@
 # Viewer: trust base and proof frontier
 
-Status (2026-10-15): planned, nothing started. Split out of the
+Status (2026-10-17): Phase 0 is in review (#105). Phases 1 and 2 are
+not started. Split out of the
 graph-insights brainstorm (`docs/archive/graph-insights.md`) after a Codex
 review on 2026-10-05. Depends on `viewer-filters-and-guide.md` Phase 4 for
 the SCC-condensed DAG and the reverse-reachability bitsets; that code
@@ -23,15 +24,34 @@ Both extractors use the same five statuses with the same meaning
 | `transitively-verified` | Clean modulo the trust base. Not produced under `--skip-enrich`, where such atoms read `verified`. |
 | `failed` | Never produced by probe-lean today; produced by probe-verus. |
 
+probe-aeneas also uses the trusted reason `auto-generated`.
+
 Verus atoms with `untracked: true` carry no status; they are *unknown*, not
 done. Lean `axiom` is a kind and also `trusted` with reason `axiom`.
 
-Consequences for this plan: **done** means `transitively-verified` or
-`trusted`. A `verified` dependency is a blocker, because something
-unfinished sits below it. An empty dependency list is only "done" if the
-node's own status is done; a node whose dependencies are not in the
-extract (external, or the extract was cut) has an unknown closure, and
-every answer below says so rather than reporting zero.
+Consequences for this plan (settled 2026-10-17, measured in Phase 0):
+
+- **Done** is structural: a `trusted` node, or a node that is not
+  unfinished, not unknown, and whose dependencies are all done. A
+  `verified` dependency is a blocker, because something unfinished sits
+  below it. `trusted` is a leaf, so its outgoing links are cut for every
+  answer in this plan. A `trusted` node with reason `admit` counts as done.
+- **No status is neutral.** An atom with no status and no `untracked` flag
+  adds nothing and blocks nothing; the walk goes through it. Verus dalek
+  has 993 such atoms (615 spec functions, 378 Rust exec functions), and
+  1008 `transitively-verified` atoms depend on one of them.
+- **Missing targets do not block.** A dependency that is not in the
+  extract is listed as information. SPQR has 318 atoms with such targets
+  (Lean constructors such as `spqr.Error.StateDecode`), and 280 of them are
+  `transitively-verified`. Unresolved `*-dependencies-external` names are
+  not listed: the extractor already judged them.
+- Only `untracked: true` is unknown. None of the three measured extracts
+  has it.
+
+The extractor computed each status over the full program, so the rules
+above trust it. Phase 0 confirms this: on SPQR and Verus dalek, the
+structural rule gives done for an atom with a status exactly when that
+status is `transitively-verified` or `trusted`.
 
 ## Scope rule
 
@@ -51,8 +71,8 @@ output that the TypeScript tests also run:
   wrapper over an unfinished implementation, a node with a missing
   dependency target, a witness path longer than the render cap.
 
-Measurements on the SPQR extract (`web/public/graph.json`) and a dalek
-Verus graph: trust-base sizes and the number of distinct trust bases on
+Measurements on the SPQR extract (`web/public/graph.json`), a dalek
+Verus graph and a dalek Aeneas graph: trust-base sizes and the number of distinct trust bases on
 the condensed DAG; frontier size under the policy below; the top ten by
 "unfinished dependents affected" and by "would become ready"; the overlap
 with the current `unverifiedHotspots` top five; peak memory of the bitsets
@@ -64,12 +84,68 @@ Kill criteria, decided before running: Phase 1's grouping is not worth a
 Guide section if more than half of the theorems that rest on anything have
 a trust base of their own (no groups to show); Phase 2 is not worth
 replacing `unverifiedHotspots` if its top five and the hotspots' top five
-are the same set on both projects.
+are the same set on both projects. The hotspots now show only as a
+sentence in the Guide summary ("Unverified hotspots (called by verified
+code)"), not as a list. The script computes them as
+`computeUnverifiedHotspots` does, with every node as a candidate.
 
 Known numbers (SPQR, probe-lean 0.14.0, 2907 atoms): 179 axioms, 280
 `trusted`, 58 `unverified`, 47 `verified`, 2522 `transitively-verified`;
 349 of 1076 theorems reach an assumption or unfinished node, sharing about
 102 distinct sets (cycles not condensed; largest 23).
+
+### Phase 0 results (2026-10-17)
+
+The script is `scripts/trust_frontier.py`. `check` runs the fixtures in
+`web/src/test-data/trust-frontier.json`, and `measure <extract>` prints
+the numbers below. A "theorem" is a Lean `theorem` or a Verus `proof`,
+the viewer's `kind:lemma`. A theorem's group key is its trust base
+without the theorem itself.
+
+| | SPQR (probe-lean 0.14.0) | Verus dalek 4.1.3 (probe-verus 6.10.0) | Aeneas dalek 4.2.0 (probe-aeneas 0.7.0) |
+|---|---|---|---|
+| Atoms | 2907 | 2220 | 2292 |
+| Theorems resting on something | 349 of 1076 | 181 of 865 | 194 of 728 |
+| Distinct trust bases (theorems / components) | 106 / 474 | 23 / 224 | 64 / 295 |
+| Theorems with a base of their own | 27 (8%) | 8 (4%) | 37 (19%) |
+| Trust base size (median, max) | 3, 23 | 1, 6 | 4, 24 |
+| Largest group | 30 theorems | 103 theorems | 33 theorems |
+| Longest witness | 15 nodes | 10 nodes | 12 nodes |
+| Unfinished / ready | 58 / 57 | 1 / 1 | 13 / 8 |
+| Top five overlap with the hotspots | 2 | 0 | 0 |
+| Trust-base bitsets | 125 KB | 43 KB | 45 KB |
+| Dependent-closure bitsets | 1.0 MB | 0.6 MB | 0.6 MB |
+
+Verdicts:
+
+- Phase 1 passes. At most 19% of the resting theorems have a base of
+  their own, far under the 50% limit. No real witness comes near the
+  render cap of 200, so the truncated-witness case is only a fixture.
+- Phase 2 passes as written: the top fives differ on every project, so
+  the Frontier list replaces the hotspots sentence (decided 2026-10-17).
+  The hotspots also count atoms with no status: on Verus dalek they are
+  spec functions such as `p()` and `pow2()`, and on Aeneas dalek they are
+  Rust `core` functions. Under the neutral rule these are not work.
+- But the frontier ranking is nearly flat. On SPQR, 57 of the 58
+  unfinished atoms are ready, and only one has a non-zero count (would
+  become ready 1). Most of them are `ProstMessageMessage` instances. On
+  Aeneas dalek, one row unblocks 5 and the other seven unblock 0. The list
+  is useful as "what can be worked on now", but the ranking separates
+  little, and ties fall back to ID order.
+- The frontier also works on `--skip-enrich` graphs. The Aeneas extract
+  has no `transitively-verified` atom. The structural rule reads
+  `verified` as locally clean, which the status table gives as its
+  meaning in both modes. Phase 0 did not check that probe-aeneas
+  follows the table here. See the second open question.
+- Memory is small: trust bases need C·ceil(A/32)·4 bytes, at most 125 KB
+  here. "Would become ready" reruns the done pass once per ready row,
+  F·(C+E) work for F ready rows; on SPQR that is 57 passes over 2907
+  components.
+
+Phase 1 needs two fields that the loader drops today: `trusted-reason`
+and `untracked`. The missing targets are also dropped
+(`convertCodeAtoms` keeps only known IDs), so the details panel needs
+them from the loader too.
 
 ## Phase 1: trust base per node
 
@@ -117,13 +193,13 @@ direction). This is the forward direction.
     blocker, that is, every other dependency is done. The unblocking
     count.
   Rank by the second, ties by the first, then by ID.
-- **Guide.** A "Frontier" list alongside `unverifiedHotspots`, not
-  replacing it until Phase 0's overlap measurement shows the hotspots add
-  nothing. The two answer different questions: hotspots rank by verified
-  direct callers and may list nodes that are not ready; the frontier may be
-  empty on a project whose unfinished nodes all depend on each other.
-- Policy switch (open question below): whether `trusted` dependencies with
-  reason `admit` count as done. Default yes, since the extractor says so.
+- **Guide.** A "Frontier" list that replaces the hotspots sentence in the
+  Guide summary (Phase 0: the top fives differ on all three projects). The
+  frontier can be empty on a project whose unfinished nodes all depend on
+  each other; the Guide then says so.
+- `trusted` dependencies with reason `admit` count as done, since the
+  extractor says so (settled 2026-10-17). A toggle can come later if asked
+  for.
 - **Search box.** An `is:frontier` word for the ready nodes, one more name
   in `IS_NAMES` (`src/query-words.ts`) next to `is:unfinished`. Then
   `top 10 by dependents is:frontier` ranks them by unique transitive
@@ -133,10 +209,10 @@ direction). This is the forward direction.
 
 ## Open questions
 
-- Should an `admit`-trusted Verus node count as done for the frontier?
-  The extractor puts it in the trust base; a project may treat it as debt.
-  Phase 1 shows it under assumptions with its reason either way; a toggle
-  can come later if asked for.
-- Whether the Guide should show the frontier on graphs extracted with
-  `--skip-enrich`, where `transitively-verified` does not exist and every
-  clean node reads `verified`. Probably hide it with a note.
+- Settled 2026-10-17: an `admit`-trusted Verus node counts as done. Phase
+  1 shows it under assumptions with its reason.
+- Settled 2026-10-17: the Guide hides the frontier on graphs extracted
+  with `--skip-enrich`, where `transitively-verified` does not exist, and
+  shows a note. Phase 0 found that the structural rule computes a correct
+  frontier there too (Aeneas dalek: 8 ready rows), so this can be revisited
+  in Phase 2.

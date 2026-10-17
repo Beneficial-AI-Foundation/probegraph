@@ -1,0 +1,2741 @@
+[
+ {
+  "name": "chain",
+  "description": "top and mid are verified because the sorry in low is below them.",
+  "data": {
+   "top": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "mid"
+    ],
+    "verification-status": "verified"
+   },
+   "mid": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "low"
+    ],
+    "verification-status": "verified"
+   },
+   "low": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "ax"
+    ],
+    "verification-status": "unverified"
+   },
+   "ax": {
+    "kind": "axiom",
+    "language": "lean",
+    "dependencies": [],
+    "verification-status": "trusted",
+    "trusted-reason": "axiom"
+   }
+  },
+  "expected": {
+   "trust_base": {
+    "top": {
+     "assumptions": [
+      "ax"
+     ],
+     "unfinished": [
+      "low"
+     ],
+     "unknown": [],
+     "missing": []
+    },
+    "low": {
+     "assumptions": [
+      "ax"
+     ],
+     "unfinished": [
+      "low"
+     ],
+     "unknown": [],
+     "missing": []
+    },
+    "ax": {
+     "assumptions": [
+      "ax"
+     ],
+     "unfinished": [],
+     "unknown": [],
+     "missing": []
+    }
+   },
+   "done": {
+    "top": false,
+    "mid": false,
+    "low": false,
+    "ax": true
+   },
+   "witness": [
+    [
+     "top",
+     "ax",
+     [
+      "top",
+      "mid",
+      "low",
+      "ax"
+     ]
+    ]
+   ],
+   "frontier": [
+    {
+     "members": [
+      "low"
+     ],
+     "unblocks": 0,
+     "affected": 0
+    }
+   ],
+   "groups": [
+    {
+     "base": [
+      "ax",
+      "low"
+     ],
+     "theorems": [
+      "mid",
+      "top"
+     ]
+    },
+    {
+     "base": [
+      "ax"
+     ],
+     "theorems": [
+      "low"
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "diamond-two-blockers",
+  "description": "top waits on b1 and b2. Finishing one of them does not make top ready.",
+  "data": {
+   "top": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "l",
+     "r"
+    ],
+    "verification-status": "unverified"
+   },
+   "l": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "b1"
+    ],
+    "verification-status": "verified"
+   },
+   "r": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "b2"
+    ],
+    "verification-status": "verified"
+   },
+   "b1": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "ax"
+    ],
+    "verification-status": "unverified"
+   },
+   "b2": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "ax"
+    ],
+    "verification-status": "unverified"
+   },
+   "ax": {
+    "kind": "axiom",
+    "language": "lean",
+    "dependencies": [],
+    "verification-status": "trusted",
+    "trusted-reason": "axiom"
+   }
+  },
+  "expected": {
+   "trust_base": {
+    "top": {
+     "assumptions": [
+      "ax"
+     ],
+     "unfinished": [
+      "b1",
+      "b2",
+      "top"
+     ],
+     "unknown": [],
+     "missing": []
+    }
+   },
+   "frontier": [
+    {
+     "members": [
+      "b1"
+     ],
+     "unblocks": 0,
+     "affected": 1
+    },
+    {
+     "members": [
+      "b2"
+     ],
+     "unblocks": 0,
+     "affected": 1
+    }
+   ],
+   "groups": [
+    {
+     "base": [
+      "ax"
+     ],
+     "theorems": [
+      "b1",
+      "b2"
+     ]
+    },
+    {
+     "base": [
+      "ax",
+      "b1"
+     ],
+     "theorems": [
+      "l"
+     ]
+    },
+    {
+     "base": [
+      "ax",
+      "b1",
+      "b2"
+     ],
+     "theorems": [
+      "top"
+     ]
+    },
+    {
+     "base": [
+      "ax",
+      "b2"
+     ],
+     "theorems": [
+      "r"
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "unfinished-scc",
+  "description": "u1, u2 and v form a cycle. The row is one work group with the unfinished members only.",
+  "data": {
+   "c": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "u1"
+    ],
+    "verification-status": "verified"
+   },
+   "u1": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "u2",
+     "ax"
+    ],
+    "verification-status": "unverified"
+   },
+   "u2": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "v"
+    ],
+    "verification-status": "unverified"
+   },
+   "v": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "u1"
+    ],
+    "verification-status": "verified"
+   },
+   "ax": {
+    "kind": "axiom",
+    "language": "lean",
+    "dependencies": [],
+    "verification-status": "trusted",
+    "trusted-reason": "axiom"
+   }
+  },
+  "expected": {
+   "trust_base": {
+    "c": {
+     "assumptions": [
+      "ax"
+     ],
+     "unfinished": [
+      "u1",
+      "u2"
+     ],
+     "unknown": [],
+     "missing": []
+    },
+    "v": {
+     "assumptions": [
+      "ax"
+     ],
+     "unfinished": [
+      "u1",
+      "u2"
+     ],
+     "unknown": [],
+     "missing": []
+    }
+   },
+   "done": {
+    "c": false,
+    "v": false
+   },
+   "frontier": [
+    {
+     "members": [
+      "u1",
+      "u2"
+     ],
+     "unblocks": 0,
+     "affected": 0
+    }
+   ]
+  }
+ },
+ {
+  "name": "contaminated-intermediary",
+  "description": "unfinished -> verified -> unfinished. low is the last blocker of top, through mid.",
+  "data": {
+   "top": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "mid"
+    ],
+    "verification-status": "unverified"
+   },
+   "mid": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "low"
+    ],
+    "verification-status": "verified"
+   },
+   "low": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "ax"
+    ],
+    "verification-status": "unverified"
+   },
+   "ax": {
+    "kind": "axiom",
+    "language": "lean",
+    "dependencies": [],
+    "verification-status": "trusted",
+    "trusted-reason": "axiom"
+   }
+  },
+  "expected": {
+   "done": {
+    "mid": false
+   },
+   "frontier": [
+    {
+     "members": [
+      "low"
+     ],
+     "unblocks": 1,
+     "affected": 1
+    }
+   ]
+  }
+ },
+ {
+  "name": "trusted-wrapper",
+  "description": "w and a are trusted over unfinished code. Trusted is a leaf, and admit counts as done.",
+  "data": {
+   "c": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "w",
+     "a"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "w": {
+    "kind": "exec",
+    "language": "lean",
+    "dependencies": [
+     "impl"
+    ],
+    "verification-status": "trusted",
+    "trusted-reason": "external-body"
+   },
+   "a": {
+    "kind": "exec",
+    "language": "lean",
+    "dependencies": [
+     "impl"
+    ],
+    "verification-status": "trusted",
+    "trusted-reason": "admit"
+   },
+   "impl": {
+    "kind": "exec",
+    "language": "lean",
+    "dependencies": [],
+    "verification-status": "unverified"
+   }
+  },
+  "expected": {
+   "trust_base": {
+    "c": {
+     "assumptions": [
+      "a",
+      "w"
+     ],
+     "unfinished": [],
+     "unknown": [],
+     "missing": []
+    },
+    "w": {
+     "assumptions": [
+      "w"
+     ],
+     "unfinished": [],
+     "unknown": [],
+     "missing": []
+    },
+    "impl": {
+     "assumptions": [],
+     "unfinished": [
+      "impl"
+     ],
+     "unknown": [],
+     "missing": []
+    }
+   },
+   "done": {
+    "c": true,
+    "w": true,
+    "a": true,
+    "impl": false
+   },
+   "witness": [
+    [
+     "c",
+     "impl",
+     null
+    ]
+   ],
+   "frontier": [
+    {
+     "members": [
+      "impl"
+     ],
+     "unblocks": 0,
+     "affected": 0
+    }
+   ],
+   "groups": [
+    {
+     "base": [
+      "a",
+      "w"
+     ],
+     "theorems": [
+      "c"
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "missing-and-unknown",
+  "description": "gone is not in the extract and does not block. s has no status and is neutral. x is untracked: unknown, never done.",
+  "data": {
+   "n": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "gone",
+     "s"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "s": {
+    "kind": "def",
+    "language": "lean",
+    "dependencies": [
+     "ax"
+    ]
+   },
+   "ax": {
+    "kind": "axiom",
+    "language": "lean",
+    "dependencies": [],
+    "verification-status": "trusted",
+    "trusted-reason": "axiom"
+   },
+   "y": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "x"
+    ],
+    "verification-status": "verified"
+   },
+   "x": {
+    "kind": "def",
+    "language": "lean",
+    "dependencies": [],
+    "untracked": true
+   },
+   "u": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "x"
+    ],
+    "verification-status": "unverified"
+   }
+  },
+  "expected": {
+   "trust_base": {
+    "n": {
+     "assumptions": [
+      "ax"
+     ],
+     "unfinished": [],
+     "unknown": [],
+     "missing": [
+      "gone"
+     ]
+    },
+    "s": {
+     "assumptions": [
+      "ax"
+     ],
+     "unfinished": [],
+     "unknown": [],
+     "missing": []
+    },
+    "y": {
+     "assumptions": [],
+     "unfinished": [],
+     "unknown": [
+      "x"
+     ],
+     "missing": []
+    },
+    "u": {
+     "assumptions": [],
+     "unfinished": [
+      "u"
+     ],
+     "unknown": [
+      "x"
+     ],
+     "missing": []
+    }
+   },
+   "done": {
+    "n": true,
+    "s": true,
+    "y": false,
+    "x": false,
+    "u": false
+   },
+   "frontier": []
+  }
+ },
+ {
+  "name": "long-witness",
+  "description": "A chain of 205 theorems over an axiom. The witness has 206 nodes, more than the render cap of 200.",
+  "data": {
+   "t000": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t001"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t001": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t002"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t002": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t003"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t003": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t004"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t004": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t005"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t005": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t006"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t006": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t007"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t007": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t008"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t008": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t009"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t009": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t010"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t010": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t011"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t011": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t012"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t012": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t013"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t013": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t014"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t014": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t015"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t015": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t016"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t016": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t017"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t017": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t018"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t018": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t019"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t019": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t020"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t020": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t021"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t021": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t022"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t022": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t023"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t023": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t024"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t024": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t025"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t025": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t026"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t026": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t027"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t027": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t028"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t028": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t029"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t029": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t030"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t030": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t031"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t031": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t032"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t032": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t033"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t033": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t034"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t034": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t035"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t035": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t036"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t036": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t037"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t037": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t038"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t038": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t039"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t039": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t040"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t040": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t041"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t041": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t042"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t042": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t043"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t043": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t044"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t044": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t045"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t045": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t046"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t046": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t047"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t047": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t048"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t048": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t049"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t049": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t050"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t050": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t051"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t051": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t052"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t052": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t053"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t053": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t054"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t054": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t055"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t055": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t056"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t056": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t057"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t057": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t058"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t058": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t059"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t059": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t060"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t060": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t061"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t061": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t062"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t062": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t063"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t063": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t064"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t064": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t065"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t065": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t066"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t066": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t067"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t067": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t068"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t068": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t069"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t069": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t070"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t070": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t071"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t071": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t072"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t072": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t073"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t073": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t074"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t074": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t075"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t075": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t076"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t076": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t077"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t077": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t078"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t078": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t079"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t079": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t080"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t080": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t081"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t081": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t082"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t082": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t083"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t083": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t084"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t084": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t085"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t085": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t086"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t086": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t087"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t087": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t088"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t088": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t089"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t089": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t090"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t090": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t091"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t091": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t092"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t092": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t093"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t093": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t094"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t094": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t095"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t095": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t096"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t096": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t097"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t097": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t098"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t098": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t099"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t099": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t100"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t100": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t101"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t101": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t102"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t102": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t103"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t103": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t104"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t104": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t105"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t105": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t106"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t106": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t107"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t107": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t108"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t108": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t109"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t109": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t110"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t110": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t111"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t111": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t112"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t112": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t113"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t113": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t114"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t114": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t115"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t115": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t116"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t116": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t117"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t117": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t118"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t118": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t119"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t119": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t120"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t120": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t121"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t121": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t122"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t122": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t123"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t123": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t124"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t124": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t125"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t125": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t126"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t126": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t127"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t127": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t128"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t128": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t129"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t129": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t130"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t130": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t131"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t131": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t132"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t132": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t133"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t133": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t134"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t134": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t135"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t135": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t136"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t136": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t137"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t137": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t138"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t138": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t139"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t139": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t140"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t140": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t141"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t141": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t142"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t142": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t143"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t143": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t144"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t144": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t145"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t145": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t146"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t146": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t147"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t147": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t148"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t148": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t149"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t149": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t150"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t150": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t151"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t151": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t152"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t152": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t153"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t153": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t154"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t154": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t155"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t155": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t156"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t156": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t157"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t157": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t158"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t158": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t159"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t159": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t160"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t160": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t161"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t161": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t162"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t162": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t163"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t163": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t164"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t164": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t165"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t165": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t166"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t166": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t167"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t167": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t168"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t168": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t169"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t169": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t170"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t170": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t171"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t171": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t172"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t172": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t173"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t173": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t174"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t174": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t175"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t175": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t176"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t176": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t177"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t177": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t178"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t178": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t179"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t179": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t180"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t180": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t181"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t181": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t182"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t182": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t183"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t183": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t184"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t184": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t185"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t185": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t186"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t186": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t187"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t187": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t188"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t188": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t189"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t189": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t190"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t190": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t191"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t191": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t192"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t192": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t193"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t193": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t194"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t194": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t195"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t195": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t196"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t196": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t197"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t197": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t198"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t198": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t199"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t199": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t200"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t200": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t201"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t201": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t202"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t202": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t203"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t203": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "t204"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "t204": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "ax"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "ax": {
+    "kind": "axiom",
+    "language": "lean",
+    "dependencies": [],
+    "verification-status": "trusted",
+    "trusted-reason": "axiom"
+   }
+  },
+  "expected": {
+   "witness": [
+    [
+     "t000",
+     "ax",
+     [
+      "t000",
+      "t001",
+      "t002",
+      "t003",
+      "t004",
+      "t005",
+      "t006",
+      "t007",
+      "t008",
+      "t009",
+      "t010",
+      "t011",
+      "t012",
+      "t013",
+      "t014",
+      "t015",
+      "t016",
+      "t017",
+      "t018",
+      "t019",
+      "t020",
+      "t021",
+      "t022",
+      "t023",
+      "t024",
+      "t025",
+      "t026",
+      "t027",
+      "t028",
+      "t029",
+      "t030",
+      "t031",
+      "t032",
+      "t033",
+      "t034",
+      "t035",
+      "t036",
+      "t037",
+      "t038",
+      "t039",
+      "t040",
+      "t041",
+      "t042",
+      "t043",
+      "t044",
+      "t045",
+      "t046",
+      "t047",
+      "t048",
+      "t049",
+      "t050",
+      "t051",
+      "t052",
+      "t053",
+      "t054",
+      "t055",
+      "t056",
+      "t057",
+      "t058",
+      "t059",
+      "t060",
+      "t061",
+      "t062",
+      "t063",
+      "t064",
+      "t065",
+      "t066",
+      "t067",
+      "t068",
+      "t069",
+      "t070",
+      "t071",
+      "t072",
+      "t073",
+      "t074",
+      "t075",
+      "t076",
+      "t077",
+      "t078",
+      "t079",
+      "t080",
+      "t081",
+      "t082",
+      "t083",
+      "t084",
+      "t085",
+      "t086",
+      "t087",
+      "t088",
+      "t089",
+      "t090",
+      "t091",
+      "t092",
+      "t093",
+      "t094",
+      "t095",
+      "t096",
+      "t097",
+      "t098",
+      "t099",
+      "t100",
+      "t101",
+      "t102",
+      "t103",
+      "t104",
+      "t105",
+      "t106",
+      "t107",
+      "t108",
+      "t109",
+      "t110",
+      "t111",
+      "t112",
+      "t113",
+      "t114",
+      "t115",
+      "t116",
+      "t117",
+      "t118",
+      "t119",
+      "t120",
+      "t121",
+      "t122",
+      "t123",
+      "t124",
+      "t125",
+      "t126",
+      "t127",
+      "t128",
+      "t129",
+      "t130",
+      "t131",
+      "t132",
+      "t133",
+      "t134",
+      "t135",
+      "t136",
+      "t137",
+      "t138",
+      "t139",
+      "t140",
+      "t141",
+      "t142",
+      "t143",
+      "t144",
+      "t145",
+      "t146",
+      "t147",
+      "t148",
+      "t149",
+      "t150",
+      "t151",
+      "t152",
+      "t153",
+      "t154",
+      "t155",
+      "t156",
+      "t157",
+      "t158",
+      "t159",
+      "t160",
+      "t161",
+      "t162",
+      "t163",
+      "t164",
+      "t165",
+      "t166",
+      "t167",
+      "t168",
+      "t169",
+      "t170",
+      "t171",
+      "t172",
+      "t173",
+      "t174",
+      "t175",
+      "t176",
+      "t177",
+      "t178",
+      "t179",
+      "t180",
+      "t181",
+      "t182",
+      "t183",
+      "t184",
+      "t185",
+      "t186",
+      "t187",
+      "t188",
+      "t189",
+      "t190",
+      "t191",
+      "t192",
+      "t193",
+      "t194",
+      "t195",
+      "t196",
+      "t197",
+      "t198",
+      "t199",
+      "t200",
+      "t201",
+      "t202",
+      "t203",
+      "t204",
+      "ax"
+     ]
+    ]
+   ],
+   "trust_base": {
+    "t000": {
+     "assumptions": [
+      "ax"
+     ],
+     "unfinished": [],
+     "unknown": [],
+     "missing": []
+    }
+   },
+   "groups": [
+    {
+     "base": [
+      "ax"
+     ],
+     "theorems": [
+      "t000",
+      "t001",
+      "t002",
+      "t003",
+      "t004",
+      "t005",
+      "t006",
+      "t007",
+      "t008",
+      "t009",
+      "t010",
+      "t011",
+      "t012",
+      "t013",
+      "t014",
+      "t015",
+      "t016",
+      "t017",
+      "t018",
+      "t019",
+      "t020",
+      "t021",
+      "t022",
+      "t023",
+      "t024",
+      "t025",
+      "t026",
+      "t027",
+      "t028",
+      "t029",
+      "t030",
+      "t031",
+      "t032",
+      "t033",
+      "t034",
+      "t035",
+      "t036",
+      "t037",
+      "t038",
+      "t039",
+      "t040",
+      "t041",
+      "t042",
+      "t043",
+      "t044",
+      "t045",
+      "t046",
+      "t047",
+      "t048",
+      "t049",
+      "t050",
+      "t051",
+      "t052",
+      "t053",
+      "t054",
+      "t055",
+      "t056",
+      "t057",
+      "t058",
+      "t059",
+      "t060",
+      "t061",
+      "t062",
+      "t063",
+      "t064",
+      "t065",
+      "t066",
+      "t067",
+      "t068",
+      "t069",
+      "t070",
+      "t071",
+      "t072",
+      "t073",
+      "t074",
+      "t075",
+      "t076",
+      "t077",
+      "t078",
+      "t079",
+      "t080",
+      "t081",
+      "t082",
+      "t083",
+      "t084",
+      "t085",
+      "t086",
+      "t087",
+      "t088",
+      "t089",
+      "t090",
+      "t091",
+      "t092",
+      "t093",
+      "t094",
+      "t095",
+      "t096",
+      "t097",
+      "t098",
+      "t099",
+      "t100",
+      "t101",
+      "t102",
+      "t103",
+      "t104",
+      "t105",
+      "t106",
+      "t107",
+      "t108",
+      "t109",
+      "t110",
+      "t111",
+      "t112",
+      "t113",
+      "t114",
+      "t115",
+      "t116",
+      "t117",
+      "t118",
+      "t119",
+      "t120",
+      "t121",
+      "t122",
+      "t123",
+      "t124",
+      "t125",
+      "t126",
+      "t127",
+      "t128",
+      "t129",
+      "t130",
+      "t131",
+      "t132",
+      "t133",
+      "t134",
+      "t135",
+      "t136",
+      "t137",
+      "t138",
+      "t139",
+      "t140",
+      "t141",
+      "t142",
+      "t143",
+      "t144",
+      "t145",
+      "t146",
+      "t147",
+      "t148",
+      "t149",
+      "t150",
+      "t151",
+      "t152",
+      "t153",
+      "t154",
+      "t155",
+      "t156",
+      "t157",
+      "t158",
+      "t159",
+      "t160",
+      "t161",
+      "t162",
+      "t163",
+      "t164",
+      "t165",
+      "t166",
+      "t167",
+      "t168",
+      "t169",
+      "t170",
+      "t171",
+      "t172",
+      "t173",
+      "t174",
+      "t175",
+      "t176",
+      "t177",
+      "t178",
+      "t179",
+      "t180",
+      "t181",
+      "t182",
+      "t183",
+      "t184",
+      "t185",
+      "t186",
+      "t187",
+      "t188",
+      "t189",
+      "t190",
+      "t191",
+      "t192",
+      "t193",
+      "t194",
+      "t195",
+      "t196",
+      "t197",
+      "t198",
+      "t199",
+      "t200",
+      "t201",
+      "t202",
+      "t203",
+      "t204"
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "witness-ties",
+  "description": "Two shortest paths. The BFS visits dependencies in ID order, so the path through a wins.",
+  "data": {
+   "p": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "z",
+     "b",
+     "a"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "a": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "ax"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "b": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "ax"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "z": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "q"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "q": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "ax"
+    ],
+    "verification-status": "transitively-verified"
+   },
+   "ax": {
+    "kind": "axiom",
+    "language": "lean",
+    "dependencies": [],
+    "verification-status": "trusted",
+    "trusted-reason": "axiom"
+   }
+  },
+  "expected": {
+   "witness": [
+    [
+     "p",
+     "ax",
+     [
+      "p",
+      "a",
+      "ax"
+     ]
+    ]
+   ]
+  }
+ }
+]
