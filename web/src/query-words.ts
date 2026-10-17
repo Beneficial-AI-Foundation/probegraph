@@ -1,8 +1,9 @@
 /**
  * Query words: the filter words (`kind:theorem`, `module:field`,
  * `is:unused`, ...) that the search box and the Source and Sink inputs
- * read, and the `paths` and `top` verbs of the search box. See docs/plans/graph-search.md, Phase 2, and the
- * "Query words" part of docs/guides/viewer.md.
+ * read, and the `paths` and `top` verbs of the search box. See
+ * docs/archive/graph-search.md, Phase 2, and the "Query words" part of
+ * docs/guides/viewer.md.
  *
  * A text is split at white space. A word `key:value` with a known key is a
  * filter word; every other word is a plain word. The value of a filter word

@@ -92,7 +92,7 @@ direction). This is the forward direction.
   of a bare count.
 - **Guide.** Theorems grouped by identical trust base ("37 theorems rest on
   exactly {A, B}"), largest groups first. A row opens the group plus its
-  assumptions through the reveal path (`docs/plans/graph-search.md`,
+  assumptions through the reveal path (`docs/archive/graph-search.md`,
   Phase 0): anchors first, then the witnesses, then the rest of the group
   until the cap. The toast gives the full count and the drawn count; a
   truncated witness is listed in the details panel as text, never drawn
@@ -124,6 +124,12 @@ direction). This is the forward direction.
   empty on a project whose unfinished nodes all depend on each other.
 - Policy switch (open question below): whether `trusted` dependencies with
   reason `admit` count as done. Default yes, since the extractor says so.
+- **Search box.** An `is:frontier` word for the ready nodes, one more name
+  in `IS_NAMES` (`src/query-words.ts`) next to `is:unfinished`. Then
+  `top 10 by dependents is:frontier` ranks them by unique transitive
+  dependents, and Show all draws them. Document it in the `is:` table of
+  `docs/guides/viewer.md`. It moved here from the search plan
+  (`docs/archive/graph-search.md`), which is done.
 
 ## Open questions
 

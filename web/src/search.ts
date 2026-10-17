@@ -10,7 +10,7 @@
  * query token must match a token of some field. A match on the name ranks
  * above one on the module path, which ranks above one on a statement name;
  * within a field an exact token ranks above a prefix, and a prefix above a
- * substring. See docs/plans/graph-search.md, Phase 1.
+ * substring. See docs/archive/graph-search.md, Phase 1.
  *
  * Pure module (no DOM), unit-tested in the node environment.
  */

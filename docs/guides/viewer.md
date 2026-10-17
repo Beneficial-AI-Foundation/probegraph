@@ -148,7 +148,7 @@ match in the module path. A match in the module path ranks above a match
 in a statement name. In each field, an exact word ranks above a prefix, and a
 prefix ranks above a substring. Ties go to the earlier word in the name,
 then to the shorter name, then to the ID. The plan
-[graph-search.md](../plans/graph-search.md) has the test queries for this
+[graph-search.md](../archive/graph-search.md) has the test queries for this
 order.
 
 The result list. Each row shows the display name, the declaration kind,
@@ -253,7 +253,7 @@ case does not matter. Examples:
 
 `module:` does not read the node ID, because IDs have no common module
 syntax across Rust, Lean and blueprint extracts. The plan
-[graph-search.md](../plans/graph-search.md) gives the reasons.
+[graph-search.md](../archive/graph-search.md) gives the reasons.
 
 `level:` uses every node and every dependency of the layer, as the strip
 does. The kind and edge-type filters do not change the levels.
