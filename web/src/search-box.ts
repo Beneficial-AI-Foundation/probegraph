@@ -5,7 +5,7 @@
  * gets a first row that runs it as a Source and Sink query. A `top` query
  * and a text of filter words alone give a node list, which "Show all in
  * the Call Graph" draws as an exact ID set. See
- * docs/plans/graph-search.md, Phases 1 and 2, and the "Search box"
+ * docs/archive/graph-search.md, Phases 1 and 2, and the "Search box"
  * section of docs/guides/viewer.md.
  *
  * Keys in the search box: Enter runs the query, shows the node list in

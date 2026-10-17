@@ -1,6 +1,6 @@
 /**
  * E2E tests for the search box and the reveal it runs
- * (docs/plans/graph-search.md, Phases 0 and 1): the result list and its
+ * (docs/archive/graph-search.md, Phases 0 and 1): the result list and its
  * keys, the toast actions, their history entries, the raised render cap
  * and centring.
  */

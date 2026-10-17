@@ -1,6 +1,6 @@
 # Viewer: search and reveal
 
-Status (2026-10-16): Phase 0 merged in #80. `revealNode` in
+Status (2026-10-17): done, archived. Phase 0 merged in #80. `revealNode` in
 `src/main.ts` serves the editor and the search box.
 Phase 1 is done, in three PRs: 1 the index and ranking (`src/search.ts`,
 no UI, #89), 2 the search box and result list (`src/search-box.ts`,
@@ -9,9 +9,9 @@ which replaces the dev-only `window.__revealNode` hook in the e2e tests,
 `src/intent.ts`, #93). Phase 2 was pruned on 2026-10-16 to two PRs.
 PR 1 (query words and `paths`, `src/query-words.ts`) merged in #97.
 PR 2 (`top N by dependents`, the `is:` words, Show all and the Guide
-query buttons) is in review. `by dependents` reuses the guide Phase 4
-count (merged in #81). `is:frontier` waits for `trust-and-frontier.md`
-Phase 2.
+query buttons) merged in #101. `by dependents` reuses the guide Phase 4
+count (merged in #81). `is:frontier` moved to `trust-and-frontier.md`
+Phase 2. The Later items below are issue #102.
 
 Goal: find a declaration by words rather than regex, and make the hit
 usable when the viewer is not showing it. Then ask structural questions
@@ -219,7 +219,7 @@ verb.
     `ensures` edges. In Aeneas projects, a public Rust function with no
     Lean translation (`mapping_id` empty).
   - Later, `is:frontier`, once `trust-and-frontier.md` Phase 2 defines
-    it.
+    it. That plan now owns it.
 - **Structure words ignore the sidebar filters.** `level:`, `is:unused`
   and `by dependents` use every node and every dependency of the layer,
   as the Guide counts and the Dependency levels strip do. A lemma whose
@@ -441,6 +441,8 @@ Decisions in PR 2 (2026-10-16):
   cycle (`query.ts` imports `query-words.ts`).
 
 ## Later (not scheduled)
+
+Tracked in issue #102.
 
 - **Embeddings**, only if lexical misses too much in practice.
   `verus_lemma_finder` already indexes vstd and curve25519-dalek and
