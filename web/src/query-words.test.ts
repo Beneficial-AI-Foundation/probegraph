@@ -3,8 +3,9 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
   compileFilterWords, formatVerbQuery, formatWords, graphLevels, graphWordContext,
-  moduleSegments, parseVerbQuery, parseWords, type FilterWord,
+  moduleSegments, parseVerbQuery, parseWords, runTop, type FilterWord, type TopQuery,
 } from './query-words';
+import { buildGraphSummary } from './guide/static-analysis';
 import { compileQuery, executeQuery } from './query';
 import { textIntent } from './intent';
 import { parseAndNormalizeGraph } from './graph-loader';
@@ -164,6 +165,143 @@ describe('parseVerbQuery', () => {
     const text = 'paths from module:edwards kind:exec to module:field';
     const parsed = parseVerbQuery(text);
     expect(parsed?.ok && formatVerbQuery(parsed.value)).toBe(text);
+  });
+});
+
+describe('top', () => {
+  const top = (n: number, words = '') => ({ verb: 'top', n, filters: words ? filters(words) : [] });
+
+  it('parses top [N] by dependents [filter words]', () => {
+    expect(parseVerbQuery('top 5 by dependents is:unfinished')).toEqual({ ok: true, value: top(5, 'is:unfinished') });
+    expect(parseVerbQuery('TOP BY Dependents')).toEqual({ ok: true, value: top(10) });
+    expect(parseVerbQuery('top 200 by dependents kind:lemma module:field'))
+      .toEqual({ ok: true, value: top(200, 'kind:lemma module:field') });
+  });
+
+  it('is not a verb unless top is followed by a number, by, or nothing', () => {
+    expect(parseVerbQuery('top_level')).toBeNull();
+    expect(parseVerbQuery('top level')).toBeNull();
+    expect(parseVerbQuery('stop 5 by dependents')).toBeNull();
+  });
+
+  it('gives an error for a bad N, a missing ranking or a plain word', () => {
+    const notYet = { ok: false, error: 'Not a query yet: top [N] by dependents [filter words]' };
+    expect(parseVerbQuery('top')).toEqual(notYet);
+    expect(parseVerbQuery('top 5')).toEqual(notYet);
+    expect(parseVerbQuery('top by callers')).toEqual(notYet);
+    const range = { ok: false, error: 'top takes a number from 1 to 200' };
+    expect(parseVerbQuery('top 0 by dependents')).toEqual(range);
+    expect(parseVerbQuery('top 201 by dependents')).toEqual(range);
+    expect(parseVerbQuery('top 5 by dependents field'))
+      .toEqual({ ok: false, error: 'top takes filter words only, for example module:field' });
+    expect(parseVerbQuery('top by dependents is:done')).toMatchObject({ ok: false, error: expect.stringContaining('is:done') });
+  });
+
+  it('round-trips through formatVerbQuery, with N written out', () => {
+    for (const text of ['top 5 by dependents is:unfinished kind:lemma', 'top 10 by dependents']) {
+      const parsed = parseVerbQuery(text);
+      expect(parsed?.ok && formatVerbQuery(parsed.value)).toBe(text);
+    }
+    const parsed = parseVerbQuery('top by dependents');
+    expect(parsed?.ok && formatVerbQuery(parsed.value)).toBe('top 10 by dependents');
+  });
+
+  it('ranks by unique transitive dependents, ties by ID, and counts the matches', () => {
+    // c <- b <- a, and d <- a: c has two dependents, b and d one each
+    const g = graph([node('a'), node('b'), node('c'), node('d', { kind: 'theorem' })],
+      [['a', 'b'], ['b', 'c'], ['a', 'd']]);
+    const result = runTop(g, top(2) as TopQuery);
+    expect(result.ok && result.rows.map(r => [r.node.id, r.count])).toEqual([['c', 2], ['b', 1]]);
+    expect(result.ok && result.total).toBe(4);
+    const lemmas = runTop(g, top(5, 'kind:lemma') as TopQuery);
+    expect(lemmas.ok && lemmas.rows.map(r => r.node.id)).toEqual(['d']);
+  });
+
+  it('gives the same rows as the Guide list it fills the search box with', () => {
+    const g = parseAndNormalizeGraph(JSON.parse(readFileSync(
+      resolve(__dirname, 'test-data/spqr-aeneas-search-cut.json'), 'utf8')));
+    // The cut has no statuses: give every third node one
+    const statuses = ['unverified', 'trusted', 'verified'] as const;
+    g.nodes.forEach((n, i) => { n.verification_status = statuses[i % 3]; });
+    const summary = buildGraphSummary(g);
+    for (const list of [summary.unfinished, summary.assumptions, summary.keystones]) {
+      const parsed = parseVerbQuery(list.query);
+      if (!parsed?.ok || parsed.value.verb !== 'top') throw new Error(list.query);
+      const result = runTop(g, parsed.value);
+      expect(result.ok && result.rows.map(r => r.node.id)).toEqual(list.rows.map(r => r.id));
+    }
+    // The cut has unfinished nodes and lemmas, so the check is not vacuous
+    expect(summary.unfinished.rows.length).toBe(5);
+    expect(summary.assumptions.rows.length).toBe(5);
+    expect(summary.keystones.rows.length).toBe(5);
+  });
+});
+
+describe('is: words', () => {
+  it('is:unfinished and is:assumption follow the Guide', () => {
+    const g = graph([
+      node('u', { verification_status: 'unverified' }),
+      node('f', { verification_status: 'failed' }),
+      node('none'),
+      node('ax', { kind: 'axiom', verification_status: 'unverified' }),
+      node('t', { verification_status: 'trusted' }),
+    ]);
+    expect(matching(g, 'is:unfinished')).toEqual(['u', 'f']);
+    expect(matching(g, 'is:assumption')).toEqual(['ax', 't']);
+    // status:unverified counts a node without a status, is:unfinished does not
+    expect(matching(g, 'status:unverified')).toEqual(['u', 'none', 'ax']);
+  });
+
+  it('is:unused leaves out entry points, generated and hidden nodes, and self-calls', () => {
+    const g = graph([
+      node('caller', { kind: 'theorem' }),
+      node('callee', { kind: 'theorem' }),
+      node('entry', { is_entry_point: true }),
+      node('step', { kind: 'theorem', is_generated: true }),
+      node('aux', { is_hidden: true }),
+      node('rec'),
+    ], [['caller', 'callee'], ['rec', 'rec']]);
+    // A lemma that only calls others is still unused
+    expect(matching(g, 'is:unused')).toEqual(['caller', 'rec']);
+  });
+
+  it('is:unused counts callers on every link, whatever the edge filters show', () => {
+    const g = graph([node('spec', { kind: 'spec' }), node('lemma', { kind: 'proof' })], [['spec', 'lemma']]);
+    g.links[0].type = 'postcondition';
+    expect(matching(g, 'is:unused')).toEqual(['spec']);
+  });
+
+  it('is:surface in Verus: public exec functions without requires or ensures', () => {
+    const g = graph([
+      node('open', { kind: 'exec', language: 'rust', is_public_api: true }),
+      node('ensured', { kind: 'exec', language: 'rust', is_public_api: true }),
+      node('private', { kind: 'exec', language: 'rust' }),
+      node('lemma', { kind: 'proof', language: 'verus', is_public_api: true }),
+      node('spec', { kind: 'spec', language: 'verus' }),
+    ], [['ensured', 'spec']]);
+    g.links[0].type = 'postcondition';
+    expect(matching(g, 'is:surface')).toEqual(['open']);
+  });
+
+  it('is:surface in Aeneas: public Rust functions without a Lean translation', () => {
+    const g = graph([
+      node('open', { kind: 'exec', language: 'rust', is_public_api: true }),
+      node('mapped', { kind: 'exec', language: 'rust', is_public_api: true, mapping_id: 'L.mapped' }),
+      node('L.mapped', { kind: 'def', language: 'lean' }),
+    ]);
+    expect(matching(g, 'is:surface')).toEqual(['open']);
+  });
+
+  it('is:surface lists nothing without Verus or Lean nodes', () => {
+    const g = graph([node('f', { kind: 'exec', language: 'rust', is_public_api: true })]);
+    expect(matching(g, 'is:surface')).toEqual([]);
+  });
+
+  it('reads the facts of the node layer when given two layers', () => {
+    const code = graph([node('a'), node('b')], [['a', 'b']]);
+    const blueprint = graph([node('x'), node('b2')], [['x', 'b2']]);
+    const passes = compileFilterWords(filters('is:unused'), graphWordContext(code, blueprint));
+    expect([...code.nodes, ...blueprint.nodes].filter(passes).map(n => n.id)).toEqual(['a', 'x']);
   });
 });
 

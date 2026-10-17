@@ -8,9 +8,10 @@ which replaces the dev-only `window.__revealNode` hook in the e2e tests,
 #91), 3 the source-set plus sink-set intent (`idPaths` in
 `src/intent.ts`, #93). Phase 2 was pruned on 2026-10-16 to two PRs.
 PR 1 (query words and `paths`, `src/query-words.ts`) merged in #97.
-PR 2 (`top N by dependents` and the `is:` words) is next. `by
-dependents` reuses the guide Phase 4 count (merged in #81). `is:frontier` waits for
-`trust-and-frontier.md` Phase 2.
+PR 2 (`top N by dependents`, the `is:` words, Show all and the Guide
+query buttons) is in review. `by dependents` reuses the guide Phase 4
+count (merged in #81). `is:frontier` waits for `trust-and-frontier.md`
+Phase 2.
 
 Goal: find a declaration by words rather than regex, and make the hit
 usable when the viewer is not showing it. Then ask structural questions
@@ -413,6 +414,31 @@ Decisions in PR 1 (2026-10-16):
   a predicate on the edges.
 - `level:` uses `graphCondensation` and `dependencyLevels` on the whole
   layer, the same numbers as the Guide strip, cached per graph.
+
+Decisions in PR 2 (2026-10-16):
+
+- `is:surface` picks its rule per layer, not per node. probe-verus tags
+  exec functions `rust`, the same as the Rust nodes of an Aeneas join.
+  So a layer with `verus` nodes gets the `requires`/`ensures` rule, a
+  layer with `rust` and `lean` nodes gets the translation rule, and any
+  other layer lists nothing. A plain probe-rust graph would otherwise list
+  every public function. Verus dalek gives 47, Aeneas dalek 46, as
+  measured above.
+- `is:unused` reads the node-level dependencies, the relation of the
+  levels and the dependent counts. A call to itself does not count.
+- A `top` text is a verb only if `top` is followed by a number, `by` or
+  nothing, so `top_level` and `top level` stay searches.
+- `top` has no query row. Its rows are the result, and a line above them
+  says what was ranked ("Top 10 of 37 by unique transitive dependents").
+  Enter clicks Show all, as Enter runs the `paths` row. For a filter-word
+  list above 200 nodes, Enter shows the top result, as before.
+- The keystones query uses `kind:blueprint-theorem` on the blueprint
+  layer, because `kind:lemma` (proof or theorem) does not match it.
+- The Show all toast is "N nodes: label (M hidden by filters)", the form
+  of the Guide's toast.
+- `isUnfinished` and `isAssumption` moved from the Guide to
+  `query-words.ts`, so the two share one definition without an import
+  cycle (`query.ts` imports `query-words.ts`).
 
 ## Later (not scheduled)
 

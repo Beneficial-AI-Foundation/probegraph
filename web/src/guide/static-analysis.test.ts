@@ -91,6 +91,27 @@ describe('crate boundary chip', () => {
   });
 });
 
+describe('search box chips and list queries', () => {
+  const all = { isCandidate: () => true, isLinkShown: () => true };
+
+  it('gives each ranked list its top query', () => {
+    const s = buildGraphSummary(fixture(), all);
+    expect([s.unfinished.query, s.assumptions.query, s.keystones.query]).toEqual([
+      'top 5 by dependents is:unfinished', 'top 5 by dependents is:assumption', 'top 5 by dependents kind:lemma',
+    ]);
+    const noLemmas = graph([node('d', 'A', 'def')], []);
+    expect(buildGraphSummary(noLemmas, all).keystones.query).toBe('top 5 by dependents');
+  });
+
+  it('adds an unused chip with its count, and no surface chip without public API data', () => {
+    const chips = buildGraphSummary(fixture(), all).suggestedQueries.filter(q => q.action.type === 'fillSearch');
+    // a1, a2, b2 and b4 have no callers
+    expect(chips.map(q => [q.label, q.action])).toEqual([
+      ['Unused declarations (4)', { type: 'fillSearch', query: 'is:unused' }],
+    ]);
+  });
+});
+
 describe('ranked lists', () => {
   const all = { isCandidate: () => true, isLinkShown: () => true };
   const rows = (list: { rows: { id: string; transitiveDependentCount: number }[] }) =>
@@ -126,7 +147,7 @@ describe('ranked lists', () => {
     // Hiding defs drops b3 from the rows but t1 still counts its def callers
     const noDefs = { isCandidate: (n: D3Node) => n.kind !== 'def', isLinkShown: () => true };
     const s = buildGraphSummary(fixture(), noDefs);
-    expect(s.unfinished).toEqual({ rows: [], total: 0 });
+    expect(s.unfinished).toEqual({ rows: [], total: 0, query: 'top 5 by dependents is:unfinished' });
     expect(rows(s.keystones)[0]).toEqual(['t1', 5]);
   });
 

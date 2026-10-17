@@ -652,6 +652,7 @@ const guideActions: GuideActions = {
     applyGuideTransition(t);
     return lastRenderResult;
   },
+  fillSearch: query => searchBox?.fill(query),
 };
 
 // Size of the last Call Graph / File Map render, for the Guide's toast
@@ -3994,6 +3995,7 @@ function initSearchBox(): void {
       center: true,
       offer: true,
     }),
+    shownLayer: () => activeLayer,
     // As if typed into Source and Sink, as one Back entry
     runQuery: (source, sink) => setIntent(textIntent(source, sink), {
       history: 'push',
@@ -4001,7 +4003,31 @@ function initSearchBox(): void {
         if (activeView !== 'callgraph') switchView('callgraph', { apply: false });
       },
     }),
+    showAll: showNodeList,
   });
+}
+
+/**
+ * Draw a node list of the search box: an exact ID set without direction,
+ * on its layer, in the Call Graph, as one Back entry. The toast says how
+ * many the filters hide.
+ */
+function showNodeList(ids: string[], layer: Layer, label: string): void {
+  flushDebouncedApply();
+  // The intent replaces the layer switch's entry, so one Back restores the layer too
+  const switched = layer !== activeLayer;
+  if (switched) switchLayer(layer);
+  setIntent(exactIntent(ids, 'none', label, { type: 'search' }), {
+    history: switched ? 'replace' : 'push',
+    pushed: true,
+    before: () => {
+      if (activeView !== 'callgraph') switchView('callgraph', { apply: false });
+    },
+  });
+  const rendered = new Set(state.filteredGraph?.nodes.map(n => n.id));
+  const shown = ids.filter(id => rendered.has(id)).length;
+  const hidden = ids.length - shown;
+  showToast(`${shown} ${shown === 1 ? 'node' : 'nodes'}: ${label}${hidden > 0 ? ` (${hidden} hidden by filters)` : ''}`);
 }
 
 // ============================================================================

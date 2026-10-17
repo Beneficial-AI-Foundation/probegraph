@@ -9,8 +9,11 @@ import type { D3Graph, D3Link, D3Node, ProjectLanguage } from '../types';
 import { crateNoun, detectProjectLanguage, getKindSetsForLanguage, isVerifiedStatus } from '../types';
 import { getLinkId } from '../query';
 import {
-  dependencyLevels, graphCondensation, rankByTransitiveDependents, reachabilityFits,
+  condensedSize, dependencyLevels, graphCondensation, rankByTransitiveDependents, reachabilityFits,
 } from '../reachability';
+import {
+  compileFilterWords, graphWordContext, isAssumption, isUnfinished, type FilterWord,
+} from '../query-words';
 import type {
   GraphSummary, CrateSummary, GroupBoundary, VerificationBreakdown,
   KindBreakdown, NodeRank, SuggestedQuery, RankedAnswer, RankedList, LevelStat,
@@ -49,9 +52,10 @@ export function buildGraphSummary(graph: D3Graph, visibility: SummaryVisibility 
     .map(nodeToRank)
     .sort((a, b) => b.dependentCount - a.dependentCount);
 
-  const suggestedQueries = generateSuggestedQueries(
-    lang, crates, boundary, verification, failedNodes,
-  );
+  const suggestedQueries = [
+    ...generateSuggestedQueries(lang, crates, boundary, verification, failedNodes),
+    ...searchChips(graph),
+  ];
 
   return {
     projectLanguage: lang,
@@ -164,16 +168,6 @@ function nodeToRank(n: D3Node): NodeRank {
   };
 }
 
-/** Unfinished work: the declaration itself is not done. Axioms are assumptions, not blockers. */
-export function isUnfinished(n: D3Node): boolean {
-  return (n.verification_status === 'unverified' || n.verification_status === 'failed') && n.kind !== 'axiom';
-}
-
-/** Accepted assumptions: axioms and the rest of the trust base. */
-export function isAssumption(n: D3Node): boolean {
-  return n.kind === 'axiom' || n.verification_status === 'trusted';
-}
-
 /**
  * The Guide's ranked lists, by unique transitive dependents over the full
  * graph, ties by ID. `isCandidate` (the kind filters) restricts the rows,
@@ -191,21 +185,23 @@ function computeRankedLists(
   const keystonesAreLemmas = graph.nodes.some(n => proofKinds.has(n.kind));
   const isKeystone = keystonesAreLemmas ? (n: D3Node) => proofKinds.has(n.kind) : () => true;
   const condensation = graphCondensation(graph);
-  const rankingsSkipped = reachabilityFits(condensation) ? null : {
-    components: condensation.members.length,
-    links: condensation.dependencies.reduce((sum, deps) => sum + deps.length, 0),
-  };
-  const list = (pred: (n: D3Node) => boolean): RankedList => {
+  const rankingsSkipped = reachabilityFits(condensation) ? null : condensedSize(condensation);
+  const list = (pred: (n: D3Node) => boolean, words: string): RankedList => {
     const select = (n: D3Node) => isCandidate(n) && pred(n);
     const rows: RankedAnswer[] = (rankByTransitiveDependents(graph, select, RANKED_LIST_LENGTH) ?? [])
       .map(({ node, count }) => ({ ...nodeToRank(node), transitiveDependentCount: count }));
     addContext(rows, graph);
-    return { rows, total: graph.nodes.filter(select).length };
+    const query = [`top ${RANKED_LIST_LENGTH} by dependents`, words].filter(w => w !== '').join(' ');
+    return { rows, total: graph.nodes.filter(select).length, query };
   };
+  // kind:lemma is proof or theorem; the blueprint layer has its own kind
+  const keystoneWords = !keystonesAreLemmas ? ''
+    : lang === 'blueprint' ? `kind:${[...proofKinds].join(',')}`
+    : 'kind:lemma';
   return {
-    unfinished: list(isUnfinished),
-    assumptions: list(isAssumption),
-    keystones: list(isKeystone),
+    unfinished: list(isUnfinished, 'is:unfinished'),
+    assumptions: list(isAssumption, 'is:assumption'),
+    keystones: list(isKeystone, keystoneWords),
     keystonesAreLemmas,
     rankingsSkipped,
   };
@@ -274,6 +270,27 @@ function computeUnverifiedHotspots(
   return hotspots
     .sort((a, b) => b.verifiedCallerCount - a.verifiedCallerCount || a.id.localeCompare(b.id))
     .slice(0, limit);
+}
+
+/**
+ * Chips that fill the search box with an `is:` word, each only when it
+ * matches a node. They count every node, as the search box does.
+ */
+function searchChips(graph: D3Graph): SuggestedQuery[] {
+  const chips: [string, string, string][] = [
+    ['unused', 'Unused declarations', 'No callers in the project, and not an entry point'],
+    ['surface', 'Public functions without a contract', 'No requires or ensures, or no Lean translation'],
+  ];
+  const context = graphWordContext(graph);
+  return chips.flatMap(([name, label, description]) => {
+    const word: FilterWord = { key: 'is', values: [name] };
+    const count = graph.nodes.filter(compileFilterWords([word], context)).length;
+    return count === 0 ? [] : [{
+      label: `${label} (${count})`,
+      description: `${description}. Lists them in the search box`,
+      action: { type: 'fillSearch' as const, query: `is:${name}` },
+    }];
+  });
 }
 
 function generateSuggestedQueries(

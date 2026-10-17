@@ -273,6 +273,14 @@ body {
   border-bottom: 1px solid var(--pg-border);
 }
 
+.search-show-all {
+  border-top: 1px solid var(--pg-border);
+}
+
+.search-show-all .search-result-name {
+  color: var(--pg-accent);
+}
+
 .search-query-tag {
   padding: 0 0.3rem;
   border: 1px solid var(--pg-accent);
@@ -1475,6 +1483,25 @@ select.search-input {
   font-weight: 600;
   margin: 0;
   color: var(--pg-text);
+}
+
+.guide-query {
+  margin-left: 0.25rem;
+  padding: 0 0.35rem;
+  background: transparent;
+  border: 1px solid var(--pg-accent);
+  border-radius: var(--pg-radius-sm);
+  font-size: 0.68rem;
+  font-weight: 400;
+  font-family: inherit;
+  color: var(--pg-accent);
+  cursor: pointer;
+  vertical-align: middle;
+}
+
+.guide-query:hover,
+.guide-query:focus {
+  background: var(--pg-accent-soft);
 }
 
 .guide-section-desc,

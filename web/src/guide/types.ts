@@ -54,6 +54,7 @@ export interface RankedAnswer extends NodeRank {
 export interface RankedList {
   rows: RankedAnswer[];
   total: number;
+  query: string;  // the search box query of the list, e.g. `top 5 by dependents is:unfinished`
 }
 
 /**
@@ -83,7 +84,11 @@ export type SuggestedAction =
   | { type: 'setSink'; id: string; label: string }
   | { type: 'filterVerification'; statuses: VerificationStatus[] }
   | { type: 'setCrateBoundary'; source: string; target: string }
-  | { type: 'switchView'; view: ActiveView };
+  | { type: 'switchView'; view: ActiveView }
+  | { type: 'fillSearch'; query: string };  // put the query into the search box
+
+/** Actions that change the graph state; `fillSearch` only fills the search box. */
+export type StateAction = Exclude<SuggestedAction, { type: 'fillSearch' }>;
 
 export interface GraphSummary {
   projectLanguage: ProjectLanguage;
@@ -139,4 +144,6 @@ export interface GuideResult {
 
 export interface GuideActions {
   apply(t: GuideTransition): GuideResult | null;
+  /** Put a query into the search box and open its result list */
+  fillSearch(query: string): void;
 }

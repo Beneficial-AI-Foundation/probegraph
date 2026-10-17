@@ -8,7 +8,7 @@
  */
 
 import type {
-  GraphSummary, SuggestedAction, GuideActions, GuideResult, GuideTransition, LevelStat, RankedList,
+  GraphSummary, SuggestedAction, GuideActions, GuideResult, GuideTransition, LevelStat, RankedList, StateAction,
 } from './types';
 import { NONE_INTENT, exactIntent, boundaryIntent } from '../intent';
 import { escapeHtml } from '../html';
@@ -73,6 +73,12 @@ export class GuidePanel {
       list.total > list.rows.length ? `${title} (top ${list.rows.length} of ${list.total})` : title,
       description,
     );
+    const query = document.createElement('button');
+    query.className = 'guide-query';
+    query.textContent = 'query';
+    query.title = `Put "${list.query}" into the search box`;
+    query.addEventListener('click', () => this.executeAction({ type: 'fillSearch', query: list.query }, list.query));
+    section.querySelector('.guide-section-title')!.append(' ', query);
     if (list.rows.length === 0) {
       const empty = document.createElement('p');
       empty.className = 'guide-empty';
@@ -107,6 +113,10 @@ export class GuidePanel {
   }
 
   private executeAction(action: SuggestedAction, label: string): void {
+    if (action.type === 'fillSearch') {
+      this.actions.fillSearch(action.query);
+      return;
+    }
     // Stay on the Guide tab; the toast reports what the graph now shows
     const result = this.actions.apply(guideTransition(action, label));
     showToast(resultMessage(action, label, result));
@@ -219,7 +229,7 @@ export function levelShares(stat: LevelStat): string {
 }
 
 /** What the graph shows after an action, e.g. "180 nodes: callers of GF16". */
-export function resultMessage(action: SuggestedAction, label: string, result: GuideResult | null): string {
+export function resultMessage(action: StateAction, label: string, result: GuideResult | null): string {
   if (!result || action.type === 'switchView') return label;
   if (result.tooLarge) return `${label}: the graph is too large to show without a query`;
   if (result.missingAnchor && (action.type === 'setSource' || action.type === 'setSink')) {
@@ -241,7 +251,7 @@ export function resultMessage(action: SuggestedAction, label: string, result: Gu
   return `${result.shown} ${noun}: ${describeAction(action)}${note}`;
 }
 
-function describeAction(action: Exclude<SuggestedAction, { type: 'switchView' }>): string {
+function describeAction(action: Exclude<StateAction, { type: 'switchView' }>): string {
   switch (action.type) {
     case 'setSource': return `callees of ${action.label}`;
     case 'setSink': return `callers of ${action.label}`;
@@ -254,7 +264,7 @@ function describeAction(action: Exclude<SuggestedAction, { type: 'switchView' }>
  * Map a suggested action to one state transition. Directional actions use
  * unlimited depth so the BFS finds every reachable node.
  */
-export function guideTransition(action: SuggestedAction, label: string): GuideTransition {
+export function guideTransition(action: StateAction, label: string): GuideTransition {
   switch (action.type) {
     case 'setSource':
       return { intent: exactIntent([action.id], 'callees', action.label, { type: 'guide' }), status: null, depth: null, label };
