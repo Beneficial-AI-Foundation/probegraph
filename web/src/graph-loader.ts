@@ -95,6 +95,12 @@ function unresolvedStatementExternals(atom: ProbeAtom, knownIds: Set<string>): s
   return unresolved.length > 0 ? unresolved : undefined;
 }
 
+/** `dependencies` targets with no atom in the graph, sorted. */
+function missingDependencies(atom: ProbeAtom, knownIds: Set<string>): string[] | undefined {
+  const missing = [...new Set(atom.dependencies)].filter(dep => !knownIds.has(dep)).sort();
+  return missing.length > 0 ? missing : undefined;
+}
+
 /**
  * Role lookup for one atom's dependencies from its statement / body-or-proof
  * split. Both arrays must be present: an absent array means the extractor
@@ -337,6 +343,8 @@ function convertCodeAtoms(atoms: Record<string, ProbeAtom>): D3Graph {
       dependents,
       kind: atom.kind || 'exec',
       verification_status: atom["verification-status"] as VerificationStatus | undefined,
+      trusted_reason: atom["trusted-reason"],
+      untracked: atom.untracked === true || undefined,
       language: atom.language,
       mapping_id: atom["translation-name"],
       mapping_path: atom["translation-path"],
@@ -352,6 +360,7 @@ function convertCodeAtoms(atoms: Record<string, ProbeAtom>): D3Graph {
       is_hidden: atom["is-hidden"] === true || undefined,
       is_generated: atom["is-lean-generated"] === true || atom["is-aeneas-generated"] === true || undefined,
       statement_externals: unresolvedStatementExternals(atom, knownIds),
+      missing_dependencies: missingDependencies(atom, knownIds),
     };
   });
 

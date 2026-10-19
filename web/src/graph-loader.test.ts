@@ -20,6 +20,31 @@ const atom = (over: Partial<ProbeAtom>): ProbeAtom => ({
   ...over,
 });
 
+describe('convertAtomDictToD3Graph trust fields', () => {
+  const g = convertAtomDictToD3Graph({
+    'probe:ax': atom({ kind: 'axiom', "verification-status": 'trusted', "trusted-reason": 'axiom' }),
+    'probe:x': atom({ untracked: true }),
+    'probe:a': atom({
+      dependencies: ['probe:ax', 'probe:Gone.b', 'probe:Gone.a', 'probe:Gone.b'],
+      "term-dependencies-external": ['probe:Lean.Term'],
+    }),
+  });
+  const node = (id: string) => g.nodes.find(n => n.id === id)!;
+
+  it('keeps the trusted reason and the untracked flag', () => {
+    expect(node('probe:ax').trusted_reason).toBe('axiom');
+    expect(node('probe:x').untracked).toBe(true);
+    expect(node('probe:a').trusted_reason).toBeUndefined();
+    expect(node('probe:a').untracked).toBeUndefined();
+  });
+
+  it('keeps dependency targets that are not in the graph, sorted and once', () => {
+    expect(node('probe:a').missing_dependencies).toEqual(['probe:Gone.a', 'probe:Gone.b']);
+    expect(node('probe:a').dependencies).toEqual(['probe:ax']);
+    expect(node('probe:ax').missing_dependencies).toBeUndefined();
+  });
+});
+
 describe('convertAtomDictToD3Graph external dependencies', () => {
   const atoms: Record<string, ProbeAtom> = {
     'probe:caller': atom({

@@ -259,6 +259,8 @@ export interface D3Node {
   similar_lemmas?: SimilarLemma[];
   kind: DeclKind;  // Declaration kind: exec, proof, spec (Verus) or theorem, def, axiom, ... (Lean)
   verification_status?: VerificationStatus;  // Verification status: verified, failed, unverified
+  trusted_reason?: string;  // Why a `trusted` atom is trusted: axiom, external-body, admit, ...
+  untracked?: boolean;  // probe-verus `untracked`: no status, so the closure is unknown
   language?: string;  // Per-atom language: "rust" or "lean"
   // Cross-language links (merged Rust/Lean atoms)
   mapping_id?: string;  // Lean translation probe ID (on Rust nodes)
@@ -278,6 +280,9 @@ export interface D3Node {
   // probe-lean `type-dependencies-external` IDs with no atom in the graph,
   // so no link; search indexes them as statement names
   statement_externals?: string[];
+  // `dependencies` targets with no atom in the graph, so no link; the
+  // trust base lists them for information (docs/plans/trust-and-frontier.md)
+  missing_dependencies?: string[];
   // Derived statuses computed by DAG walk (used by File Map view)
   border_status?: BorderStatus;
   fill_status?: FillStatus;
@@ -420,6 +425,10 @@ export interface ProbeAtom {
   "code-module": string;
   kind: string;
   "verification-status"?: string;
+  /** Why a `trusted` atom is trusted: axiom, external, external-body, admit, assume-specification, auto-generated. */
+  "trusted-reason"?: string;
+  /** probe-verus: the atom is outside verification and carries no status. */
+  untracked?: boolean;
   "specified"?: boolean;
   "dependencies-with-locations"?: Array<{
     "code-name": string;
