@@ -1,9 +1,10 @@
 # Viewer: statement/proof, private and blueprint filters, guide fixes
 
 Status (2026-10-15): Phases 0 to 2, 4, 5a and 5c merged (#42, #43, #46,
-#48, #49, #51, #56, #57, #81). Open: 5b (blueprint-layer filters and the
-code-layer "Blueprint-bound only" filter; `FilterOptions` has none of those
-fields) and Phase 3 (blocked on probe-lean #114, still open). Phase 4
+#48, #49, #51, #56, #57, #81). Open: 5b (blueprint-layer filters, the
+code-layer "Blueprint-bound only" filter and, added 2026-10-05, declared
+vs. found edges; `FilterOptions` has none of those fields) and Phase 3
+(blocked on probe-lean #114, still open). Phase 4
 merged in #81: the ranked lists, SCC-based dependent counts
 (`src/reachability.ts`), the dependency levels strip and truncation by
 distance from the anchors (`src/truncate.ts`). Two Phase 4 items merged
@@ -372,6 +373,22 @@ Plan:
   what exists in code), mismatch only.
 - **Filter on the code layer:** "Blueprint-bound only" (atoms with
   `blueprint-label`). Contraction is deferred (see Later).
+- **Declared vs. found edges.** On the blueprint layer, a uses edge A → B
+  has a code witness when some decl bound by A lists some decl bound by B
+  directly in its dependencies. Paths through unbound helpers do not count
+  in this first version. Each role is checked on its own: statement-uses
+  against type dependencies, proof-uses against term dependencies. Draw an
+  edge solid when every role it declares has a witness, and dashed
+  otherwise (no code witness found; the proof can also reach B by another
+  route). For a `both` edge with one witnessed role, A's node details name
+  the role without a witness. A third style marks pairs of bound nodes
+  with a code dependency and no declared edge in either role. A code
+  dependency in a role the blueprint does not declare, on a pair that has
+  a declared edge, is listed in A's node details only. The choir proof
+  tree draws its planned and worker-introduced edges with different
+  weights for the same reason. Added 2026-10-05 from the graph-insights
+  brainstorm (`docs/archive/graph-insights.md`); goes in 5b with the other
+  blueprint-layer filters.
 - **Drill-down.** Double-click a blueprint node to open its bound decls in
   the code layer (node atom `dependencies`). Zero bindings: toast "no bound
   declarations" and stay. Missing decls (`blueprint-missing-decls`): list
@@ -413,8 +430,9 @@ Plan:
   deferred large-graph load (~line 1342).
 - **PRs.** 5a: rename, loader split, layer toggle and URL param,
   blueprint language and kind handling, blueprint edges, isolated nodes
-  kept, node details. 5b: blueprint-layer filters and the code-layer
-  "Blueprint-bound only" filter. 5c: drill-down and back-links. The Guide
+  kept, node details. 5b: blueprint-layer filters, the code-layer
+  "Blueprint-bound only" filter, and declared vs. found edges. 5c:
+  drill-down and back-links. The Guide
   part goes with Phase 4.
 - Tests: loader tests on the project-template fixture (copy into
   `web/src/` test data or `web/public/`): layer split, isolated nodes kept,
