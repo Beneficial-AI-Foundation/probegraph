@@ -374,15 +374,21 @@ Plan:
 - **Filter on the code layer:** "Blueprint-bound only" (atoms with
   `blueprint-label`). Contraction is deferred (see Later).
 - **Declared vs. found edges.** On the blueprint layer, a uses edge A → B
-  has a code witness when some decl bound by A depends on some decl bound
-  by B. Draw witnessed edges solid, unwitnessed ones (declared, nothing in
-  the code yet) dashed, and add, as a third style, edges the code has
-  between two bound nodes that the blueprint never declared. The choir
-  proof tree draws its planned and worker-introduced edges with different
-  weights for the same reason. Statement-uses are checked against type
-  dependencies, proof-uses against term dependencies. Added 2026-10-05
-  from the graph-insights brainstorm (`docs/archive/graph-insights.md`);
-  goes in 5b with the other blueprint-layer filters.
+  has a code witness when some decl bound by A lists some decl bound by B
+  directly in its dependencies. Paths through unbound helpers do not count
+  in this first version. Each role is checked on its own: statement-uses
+  against type dependencies, proof-uses against term dependencies. Draw an
+  edge solid when every role it declares has a witness, and dashed
+  otherwise (no code witness found; the proof can also reach B by another
+  route). For a `both` edge with one witnessed role, A's node details name
+  the role without a witness. A third style marks pairs of bound nodes
+  with a code dependency and no declared edge in either role. A code
+  dependency in a role the blueprint does not declare, on a pair that has
+  a declared edge, is listed in A's node details only. The choir proof
+  tree draws its planned and worker-introduced edges with different
+  weights for the same reason. Added 2026-10-05 from the graph-insights
+  brainstorm (`docs/archive/graph-insights.md`); goes in 5b with the other
+  blueprint-layer filters.
 - **Drill-down.** Double-click a blueprint node to open its bound decls in
   the code layer (node atom `dependencies`). Zero bindings: toast "no bound
   declarations" and stay. Missing decls (`blueprint-missing-decls`): list

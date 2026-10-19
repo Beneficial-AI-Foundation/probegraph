@@ -1,10 +1,10 @@
 # Viewer: trust bases, frontier, concept clusters and search
 
 > **Status: superseded** on 2026-10-05, after a Codex review, by three
-> plans in `docs/plans/`: `graph-search.md` (Phase 6 and a shared reveal
-> path), `trust-and-frontier.md` (Phases 0 to 2) and
-> `concept-discovery.md` (Phases 3 to 5 and 7 as an experiment; Phases 8
-> and 9 and the rest of Phase 7 under its "Later"). Phase 5b's declared vs.
+> plans: `docs/archive/graph-search.md` (Phase 6 and a shared reveal path;
+> done and archived), `docs/plans/trust-and-frontier.md` (Phases 0 to 2)
+> and `concept-discovery.md` (Phases 3 to 5 and 7 as an experiment; Phases
+> 8 and 9 and the rest of Phase 7 under its "Later"; not yet in the repo). Phase 5b's declared vs.
 > found edges went to `viewer-filters-and-guide.md`. Kept as the brainstorm
 > record. Two things below are wrong and corrected in the new plans:
 > Phase 2 counts `verified` dependencies as done, but `verified` means an
