@@ -202,24 +202,29 @@ export function witnesses(
   start: string,
   targets: Iterable<string>,
 ): Map<string, string[] | null> {
+  const goals = [...targets];
   const byId = new Map(graph.nodes.map(n => [n.id, n]));
   const parent = new Map<string, string | null>();
   if (byId.has(start)) {
     parent.set(start, null);
+    // The BFS stops once every target is reached: later steps cannot
+    // change a parent already set
+    const remaining = new Set(goals.filter(t => t !== start));
     const queue = [start];
-    for (let i = 0; i < queue.length; i++) {
+    for (let i = 0; i < queue.length && remaining.size > 0; i++) {
       const deps = [...new Set(cutDependencies(byId.get(queue[i])!))]
         .filter(d => byId.has(d))
         .sort(compareIds);
       for (const d of deps) {
         if (parent.has(d)) continue;
         parent.set(d, queue[i]);
+        remaining.delete(d);
         queue.push(d);
       }
     }
   }
   const result = new Map<string, string[] | null>();
-  for (const target of targets) {
+  for (const target of goals) {
     if (!parent.has(target)) {
       result.set(target, null);
       continue;

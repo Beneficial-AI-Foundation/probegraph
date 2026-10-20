@@ -1,8 +1,8 @@
 # Viewer: trust base and proof frontier
 
-Status (2026-10-19): Phase 0 merged in #106. Phase 1 is split into three
-PRs (see "PR split" in Phase 1); PR 1 is in review. Phase 2 is not
-started. Split out of the
+Status (2026-10-20): Phase 0 merged in #106. Phase 1 is split into three
+PRs (see "PR split" in Phase 1): PR 1 merged in #110, and PR 2 is in
+review. Phase 2 is not started. Split out of the
 graph-insights brainstorm (`docs/archive/graph-insights.md`) after a Codex
 review on 2026-10-05. Depends on `viewer-filters-and-guide.md` Phase 4 for
 the SCC-condensed DAG and the reverse-reachability bitsets; that code
@@ -185,9 +185,14 @@ direction). This is the forward direction.
   until the cap. The toast gives the full count and the drawn count; a
   truncated witness is listed in the details panel as text, never drawn
   with its endpoints joined.
-- **Display.** Nodes whose unfinished set is non-empty get a dashed border
-  on the Call Graph; on the File Map, a marker that does not collide with
-  its existing border status.
+- **Display.** Dropped on 2026-10-20. The plan was a dashed border on the
+  Call Graph, and a File Map marker, for nodes whose unfinished set is
+  non-empty. On an enriched graph the status color already says this: on
+  SPQR these nodes are exactly the 58 `unverified` and the 47 `verified`
+  nodes, and on Verus dalek they are the `unverified` and `verified` nodes
+  plus 5 nodes with no status. Only `--skip-enrich` graphs gain from it
+  (Aeneas dalek: 88 of 1669 `verified` nodes), and there the details
+  lines answer it for each node.
 - Verus: same computation; `precondition` / `postcondition` link roles do
   not change it.
 
@@ -197,9 +202,15 @@ direction). This is the forward direction.
    and the pure module `src/trust-base.ts`: trust bases, the BFS witness
    and the theorem groups. Its tests run the shared fixtures. It adds no
    UI, so it owes no user docs.
-2. Node details: the trust-base lines with witnesses, the dashed border
-   on the Call Graph and the File Map marker. User docs: the details
-   lines, the border and the marker in `docs/guides/viewer.md`.
+2. Node details: the trust-base lines with witnesses
+   (`src/trust-details.ts`). User docs: "Trust base" under Node details
+   in `docs/guides/viewer.md`. The border and the marker are dropped (see
+   Display). Each entry also has a "show path" button (added in review,
+   2026-10-20). It sets the existing paths intent (`idPathsIntent`) from
+   the node to the entry. That intent draws every path and does not cut at
+   trusted nodes, so it can show more than the witness. PR 3 adds an
+   exact-set reveal for the Guide groups. The button can then switch to
+   the exact witness chain.
 3. Guide: the theorem groups, opened through the reveal path, with the
    toast counts. User docs: the Guide section in `docs/guides/viewer.md`.
 
