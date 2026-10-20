@@ -55,11 +55,12 @@ describe('trustAnalysis', () => {
     const statuses = [undefined, 'verified', 'transitively-verified', 'trusted', 'unverified', 'failed'];
     let seed = 7;
     const rand = (n: number) => {
-      seed = (seed * 1103515245 + 12345) % 2147483648;
+      seed = (seed * 48271) % 2147483647;  // Park-Miller: the product stays below 2^53
       return seed % n;
     };
-    for (let round = 0; round < 40; round++) {
-      const size = 3 + rand(12);
+    // The last rounds have more than 32 base nodes: bitsets of several words
+    for (let round = 0; round < 50; round++) {
+      const size = round < 40 ? 3 + rand(12) : 60 + rand(40);
       const ids = Array.from({ length: size }, (_, i) => `n${i}`);
       const atoms: Record<string, ProbeAtom> = {};
       for (const id of ids) {
