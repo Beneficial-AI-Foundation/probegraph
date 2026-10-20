@@ -58,9 +58,21 @@ export function trustDetailsHtml(graph: D3Graph, node: D3Node, open: boolean): s
   const base = analysis.baseOf(node.id);
   if (!base) return '';
 
+  const summary = escapeHtml(trustSummary(base.assumptions.length, base.unfinished.length, base.unknown.length));
+  const listed = base.assumptions.length + base.unfinished.length + base.unknown.length;
+  if (listed + base.missing.length === 0) {
+    return `<div class="node-detail trust-base"><strong>Trust base:</strong> ${summary}</div>`;
+  }
+  // Node details re-render on hover, so the lists and their witness BFS
+  // wait until the section is open; main.ts re-renders on the first toggle
+  if (!open) {
+    return `<div class="node-detail"><details class="trust-base" data-lazy>
+    <summary><strong>Trust base:</strong> ${summary}</summary></details></div>`;
+  }
+
   const byId = new Map(graph.nodes.map(n => [n.id, n]));
   const shown = (ids: string[]) => ids.slice(0, TRUST_LIST_CAP);
-  const paths = witnesses(graph, node.id, [
+  const paths = listed === 0 ? new Map<string, string[] | null>() : witnesses(graph, node.id, [
     ...shown(base.assumptions), ...shown(base.unfinished), ...shown(base.unknown),
   ]);
   const name = (id: string) => escapeHtml(byId.get(id)?.display_name ?? id);
@@ -121,8 +133,6 @@ export function trustDetailsHtml(graph: D3Graph, node: D3Node, open: boolean): s
     + list('Untracked', base.unknown)
     + unknownNote
     + missing;
-  const summary = escapeHtml(trustSummary(base.assumptions.length, base.unfinished.length, base.unknown.length));
-  if (body === '') return `<div class="node-detail trust-base"><strong>Trust base:</strong> ${summary}</div>`;
-  return `<div class="node-detail"><details class="trust-base"${open ? ' open' : ''}>
+  return `<div class="node-detail"><details class="trust-base" open>
     <summary><strong>Trust base:</strong> ${summary}</summary>${body}</details></div>`;
 }

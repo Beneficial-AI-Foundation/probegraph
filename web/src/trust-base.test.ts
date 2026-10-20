@@ -137,6 +137,17 @@ describe('witnesses', () => {
     });
   });
 
+  it('stops once every target is reached', () => {
+    const local = convertAtomDictToD3Graph(FIXTURES.find(f => f.name === 'chain')!.data);
+    const read: string[] = [];
+    for (const n of local.nodes) {
+      const deps = n.dependencies;
+      Object.defineProperty(n, 'dependencies', { get: () => { read.push(n.id); return deps; } });
+    }
+    expect(witnesses(local, 'top', ['mid']).get('mid')).toEqual(['top', 'mid']);
+    expect(read).toEqual(['top']);
+  });
+
   it('is null from a start that is not in the graph', () => {
     expect(witness(g, 'nope', 'ax')).toBeNull();
   });

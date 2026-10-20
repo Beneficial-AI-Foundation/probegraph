@@ -3000,9 +3000,13 @@ function updateNodeInfo(): void {
     });
   }
 
-  // The trust-base lists stay open or closed from node to node
+  // The trust-base lists stay open or closed from node to node. A closed
+  // section has no lists yet (data-lazy), so opening it renders them.
   const trustDetails = nodeInfoDiv.querySelector<HTMLDetailsElement>('details.trust-base');
-  trustDetails?.addEventListener('toggle', () => { trustDetailsOpen = trustDetails.open; });
+  trustDetails?.addEventListener('toggle', () => {
+    trustDetailsOpen = trustDetails.open;
+    if (trustDetails.open && trustDetails.dataset.lazy !== undefined) updateNodeInfo();
+  });
 
   nodeInfoDiv.querySelectorAll<HTMLElement>('.trust-path').forEach(el => {
     el.addEventListener('click', () => {

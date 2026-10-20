@@ -64,7 +64,12 @@ describe('trustDetailsHtml', () => {
 
   it('keeps the expanded state the caller passes', () => {
     expect(html(fixture('chain'), 'top', true)).toContain('<details class="trust-base" open>');
-    expect(html(fixture('chain'), 'top', false)).toContain('<details class="trust-base">');
+    expect(html(fixture('chain'), 'top', false)).toContain('<details class="trust-base" data-lazy>');
+  });
+
+  it('leaves the lists out while collapsed', () => {
+    const t = text(html(fixture('chain'), 'top', false));
+    expect(t).toBe('Trust base: Rests on 1 assumption and 1 unfinished declaration');
   });
 
   it('is one line without anything to list', () => {
