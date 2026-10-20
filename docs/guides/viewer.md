@@ -582,6 +582,15 @@ The drawing can hold more than the grey chain, for two reasons:
 The display filters still apply. If they or the node cap leave out either
 end, a toast says why.
 
+Example on the SPQR demo graph. `ConcreteErasureCode_correct` is marked
+verified, so the colour does not say what is still open. Its trust base
+shows 22 assumptions and 1 unfinished declaration, `collect_default_bridge`.
+The unfinished declaration is 9 steps away, through `encode_toModel`,
+`chunk_at_spec_points` and several `loop_spec` and `body_spec` lemmas. The
+graph around the theorem does not show it. **show path** draws the 15
+nodes on the paths between the two. The drawing is a long chain that the
+view fits small, so zoom in to read the labels.
+
 The rules behind the counts:
 
 - The walk stops at a trusted declaration. Unfinished code below an
