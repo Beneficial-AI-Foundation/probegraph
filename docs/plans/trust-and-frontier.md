@@ -1,7 +1,8 @@
 # Viewer: trust base and proof frontier
 
-Status (2026-10-17): Phase 0 is in review (#105). Phases 1 and 2 are
-not started. Split out of the
+Status (2026-10-19): Phase 0 merged in #106. Phase 1 is split into three
+PRs (see "PR split" in Phase 1); PR 1 is in review. Phase 2 is not
+started. Split out of the
 graph-insights brainstorm (`docs/archive/graph-insights.md`) after a Codex
 review on 2026-10-05. Depends on `viewer-filters-and-guide.md` Phase 4 for
 the SCC-condensed DAG and the reverse-reachability bitsets; that code
@@ -41,10 +42,11 @@ Consequences for this plan (settled 2026-10-17, measured in Phase 0):
   has 993 such atoms (615 spec functions, 378 Rust exec functions), and
   1008 `transitively-verified` atoms depend on one of them.
 - **Missing targets do not block.** A dependency that is not in the
-  extract is listed as information. SPQR has 318 atoms with such targets
+  extract is listed as information. SPQR has 312 atoms with such targets
   (Lean constructors such as `spqr.Error.StateDecode`), and 280 of them are
-  `transitively-verified`. Unresolved `*-dependencies-external` names are
-  not listed: the extractor already judged them.
+  `transitively-verified`. A `trusted` atom's missing targets are cut
+  with its links. Unresolved `*-dependencies-external` names are not
+  listed: the extractor already judged them.
 - Only `untracked: true` is unknown. None of the three measured extracts
   has it.
 
@@ -145,21 +147,31 @@ Verdicts:
 Phase 1 needs two fields that the loader drops today: `trusted-reason`
 and `untracked`. The missing targets are also dropped
 (`convertCodeAtoms` keeps only known IDs), so the details panel needs
-them from the loader too.
+them from the loader too. Phase 1 PR 1 adds the three fields to `D3Node`
+as `trusted_reason`, `untracked` and `missing_dependencies`.
 
 ## Phase 1: trust base per node
 
 Guide plan Phase 4 lists assumptions with their dependent counts (reverse
 direction). This is the forward direction.
 
-- **Computation.** On the SCC-condensed DAG in reverse topological order:
-  each component's set is its own members that are `trusted`, `unverified`
-  or unknown, union its dependencies' sets. Bitsets over the list of those
-  nodes. `trusted` is a leaf: nothing below a trusted node is added.
+- **Computation.** First cut the links and the missing targets of every
+  `trusted` node. Then, on the SCC-condensed DAG of the cut graph, in
+  reverse topological order: each component's set is its own members that
+  are `trusted`, `unverified`, `failed` or `untracked`, union its
+  dependencies' sets. Bitsets over the list of those nodes. The missing
+  targets are collected the same way, in a second bitset. A node with no
+  status adds nothing, but the walk goes through it. The code is
+  `src/trust-base.ts`, and it gives the same answers as
+  `scripts/trust_frontier.py` on the fixtures.
 - **Three sets, never one count:** accepted assumptions (`trusted`, with
   reason), unfinished (`unverified`, and `failed` where it occurs), unknown
-  (missing targets, `untracked`). A selected node that is itself
-  unfinished appears under unfinished, not under assumptions.
+  (`untracked`). The missing targets are a fourth list, for information
+  only. A selected node that is itself unfinished appears under
+  unfinished, not under assumptions.
+- An assumption here is a `trusted` node. The `is:assumption` search word
+  also matches `kind: axiom` without that status. The two differ only for
+  such an axiom, and none of the three measured extracts has one.
 - **Node details.** "Recorded dependencies include 4 assumptions and 2
   unfinished declarations", expandable, each with a witness path. The
   witness is the shortest path on the original graph (BFS from the node,
@@ -178,6 +190,18 @@ direction). This is the forward direction.
   its existing border status.
 - Verus: same computation; `precondition` / `postcondition` link roles do
   not change it.
+
+### PR split (2026-10-19)
+
+1. Loader fields (`trusted_reason`, `untracked`, `missing_dependencies`)
+   and the pure module `src/trust-base.ts`: trust bases, the BFS witness
+   and the theorem groups. Its tests run the shared fixtures. It adds no
+   UI, so it owes no user docs.
+2. Node details: the trust-base lines with witnesses, the dashed border
+   on the Call Graph and the File Map marker. User docs: the details
+   lines, the border and the marker in `docs/guides/viewer.md`.
+3. Guide: the theorem groups, opened through the reveal path, with the
+   toast counts. User docs: the Guide section in `docs/guides/viewer.md`.
 
 ## Phase 2: proof frontier
 

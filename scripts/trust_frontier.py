@@ -12,7 +12,8 @@ Rules:
   is not "blueprint". A link goes from a caller to a dependency. The links
   are `dependencies` plus the `*-dependencies-external` names that resolve
   to an atom, as in web/src/graph-loader.ts.
-- `trusted` is a leaf: its outgoing links are cut before anything else.
+- `trusted` is a leaf: its outgoing links and its missing targets are cut
+  before anything else.
 - An assumption is a `trusted` node, unfinished is `unverified` or
   `failed`, unknown is `untracked: true`. A node with no status is neutral:
   the walk goes through it, and it adds nothing.
@@ -66,8 +67,9 @@ class Graph:
             external = a.get("type-dependencies-external", []) + a.get("term-dependencies-external", [])
             self.full_deps[k] = sorted({d for d in deps + external if d in ids})
             self.missing[k] = sorted({d for d in deps if d not in ids})
-        # Trusted is a leaf
+        # Trusted is a leaf: cut its links and its missing targets
         self.deps = {k: ([] if self.status(k) == "trusted" else d) for k, d in self.full_deps.items()}
+        self.missing = {k: ([] if self.status(k) == "trusted" else d) for k, d in self.missing.items()}
 
     def status(self, k: str) -> str | None:
         return self.atoms[k].get("verification-status")

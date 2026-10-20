@@ -480,7 +480,7 @@
  },
  {
   "name": "missing-and-unknown",
-  "description": "gone is not in the extract and does not block. s has no status and is neutral. x is untracked: unknown, never done.",
+  "description": "gone is not in the extract and does not block. s has no status and is neutral. x is untracked: unknown, never done. ax is trusted, so its missing target gone2 is cut.",
   "data": {
    "n": {
     "kind": "theorem",
@@ -501,7 +501,9 @@
    "ax": {
     "kind": "axiom",
     "language": "lean",
-    "dependencies": [],
+    "dependencies": [
+     "gone2"
+    ],
     "verification-status": "trusted",
     "trusted-reason": "axiom"
    },
@@ -564,6 +566,14 @@
      "unknown": [
       "x"
      ],
+     "missing": []
+    },
+    "ax": {
+     "assumptions": [
+      "ax"
+     ],
+     "unfinished": [],
+     "unknown": [],
      "missing": []
     }
    },
