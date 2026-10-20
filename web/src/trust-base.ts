@@ -21,7 +21,7 @@
  */
 
 import {
-  Bitset, MAX_REACHABILITY_WORDS, compareIds, condense, type Condensation,
+  Bitset, MAX_REACHABILITY_WORDS, compareIds, condense, condensedSize, type Condensation,
 } from './reachability';
 import type { D3Graph, D3Node } from './types';
 
@@ -74,11 +74,30 @@ function cutDependencies(n: D3Node): string[] {
   return isTrustAssumption(n) ? [] : n.dependencies;
 }
 
+/**
+ * Largest stored trust base, in 32-bit words: one base and one missing
+ * bitset per component. 12.5 million words is 50 MB, the size of the
+ * dependent-count closure at MAX_REACHABILITY_COMPONENTS.
+ */
+export const MAX_TRUST_BASE_WORDS = 12_500_000;
+
+/**
+ * Whether the trust bases of a condensation fit, with `wordsPer` words of
+ * bitset per component: the storage in MAX_TRUST_BASE_WORDS, and the work
+ * (one union per condensed edge, one pass per component) in
+ * MAX_REACHABILITY_WORDS.
+ */
+export function trustBaseFits(c: Condensation, wordsPer: number): boolean {
+  const { components, links } = condensedSize(c);
+  return components * wordsPer <= MAX_TRUST_BASE_WORDS
+    && (links + components) * wordsPer <= MAX_REACHABILITY_WORDS;
+}
+
 const analysisCache = new WeakMap<D3Graph, TrustAnalysis | null>();
 
 /**
  * Trust bases of every node of a graph, computed once per graph object.
- * Null when the bitsets do not fit in MAX_REACHABILITY_WORDS. The graph's
+ * Null when the bitsets do not fit (trustBaseFits). The graph's
  * dependencies and statuses must not change after the first call.
  */
 export function trustAnalysis(graph: D3Graph): TrustAnalysis | null {
@@ -101,8 +120,7 @@ function analyze(graph: D3Graph): TrustAnalysis | null {
   const missingIds = [...new Set(
     [...byId.values()].flatMap(n => (isTrustAssumption(n) ? [] : n.missing_dependencies ?? [])),
   )].sort(compareIds);
-  const words = count * (Math.ceil(baseIds.length / 32) + Math.ceil(missingIds.length / 32));
-  if (words > MAX_REACHABILITY_WORDS) return null;
+  if (!trustBaseFits(c, Math.ceil(baseIds.length / 32) + Math.ceil(missingIds.length / 32))) return null;
 
   const baseIndex = new Map(baseIds.map((id, i) => [id, i]));
   const missingIndex = new Map(missingIds.map((id, i) => [id, i]));

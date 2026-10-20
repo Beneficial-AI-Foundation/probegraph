@@ -2,8 +2,10 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { convertAtomDictToD3Graph } from './graph-loader';
+import type { Condensation } from './reachability';
 import {
-  isTrustAssumption, isTrustUnfinished, isTrustUnknown, trustAnalysis, witness, witnesses,
+  MAX_TRUST_BASE_WORDS, isTrustAssumption, isTrustUnfinished, isTrustUnknown, trustAnalysis,
+  trustBaseFits, witness, witnesses,
 } from './trust-base';
 import type { D3Graph, ProbeAtom } from './types';
 
@@ -74,6 +76,25 @@ describe('trustAnalysis', () => {
       const analysis = trustAnalysis(g)!;
       for (const id of ids) expect(analysis.baseOf(id), `round ${round} ${id}`).toEqual(bruteForce(g, id));
     }
+  });
+});
+
+describe('trustBaseFits', () => {
+  const sized = (components: number, edgesPer: number) => ({
+    members: Array.from({ length: components }, () => ['']),
+    dependencies: Array.from({ length: components }, () => new Array(edgesPer).fill(0)),
+  } as unknown as Condensation);
+
+  it('rejects bitsets that take too much memory', () => {
+    const wordsPer = MAX_TRUST_BASE_WORDS / 1000;
+    expect(trustBaseFits(sized(1000, 0), wordsPer)).toBe(true);
+    expect(trustBaseFits(sized(1000, 0), wordsPer + 1)).toBe(false);
+  });
+
+  it('rejects too many condensed edges below the memory limit', () => {
+    // (edges + components) * wordsPer against MAX_REACHABILITY_WORDS (250 million)
+    expect(trustBaseFits(sized(1000, 19), 12_500)).toBe(true);
+    expect(trustBaseFits(sized(1000, 20), 12_500)).toBe(false);
   });
 });
 
