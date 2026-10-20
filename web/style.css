@@ -1029,7 +1029,7 @@ select.search-input {
 .trust-witness,
 .trust-note,
 .trust-reason {
-  color: var(--pg-text-faint);
+  color: var(--pg-text-muted);
   font-size: 0.8rem;
 }
 

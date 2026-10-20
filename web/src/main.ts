@@ -3001,11 +3001,15 @@ function updateNodeInfo(): void {
   }
 
   // The trust-base lists stay open or closed from node to node. A closed
-  // section has no lists yet (data-lazy), so opening it renders them.
+  // section has no lists yet (data-lazy), so opening it renders them. The
+  // render replaces the summary, so its focus moves to the new one.
   const trustDetails = nodeInfoDiv.querySelector<HTMLDetailsElement>('details.trust-base');
   trustDetails?.addEventListener('toggle', () => {
     trustDetailsOpen = trustDetails.open;
-    if (trustDetails.open && trustDetails.dataset.lazy !== undefined) updateNodeInfo();
+    if (!trustDetails.open || trustDetails.dataset.lazy === undefined) return;
+    const focused = trustDetails.querySelector('summary') === document.activeElement;
+    updateNodeInfo();
+    if (focused) nodeInfoDiv.querySelector<HTMLElement>('details.trust-base > summary')?.focus();
   });
 
   nodeInfoDiv.querySelectorAll<HTMLElement>('.trust-path').forEach(el => {

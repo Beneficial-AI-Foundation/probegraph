@@ -39,7 +39,11 @@ test('node details list what a declaration rests on', async ({ page }) => {
     .toHaveText('Trust base: Rests on 1 assumption and 1 unfinished declaration');
   await expect(trust).not.toHaveAttribute('open', '');
 
-  await trust.locator('summary').click();
+  // Opening by keyboard renders the lists and keeps the focus on the summary
+  await trust.locator('summary').focus();
+  await page.keyboard.press('Enter');
+  await expect(trust).toHaveAttribute('open', '');
+  await expect(trust.locator('summary')).toBeFocused();
   await expect(trust).toContainText('ax (axiom)');
   await expect(trust).toContainText('via mid → low');
   await expect(trust).toContainText('Missing targets (1)');
