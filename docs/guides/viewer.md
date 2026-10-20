@@ -567,6 +567,21 @@ middle. Hover the line to see the full chain. Each entry is a link that
 shows its details in this panel, and the graph does not change. A list shows
 50 entries at most, then "and N more".
 
+The **show path** button next to an entry draws the paths from the
+selected declaration to that entry in the Call Graph. It sets the same
+query as Source and Sink with exact IDs, and the query bar shows it as
+`paths A → B`. Node details stay on the selected declaration, so you can
+try the entries one after another. One click is one browser-history step.
+The drawing can hold more than the grey chain, for two reasons:
+
+- It draws every path between the two declarations, not only the
+  shortest one.
+- It uses all links. A path through a trusted declaration also shows,
+  but the counts above ignore it.
+
+The display filters still apply. If they or the node cap leave out either
+end, a toast says why.
+
 The rules behind the counts:
 
 - The walk stops at a trusted declaration. Unfinished code below an

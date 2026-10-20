@@ -205,7 +205,12 @@ direction). This is the forward direction.
 2. Node details: the trust-base lines with witnesses
    (`src/trust-details.ts`). User docs: "Trust base" under Node details
    in `docs/guides/viewer.md`. The border and the marker are dropped (see
-   Display).
+   Display). Each entry also has a "show path" button (added in review,
+   2026-10-20). It sets the existing paths intent (`idPathsIntent`) from
+   the node to the entry. That intent draws every path and does not cut at
+   trusted nodes, so it can show more than the witness. PR 3 adds an
+   exact-set reveal for the Guide groups. The button can then switch to
+   the exact witness chain.
 3. Guide: the theorem groups, opened through the reveal path, with the
    toast counts. User docs: the Guide section in `docs/guides/viewer.md`.
 

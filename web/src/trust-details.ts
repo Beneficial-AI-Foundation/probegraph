@@ -5,8 +5,9 @@
  * path, and the missing dependency targets.
  *
  * The graph must be the full code layer (`state.fullGraph`), so a display
- * filter cannot remove an entry. Links use `.navigate-to-node`, which
- * main.ts handles. Every value from the extract is escaped.
+ * filter cannot remove an entry. Links use `.navigate-to-node`, and the
+ * "show path" buttons `.trust-path` (from `data-from` to `data-to`);
+ * main.ts handles both. Every value from the extract is escaped.
  */
 import { escapeHtml } from './html';
 import { trustAnalysis, witnesses } from './trust-base';
@@ -67,6 +68,9 @@ export function trustDetailsHtml(graph: D3Graph, node: D3Node, open: boolean): s
   const link = (id: string) =>
     `<a href="#" class="navigate-to-node" data-node-id="${escapeHtml(id)}" title="${escapeHtml(id)}" style="cursor:pointer; text-decoration:underline;">${name(id)}</a>`;
 
+  const pathButton = (id: string) => id === node.id ? '' :
+    ` <button type="button" class="trust-path" data-from="${escapeHtml(node.id)}" data-to="${escapeHtml(id)}" title="Draw the paths from ${name(node.id)} to ${name(id)} in the Call Graph">show path</button>`;
+
   const via = (id: string): string => {
     if (id === node.id) return ' <em>(this declaration)</em>';
     const path = paths.get(id);
@@ -93,7 +97,7 @@ export function trustDetailsHtml(graph: D3Graph, node: D3Node, open: boolean): s
   const list = (label: string, ids: string[], extra: (id: string) => string = () => '') => {
     if (ids.length === 0) return '';
     const rest = ids.length - TRUST_LIST_CAP;
-    const items = shown(ids).map(id => `<li>${link(id)}${extra(id)}${via(id)}</li>`).join('');
+    const items = shown(ids).map(id => `<li>${link(id)}${extra(id)}${pathButton(id)}${via(id)}</li>`).join('');
     const more = rest > 0 ? `<li><em>and ${rest} more</em></li>` : '';
     return `<div class="trust-list"><strong>${label} (${ids.length}):</strong>
       <ul class="node-list">${items}${more}</ul></div>`;

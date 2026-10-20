@@ -1011,6 +1011,21 @@ select.search-input {
   margin-top: 0.5rem;
 }
 
+.trust-path {
+  margin-left: 0.25rem;
+  padding: 0 0.35rem;
+  font-size: 0.75rem;
+  color: var(--pg-text-muted);
+  background: var(--pg-surface);
+  border: 1px solid var(--pg-border-soft);
+  border-radius: var(--pg-radius-sm);
+  cursor: pointer;
+}
+
+.trust-path:hover {
+  color: var(--pg-text);
+}
+
 .trust-witness,
 .trust-note,
 .trust-reason {

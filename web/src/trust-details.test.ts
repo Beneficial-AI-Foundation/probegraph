@@ -31,14 +31,14 @@ describe('trustDetailsHtml', () => {
   it('lists each entry with its witness path and the trusted reason', () => {
     const t = text(html(fixture('chain'), 'top'));
     expect(t).toContain('Trust base: Rests on 1 assumption and 1 unfinished declaration');
-    expect(t).toContain('Assumptions (1): ax (axiom) via mid → low');
-    expect(t).toContain('Unfinished (1): low via mid');
+    expect(t).toContain('Assumptions (1): ax (axiom) show path via mid → low');
+    expect(t).toContain('Unfinished (1): low show path via mid');
   });
 
   it('marks the node itself and a direct dependency', () => {
     const t = text(html(fixture('chain'), 'low'));
     expect(t).toContain('low (this declaration)');
-    expect(t).toContain('ax (axiom) direct dependency');
+    expect(t).toContain('ax (axiom) show path direct dependency');
   });
 
   it('links every entry to its details', () => {
@@ -54,6 +54,12 @@ describe('trustDetailsHtml', () => {
     expect(n).toContain('Missing targets (1):');
     expect(n).toContain('they block nothing. gone');
     expect(n).not.toContain('External closure unavailable');
+  });
+
+  it('offers a show-path button for every entry but the node itself', () => {
+    const out = html(fixture('chain'), 'low');
+    expect(out).toContain('class="trust-path" data-from="low" data-to="ax"');
+    expect(out).not.toContain('data-to="low"');
   });
 
   it('keeps the expanded state the caller passes', () => {
@@ -99,6 +105,7 @@ describe('trustDetailsHtml', () => {
     expect(out).not.toContain('<gone>');
     expect(out).not.toContain('<r>');
     expect(out).toContain('&lt;img src=x&gt;');
+    expect(out).toContain('title="Draw the paths from x to &lt;img src=x&gt; in the Call Graph"');
   });
 
   it('is empty for a blueprint entry and on a graph without statuses', () => {

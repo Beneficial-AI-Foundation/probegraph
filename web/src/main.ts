@@ -23,7 +23,7 @@ import { SearchBox } from './search-box';
 import { escapeHtml } from './html';
 import { StatusGroup, exactStatusFilter, groupCheckState, withGroupChecked } from './status-filter';
 import {
-  QueryIntent, NONE_INTENT, textIntent, focusIntent, boundaryIntent, exactIntent,
+  QueryIntent, NONE_INTENT, textIntent, focusIntent, boundaryIntent, exactIntent, idPathsIntent,
   isFocusIntent, inputsForIntent, intentAfterInputEdit, vscodeIntent, vscodeSetQueryIntent,
 } from './intent';
 import { ActiveView, Layer, defaultFilters, readURLState, writeURLState } from './url-state';
@@ -3004,6 +3004,13 @@ function updateNodeInfo(): void {
   const trustDetails = nodeInfoDiv.querySelector<HTMLDetailsElement>('details.trust-base');
   trustDetails?.addEventListener('toggle', () => { trustDetailsOpen = trustDetails.open; });
 
+  nodeInfoDiv.querySelectorAll<HTMLElement>('.trust-path').forEach(el => {
+    el.addEventListener('click', () => {
+      const { from, to } = el.dataset;
+      if (from && to) showTrustPath(from, to);
+    });
+  });
+
   // Add click handlers for cross-reference navigation links
   nodeInfoDiv.querySelectorAll('.navigate-to-node').forEach(el => {
     el.addEventListener('click', (e) => {
@@ -3877,6 +3884,40 @@ function revealNode(id: string, opts: RevealOptions): RevealResult {
     if (!wrote) updateURLWithFilters();
   }
   return presentReveal(node, opts, token);
+}
+
+/**
+ * The "show path" button of a trust-base entry: the paths from `fromId` to
+ * `toId` in the Call Graph, as one history entry with the view change and
+ * the unhiding. Node details stay on `fromId`. A toast says when the
+ * filters or the render cap leave either end out.
+ */
+function showTrustPath(fromId: string, toId: string): void {
+  const graph = state.fullGraph;
+  const from = graph?.nodes.find(n => n.id === fromId);
+  const to = graph?.nodes.find(n => n.id === toId);
+  if (!from || !to) return;
+  dropRevealEffects();
+  flushDebouncedApply();
+  setIntent(idPathsIntent([fromId], [toId], from.display_name, to.display_name, { type: 'search' }), {
+    history: 'push',
+    pushed: true,
+    before: () => {
+      if (activeView !== 'callgraph') switchView('callgraph', { apply: false });
+      state.filters.hiddenNodes.delete(fromId);
+      state.filters.hiddenNodes.delete(toId);
+    },
+  });
+  state.selectedNode = from;
+  updateNodeInfo();
+  const ctx = revealContext();
+  for (const node of [from, to]) {
+    const result = classifyReveal(ctx, node.id);
+    if (result.reason !== 'shown') {
+      revealToast = showActionToast(revealMessage(node.display_name, result, renderCap()), []);
+      break;
+    }
+  }
 }
 
 /**

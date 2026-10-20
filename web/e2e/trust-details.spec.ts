@@ -1,7 +1,8 @@
 /**
  * E2E test for the trust base in node details
  * (docs/plans/trust-and-frontier.md, Phase 1): the summary line, the lists
- * with witnesses, the links and the kept expanded state.
+ * with witnesses, the links, the "show path" button and the kept expanded
+ * state.
  */
 
 import { test, expect, type Page, type Route } from '@playwright/test';
@@ -43,6 +44,18 @@ test('node details list what a declaration rests on', async ({ page }) => {
   await expect(trust).toContainText('via mid → low');
   await expect(trust).toContainText('Missing targets (1)');
   await expect(trust).toContainText('probe:Gone.ctor');
+
+  // Show path draws the paths in the Call Graph and keeps the panel
+  const shown = () => page.locator('circle.node').evaluateAll(
+    els => els.map(el => (el as any).__data__?.id as string).sort());
+  const before = page.url();
+  await trust.locator('li', { hasText: 'ax' }).locator('button.trust-path').click();
+  await expect(page).toHaveURL(/source-id=probe%3Atop.*sink-id=probe%3Aax|source-id=probe:top.*sink-id=probe:ax/);
+  await expect.poll(shown).toEqual(['probe:ax', 'probe:low', 'probe:mid', 'probe:top']);
+  await expect(page.locator('#node-info h3')).toHaveText('top');
+  await page.goBack();
+  await expect(page).toHaveURL(before);
+  await select(page, 'top');
 
   // An entry link shows its details, and the lists stay expanded
   await trust.locator('a.navigate-to-node', { hasText: 'low' }).click();
