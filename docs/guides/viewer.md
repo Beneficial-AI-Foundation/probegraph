@@ -538,6 +538,52 @@ it if it was Shift+click hidden. Other filters (exclude patterns, status or
 source boxes) can still leave it out; a toast then names the targets not shown.
 Each is one browser-history step.
 
+### Trust base
+
+A code declaration in a graph with verification data shows a **Trust
+base** line, for example "Rests on 9 assumptions and 2 unfinished
+declarations". It counts what the declaration depends on, directly or
+through other declarations:
+
+- **Assumptions** are `trusted` declarations: axioms, external code,
+  `admit`, and the other trusted reasons. Each shows its reason in
+  parentheses.
+- **Unfinished** are `unverified` and `failed` declarations: the
+  declaration itself still has a gap such as a `sorry`, or Verus failed
+  on it.
+- **Untracked** are Verus declarations marked `untracked`. They have no
+  status, so what they rest on is unknown. The section then adds
+  "External closure unavailable".
+
+A declaration that is itself trusted or unfinished is in its own list,
+marked "(this declaration)". Click the line to expand the lists. They stay
+expanded or collapsed when you select other nodes.
+
+Under each entry, a grey line shows one shortest chain of dependencies
+that leads to it, for example "via decode_state → BytesBufBuf_implBuf".
+"direct dependency" means that the declaration uses the entry itself. A
+chain with more than six declarations in between is shortened in the
+middle. Hover the line to see the full chain. Each entry is a link that
+shows its details in this panel, and the graph does not change. A list shows
+50 entries at most, then "and N more".
+
+The rules behind the counts:
+
+- The walk stops at a trusted declaration. Unfinished code below an
+  `external_body` function does not count for its callers, because the
+  extractor already trusts that function.
+- A declaration with no status adds nothing, but the walk goes through it
+  to what it uses.
+- The counts use the whole graph of the current layer. Filters, hidden
+  nodes and the node cap do not change them.
+- **Missing targets** are dependencies that the extract names but does
+  not contain, such as Lean constructors. They are listed for information
+  and do not count as assumptions or as unfinished work.
+
+The section is left out for blueprint entries and for graphs without any
+verification status. It says "not computed, the graph is too large" when
+the trust bases do not fit in the memory limit.
+
 ### GitHub source links
 
 Links are built per node from `relative_path` plus line numbers. The
