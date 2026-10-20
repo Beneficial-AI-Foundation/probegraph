@@ -1,5 +1,6 @@
 import { D3Graph, D3Node, GraphState, FilterOptions, ProjectLanguage, BLUEPRINT_LANGUAGE, compileKindFlag, crateMapLabel, crateNoun, detectProjectLanguage, getKindSetsForLanguage, extractCrateName, isSchema2Envelope } from './types';
 import { blueprintBackrefHtml, blueprintNodeDetailsHtml } from './blueprint-details';
+import { trustDetailsHtml } from './trust-details';
 import { applyFilters, getCallers, getCallees } from './filters';
 import {
   compileQuery, GraphQuery, NodeMatcher, filterLinksByType, linkTypeShown, roleFilteredGraph,
@@ -2782,6 +2783,9 @@ function updateStats(truncated?: { shown: number; byAnchors: boolean }): void {
   `;
 }
 
+/** Whether the node details show the trust-base lists expanded. */
+let trustDetailsOpen = false;
+
 /**
  * Update node information panel
  */
@@ -2961,6 +2965,7 @@ function updateNodeInfo(): void {
     ${mappingHtml}
     ${specsHtml}
     ${rustSourceHtml}
+    ${state.fullGraph ? trustDetailsHtml(state.fullGraph, node, trustDetailsOpen) : ''}
     <div class="node-detail">
       <strong>${callersLabel} (${allCallers.length}):</strong>
       <ul class="node-list">${callersHtml}</ul>
@@ -2994,6 +2999,10 @@ function updateNodeInfo(): void {
       navigateToSource(node);
     });
   }
+
+  // The trust-base lists stay open or closed from node to node
+  const trustDetails = nodeInfoDiv.querySelector<HTMLDetailsElement>('details.trust-base');
+  trustDetails?.addEventListener('toggle', () => { trustDetailsOpen = trustDetails.open; });
 
   // Add click handlers for cross-reference navigation links
   nodeInfoDiv.querySelectorAll('.navigate-to-node').forEach(el => {
