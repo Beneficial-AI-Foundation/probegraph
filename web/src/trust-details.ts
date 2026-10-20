@@ -81,7 +81,7 @@ export function trustDetailsHtml(graph: D3Graph, node: D3Node, open: boolean): s
     `<a href="#" class="navigate-to-node" data-node-id="${escapeHtml(id)}" title="${escapeHtml(id)}" style="cursor:pointer; text-decoration:underline;">${name(id)}</a>`;
 
   const pathButton = (id: string) => id === node.id ? '' :
-    ` <button type="button" class="trust-path" data-from="${escapeHtml(node.id)}" data-to="${escapeHtml(id)}" title="Draw the paths from ${name(node.id)} to ${name(id)} in the Call Graph">show path</button>`;
+    ` <button type="button" class="trust-path" data-from="${escapeHtml(node.id)}" data-to="${escapeHtml(id)}" title="Draw the shortest chain from ${name(node.id)} to ${name(id)} in the Call Graph">show path</button>`;
 
   const via = (id: string): string => {
     if (id === node.id) return ' <em>(this declaration)</em>';

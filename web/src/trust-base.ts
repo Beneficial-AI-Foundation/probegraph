@@ -202,8 +202,15 @@ export function witnesses(
   start: string,
   targets: Iterable<string>,
 ): Map<string, string[] | null> {
+  return witnessesIn(new Map(graph.nodes.map(n => [n.id, n])), start, targets);
+}
+
+function witnessesIn(
+  byId: Map<string, D3Node>,
+  start: string,
+  targets: Iterable<string>,
+): Map<string, string[] | null> {
   const goals = [...targets];
-  const byId = new Map(graph.nodes.map(n => [n.id, n]));
   const parent = new Map<string, string | null>();
   if (byId.has(start)) {
     parent.set(start, null);
@@ -239,4 +246,22 @@ export function witnesses(
 /** Shortest path from `start` to `target` (see witnesses). */
 export function witness(graph: D3Graph, start: string, target: string): string[] | null {
   return witnesses(graph, start, [target]).get(target)!;
+}
+
+/**
+ * The nodes to draw for a theorem group, in the order the render cap keeps
+ * them: the base, then the nodes on the shortest chain from each theorem to
+ * each base member (theorems by ID, base members in order), then the
+ * theorems. Each node appears once, at its first place.
+ */
+export function groupDrawing(graph: D3Graph, group: TheoremGroup): string[] {
+  const byId = new Map(graph.nodes.map(n => [n.id, n]));
+  const order = new Set(group.base);
+  for (const theorem of group.theorems) {
+    for (const path of witnessesIn(byId, theorem, group.base).values()) {
+      for (const id of path?.slice(1, -1) ?? []) order.add(id);
+    }
+  }
+  for (const theorem of group.theorems) order.add(theorem);
+  return [...order];
 }

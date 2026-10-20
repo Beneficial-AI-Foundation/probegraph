@@ -110,7 +110,7 @@ describe('trustDetailsHtml', () => {
     expect(out).not.toContain('<gone>');
     expect(out).not.toContain('<r>');
     expect(out).toContain('&lt;img src=x&gt;');
-    expect(out).toContain('title="Draw the paths from x to &lt;img src=x&gt; in the Call Graph"');
+    expect(out).toContain('title="Draw the shortest chain from x to &lt;img src=x&gt; in the Call Graph"');
   });
 
   it('is empty for a blueprint entry and on a graph without statuses', () => {

@@ -104,6 +104,21 @@ test.describe('Guide on the Lean graph', () => {
     expect(toast).toMatch(/^200 nodes: callers of .+ \(\d+ of \d+ not shown\)$/);
   });
 
+  test('a shared trust base row draws the group, its base and the chains', async ({ page }) => {
+    await open(page);
+    await expect(rows(page, 'Shared trust bases')).toHaveCount(5);
+    const row = rows(page, 'Shared trust bases').first();
+    const theorems = Number(await row.locator('.guide-row-count').textContent());
+    const toast = await clickAndToast(page, row);
+    const ids = new URL(page.url()).searchParams.getAll('id');
+    expect(param(page, 'dir')).toBe('none');
+    // The row names the base counts, e.g. "6 assumptions, 0 unfinished"
+    const [, assumptions, unfinished] = /(\d+) assumptions?, (\d+) unfinished/.exec((await row.textContent())!)!;
+    const base = Number(assumptions) + Number(unfinished);
+    expect(toast).toBe(`${ids.length} nodes: ${theorems} theorems, the ${base} declarations they rest on and the chains between`);
+    await expect.poll(async () => (await shownNodes(page)).map(n => n.id).sort()).toEqual([...ids].sort());
+  });
+
   test('ranked lists follow the kind filters', async ({ page }) => {
     await open(page);
     await expect(rows(page, 'Keystone lemmas')).toHaveCount(5);

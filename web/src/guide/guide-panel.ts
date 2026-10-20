@@ -9,6 +9,7 @@
 
 import type {
   GraphSummary, SuggestedAction, GuideActions, GuideResult, GuideTransition, LevelStat, RankedList, StateAction,
+  TrustGroupList,
 } from './types';
 import { NONE_INTENT, exactIntent, boundaryIntent } from '../intent';
 import { escapeHtml } from '../html';
@@ -55,7 +56,8 @@ export class GuidePanel {
           ? this.rankedSection('Keystone lemmas', 'By unique transitive dependents', summary.keystones)
           : this.rankedSection('Most depended on', 'By unique transitive dependents', summary.keystones),
       ];
-    document.getElementById('guide-answers')?.replaceChildren(...lists, levelsSection(summary.levels));
+    const trust = summary.trustGroups ? [this.trustGroupSection(summary.trustGroups)] : [];
+    document.getElementById('guide-answers')?.replaceChildren(...lists, ...trust, levelsSection(summary.levels));
 
     chipsEl.innerHTML = '';
     for (const q of summary.suggestedQueries) {
@@ -112,6 +114,49 @@ export class GuidePanel {
     return section;
   }
 
+  /** Theorems grouped by shared trust base; a row draws the group with its base. */
+  private trustGroupSection(list: TrustGroupList): HTMLElement {
+    const section = sectionElement(
+      list.total > list.rows.length ? `Shared trust bases (top ${list.rows.length} of ${list.total})` : 'Shared trust bases',
+      'Theorems that rest on exactly the same assumptions and unfinished declarations, largest groups '
+      + 'first. Click a row to draw the theorems, what they rest on and the shortest chains between them.',
+    );
+    if (list.rows.length === 0) {
+      const empty = document.createElement('p');
+      empty.className = 'guide-empty';
+      empty.textContent = list.all === 0
+        ? 'No theorem rests on an assumption or an unfinished declaration.'
+        : 'None among the shown declaration kinds.';
+      section.appendChild(empty);
+      return section;
+    }
+    for (const r of list.rows) {
+      const row = document.createElement('button');
+      row.className = 'guide-row';
+      row.title = `${r.theorems.length} theorems rest on exactly: ${r.baseNames.join(', ')}`;
+      const name = document.createElement('span');
+      name.className = 'guide-row-name';
+      name.textContent = trustGroupCounts(r.assumptions, r.unfinished, r.unknown);
+      const ctx = document.createElement('small');
+      ctx.className = 'guide-row-context';
+      ctx.textContent = r.baseNames.length > 2 ? `${r.baseNames.slice(0, 2).join(', ')}, …` : r.baseNames.join(', ');
+      name.append(' ', ctx);
+      const count = document.createElement('span');
+      count.className = 'guide-row-count';
+      count.textContent = String(r.theorems.length);
+      count.title = `${r.theorems.length} theorems`;
+      row.append(name, count);
+      row.addEventListener('click', () => {
+        const action: SuggestedAction = {
+          type: 'showTrustGroup', ids: this.actions.groupDrawing(r), theorems: r.theorems.length, base: r.base.length,
+        };
+        this.executeAction(action, trustGroupLabel(r.theorems.length));
+      });
+      section.appendChild(row);
+    }
+    return section;
+  }
+
   private executeAction(action: SuggestedAction, label: string): void {
     if (action.type === 'fillSearch') {
       this.actions.fillSearch(action.query);
@@ -121,6 +166,18 @@ export class GuidePanel {
     const result = this.actions.apply(guideTransition(action, label));
     showToast(resultMessage(action, label, result));
   }
+}
+
+/** "6 assumptions, 1 unfinished" (and the untracked count when there is one). */
+export function trustGroupCounts(assumptions: number, unfinished: number, unknown: number): string {
+  const parts = [`${assumptions} assumption${assumptions === 1 ? '' : 's'}`, `${unfinished} unfinished`];
+  if (unknown > 0) parts.push(`${unknown} untracked`);
+  return parts.join(', ');
+}
+
+/** Query label of a drawn group, e.g. "30 theorems on a shared trust base". */
+export function trustGroupLabel(theorems: number): string {
+  return `${theorems} theorem${theorems === 1 ? '' : 's'} on a shared trust base`;
 }
 
 function sectionElement(title: string, description: string): HTMLElement {
@@ -241,7 +298,8 @@ export function resultMessage(action: StateAction, label: string, result: GuideR
     notes.push('entry points view');
   } else if (result.shown < result.total) {
     notes.push(`${result.total - result.shown} of ${result.total} not shown`);
-    if (result.anchorsShown !== undefined && result.anchorsTotal !== undefined
+    // Every ID of a drawn group is an anchor, so the line above says it all
+    if (action.type !== 'showTrustGroup' && result.anchorsShown !== undefined && result.anchorsTotal !== undefined
       && result.anchorsShown < result.anchorsTotal) {
       notes.push(`first ${result.anchorsShown} of ${result.anchorsTotal} targets`);
     }
@@ -257,6 +315,7 @@ function describeAction(action: Exclude<StateAction, { type: 'switchView' }>): s
     case 'setSink': return `callers of ${action.label}`;
     case 'setCrateBoundary': return `${action.source} → ${action.target}`;
     case 'filterVerification': return `${action.statuses.join(', ')} only`;
+    case 'showTrustGroup': return `${action.theorems} theorems, the ${action.base} declarations they rest on and the chains between`;
   }
 }
 
@@ -276,6 +335,9 @@ export function guideTransition(action: StateAction, label: string): GuideTransi
       return { intent: NONE_INTENT, status: [...action.statuses], label };
     case 'switchView':
       return { intent: NONE_INTENT, status: null, view: action.view, label };
+    case 'showTrustGroup':
+      // The Call Graph draws exact sets; the cap keeps the first IDs
+      return { intent: exactIntent(action.ids, 'none', label, { type: 'guide' }), status: null, view: 'callgraph', label };
   }
 }
 

@@ -7,15 +7,20 @@
 
 import { test, expect, type Page, type Route } from '@playwright/test';
 
-// top -> mid -> low -> ax; low is unfinished, ax an axiom. top also names
-// a dependency that is not in the extract.
+// top -> mid -> low -> ax; low is unfinished, ax an axiom. A longer route
+// top -> alt1 -> alt2 -> low is not on the shortest chain. top also names a
+// dependency that is not in the extract.
 const atom = (name: string, over: Record<string, unknown>) => ({
   kind: 'theorem', language: 'lean', 'display-name': name, dependencies: [],
   'code-text': { 'lines-start': 1, 'lines-end': 2 }, 'code-path': `T/${name}.lean`, 'code-module': 'T',
   ...over,
 });
 const atoms = {
-  'probe:top': atom('top', { dependencies: ['probe:mid', 'probe:Gone.ctor'], 'verification-status': 'verified' }),
+  'probe:top': atom('top', {
+    dependencies: ['probe:mid', 'probe:alt1', 'probe:Gone.ctor'], 'verification-status': 'verified',
+  }),
+  'probe:alt1': atom('alt1', { dependencies: ['probe:alt2'], 'verification-status': 'verified' }),
+  'probe:alt2': atom('alt2', { dependencies: ['probe:low'], 'verification-status': 'verified' }),
   'probe:mid': atom('mid', { dependencies: ['probe:low'], 'verification-status': 'verified' }),
   'probe:low': atom('low', { dependencies: ['probe:ax'], 'verification-status': 'unverified' }),
   'probe:ax': atom('ax', { kind: 'axiom', 'verification-status': 'trusted', 'trusted-reason': 'axiom' }),
@@ -49,13 +54,16 @@ test('node details list what a declaration rests on', async ({ page }) => {
   await expect(trust).toContainText('Missing targets (1)');
   await expect(trust).toContainText('probe:Gone.ctor');
 
-  // Show path draws the paths in the Call Graph and keeps the panel
+  // Show path draws only the shortest chain and keeps the panel
   const shown = () => page.locator('circle.node').evaluateAll(
     els => els.map(el => (el as any).__data__?.id as string).sort());
   const before = page.url();
   await trust.locator('li', { hasText: 'ax' }).locator('button.trust-path').click();
-  await expect(page).toHaveURL(/source-id=probe%3Atop.*sink-id=probe%3Aax|source-id=probe:top.*sink-id=probe:ax/);
+  await expect.poll(() => new URL(page.url()).searchParams.getAll('id'))
+    .toEqual(['probe:top', 'probe:mid', 'probe:low', 'probe:ax']);
+  expect(new URL(page.url()).searchParams.get('dir')).toBe('none');
   await expect.poll(shown).toEqual(['probe:ax', 'probe:low', 'probe:mid', 'probe:top']);
+  await expect(page.locator('#query-label')).toHaveText('query: nodes shortest chain top → ax');
   await expect(page.locator('#node-info h3')).toHaveText('top');
   await page.goBack();
   await expect(page).toHaveURL(before);

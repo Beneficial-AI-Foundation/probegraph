@@ -4,7 +4,11 @@
 
 import { describe, it, expect } from 'vitest';
 import { buildGraphSummary, formatSummaryText } from './static-analysis';
-import { MAX_LEVEL_ROWS, guideTransition, levelRows, levelShares, resultMessage } from './guide-panel';
+import {
+  MAX_LEVEL_ROWS, guideTransition, levelRows, levelShares, resultMessage, trustGroupCounts, trustGroupLabel,
+} from './guide-panel';
+import { convertAtomDictToD3Graph } from '../graph-loader';
+import type { ProbeAtom } from '../types';
 import type { SuggestedAction } from './types';
 import { D3Graph, D3Link, D3Node, VerificationStatus } from '../types';
 import { MAX_REACHABILITY_COMPONENTS, graphReachability, rankByTransitiveDependents } from '../reachability';
@@ -321,5 +325,65 @@ describe('component limit', () => {
   it('computes the ranked lists below the limit', () => {
     const nodes = Array.from({ length: 3 }, (_, i) => node(`n${i}`, 'A', 'theorem'));
     expect(buildGraphSummary(graph(nodes, [])).rankingsSkipped).toBeNull();
+  });
+});
+
+describe('shared trust bases', () => {
+  const atom = (over: Partial<ProbeAtom>): ProbeAtom => ({
+    "display-name": 'x', dependencies: [], "code-text": null, "code-path": 'X.lean',
+    "code-module": 'X', kind: 'theorem', language: 'lean', ...over,
+  });
+  // t1 and t2 rest on ax and u; t3 on ax only; d is a def on ax
+  const g = convertAtomDictToD3Graph({
+    t1: atom({ "display-name": 'T1', dependencies: ['u'], "verification-status": 'verified' }),
+    t2: atom({ "display-name": 'T2', dependencies: ['u'], "verification-status": 'verified' }),
+    t3: atom({ "display-name": 'T3', dependencies: ['ax'], "verification-status": 'transitively-verified' }),
+    d: atom({ "display-name": 'D', kind: 'def', dependencies: ['ax'], "verification-status": 'transitively-verified' }),
+    u: atom({ "display-name": 'U', kind: 'def', dependencies: ['ax'], "verification-status": 'unverified' }),
+    ax: atom({ "display-name": 'AX', kind: 'axiom', "verification-status": 'trusted', "trusted-reason": 'axiom' }),
+  });
+  const all = { isCandidate: () => true, isLinkShown: () => true };
+
+  it('lists the largest groups first, with the base counts and names', () => {
+    expect(buildGraphSummary(g, all).trustGroups).toEqual({
+      rows: [
+        { theorems: ['t1', 't2'], base: ['ax', 'u'], assumptions: 1, unfinished: 1, unknown: 0, baseNames: ['U', 'AX'] },
+        { theorems: ['t3'], base: ['ax'], assumptions: 1, unfinished: 0, unknown: 0, baseNames: ['AX'] },
+      ],
+      total: 2,
+      all: 2,
+    });
+  });
+
+  it('follows the kind filters, but counts every theorem', () => {
+    const noT3 = { ...all, isCandidate: (n: D3Node) => n.id !== 't3' };
+    const s = buildGraphSummary(g, noT3).trustGroups!;
+    expect(s.rows.map(r => r.theorems)).toEqual([['t1', 't2']]);
+    expect([s.total, s.all]).toEqual([1, 2]);
+    const none = buildGraphSummary(g, { ...all, isCandidate: () => false }).trustGroups!;
+    expect([none.rows.length, none.all]).toEqual([0, 2]);
+  });
+
+  it('is left out without verification data', () => {
+    const plain = convertAtomDictToD3Graph({ a: atom({ dependencies: ['b'] }), b: atom({}) });
+    expect(buildGraphSummary(plain, all).trustGroups).toBeNull();
+  });
+
+  it('draws the group as an exact set in the Call Graph', () => {
+    const action: SuggestedAction = { type: 'showTrustGroup', ids: ['ax', 'u', 't1', 't2'], theorems: 2, base: 2 };
+    const t = guideTransition(action, trustGroupLabel(2));
+    expect(t.intent).toEqual({
+      kind: 'ids', ids: ['ax', 'u', 't1', 't2'], dir: 'none', label: '2 theorems on a shared trust base', origin: { type: 'guide' },
+    });
+    expect(t.view).toBe('callgraph');
+    const r = { shown: 200, total: 340, anchorsShown: 200, anchorsTotal: 340, missingAnchor: false, seeded: false, tooLarge: false };
+    expect(resultMessage(action, 'x', r))
+      .toBe('200 nodes: 2 theorems, the 2 declarations they rest on and the chains between (140 of 340 not shown)');
+  });
+
+  it('names the counts on a row', () => {
+    expect(trustGroupCounts(1, 0, 0)).toBe('1 assumption, 0 unfinished');
+    expect(trustGroupCounts(6, 2, 1)).toBe('6 assumptions, 2 unfinished, 1 untracked');
+    expect(trustGroupLabel(1)).toBe('1 theorem on a shared trust base');
   });
 });

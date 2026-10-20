@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import { convertAtomDictToD3Graph } from './graph-loader';
 import type { Condensation } from './reachability';
 import {
-  MAX_TRUST_BASE_WORDS, isTrustAssumption, isTrustUnfinished, isTrustUnknown, trustAnalysis,
+  MAX_TRUST_BASE_WORDS, groupDrawing, isTrustAssumption, isTrustUnfinished, isTrustUnknown, trustAnalysis,
   trustBaseFits, witness, witnesses,
 } from './trust-base';
 import type { D3Graph, ProbeAtom } from './types';
@@ -150,5 +150,22 @@ describe('witnesses', () => {
 
   it('is null from a start that is not in the graph', () => {
     expect(witness(g, 'nope', 'ax')).toBeNull();
+  });
+});
+
+describe('groupDrawing', () => {
+  const graphOf = (name: string) => convertAtomDictToD3Graph(FIXTURES.find(f => f.name === name)!.data);
+
+  it('orders the base, then the chain nodes, then the theorems', () => {
+    // top -> l -> b1 -> ax and top -> r -> b2 -> ax
+    const g = graphOf('diamond-two-blockers');
+    expect(groupDrawing(g, { base: ['ax', 'b1', 'b2'], theorems: ['top'] }))
+      .toEqual(['ax', 'b1', 'b2', 'l', 'r', 'top']);
+  });
+
+  it('lists a theorem on another theorem\'s chain once, at its chain place', () => {
+    // top -> mid -> low -> ax; mid is on top's chain and in the group
+    const g = graphOf('chain');
+    expect(groupDrawing(g, { base: ['ax', 'low'], theorems: ['mid', 'top'] })).toEqual(['ax', 'low', 'mid', 'top']);
   });
 });
