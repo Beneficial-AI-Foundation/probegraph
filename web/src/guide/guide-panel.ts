@@ -242,7 +242,7 @@ export function frontierDescription(list: FrontierList): string {
   const parts = ['Unfinished declarations whose dependencies are all done, so they can be worked on now.'];
   if (list.counted) {
     parts.push('Ranked by the left number: the unfinished declarations that would become ready once the row'
-      + ' is done. The right number counts every declaration that depends on the row.');
+      + ' is done. The right number counts the declarations that depend on the row, not through a trusted one.');
     if (list.groups > 0 && 2 * list.unblockNothing > list.groups) {
       parts.push(`${list.unblockNothing} of ${list.groups} would make nothing else ready yet.`);
     }

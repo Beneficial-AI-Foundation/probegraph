@@ -562,10 +562,11 @@ A declaration on the [Frontier](#frontier) shows one more line, for
 example "Ready work: would make 1 more ready, 1 unfinished depends on
 it". The first number is the left number of its Frontier row. The second
 counts the unfinished declarations that depend on it, directly or through
-others. A declaration in a ready cycle also names the others of its
-cycle, and the counts are for the whole cycle. Other declarations get no
-line. For a blocked declaration, the Unfinished and Untracked lists of its trust base
-shows what it waits on.
+others, but not through a trusted declaration. A declaration in a ready
+cycle also says how many others are in its cycle, and the counts are for
+the whole cycle. Other declarations get no line. For a blocked
+declaration, the Unfinished and Untracked lists of its trust base show
+what it waits on.
 
 ### Trust base
 
@@ -773,13 +774,18 @@ The title gives the number of ready declarations, for example
 - The right number counts every declaration that depends on the row,
   directly or through others, finished or not.
 
+The counts do not go through a trusted declaration, as for the
+[trust base](#trust-base): what depends on a trusted declaration does
+not wait on the code under it.
+
 Ties go by the number of unfinished declarations that depend on the row,
 then by the right number, then by ID. Hover the numbers to see all three
 counts. On many graphs the left number is 0 for almost every row, because
 each unfinished declaration waits on its own dependencies. The caption
 then says how many rows would make nothing else ready, for example "56 of
 57 would make nothing else ready yet". Rows with the same name show the
-file, or the part of their IDs that differs.
+file. If two of them are in the same file, all rows of that name show
+the part of their IDs that differs.
 
 Click a row to draw it with every declaration that depends on it, like a
 row of the other ranked lists. A row with one declaration sets it as the
@@ -790,7 +796,8 @@ click is one browser-history step.
 
 The **query** button puts `is:frontier` into the search box, which lists
 every ready declaration in ID order. `top 10 by dependents is:frontier`
-ranks them by the right number only.
+ranks them by their dependents. It counts through trusted declarations,
+so its numbers can be larger than the right number.
 
 The list uses the whole graph. The Declaration Kind boxes decide which
 rows show: a row shows when at least one of its declarations is of a

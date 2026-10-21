@@ -131,7 +131,7 @@ describe('readyWorkHtml', () => {
     expect(ready(g, 'ax')).toBe('');
   });
 
-  it('names the other members of a ready cycle', () => {
+  it('counts the other members of a ready cycle', () => {
     expect(ready(fixture('unfinished-scc'), 'u2'))
       .toBe('Ready work: ready together with the 1 other in its cycle, would make 0 more ready, 0 unfinished depend on it');
   });

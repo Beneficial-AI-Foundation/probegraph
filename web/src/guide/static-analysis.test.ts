@@ -465,6 +465,13 @@ describe('frontier list', () => {
     expect(formatSummaryText(buildGraphSummary(fixture('chain'), all))).not.toContain('hotspots');
   });
 
+  it('does not count the dependents through a trusted declaration, unlike top', () => {
+    // c depends on the trusted w and a, which depend on impl
+    const g = fixture('trusted-wrapper');
+    expect(buildGraphSummary(g, all).frontier!.rows[0]).toMatchObject({ members: ['impl'], counts: { dependents: 0 } });
+    expect(rankByTransitiveDependents(g, n => n.id === 'impl', 1)![0].count).toBe(3);
+  });
+
   it('says how flat the ranking is, and when the rows have no counts', () => {
     const list: FrontierList = { rows: [], ready: 57, groups: 57, unblockNothing: 56, unfinished: 58, all: 57, counted: true };
     expect(frontierDescription(list)).toContain('56 of 57 would make nothing else ready yet.');

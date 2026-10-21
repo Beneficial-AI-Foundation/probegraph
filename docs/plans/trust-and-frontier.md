@@ -315,9 +315,12 @@ direction). This is the forward direction.
   rows that would make nothing else ready when that share is above half.
 - The **query** button fills `is:frontier`, which lists every ready
   declaration. A `top` query would rank by dependents only, so it would
-  not match the list order.
-- Rows with the same name and the same file show the part of their IDs
-  that differs. On SPQR four of the top five rows are
+  not match the list order. Its dependents also differ from the right
+  number: `top` counts on the whole graph, and the Frontier counts stop
+  at a trusted declaration, like the trust base. The docs say so.
+- If two rows with the same name are in the same file, every row of that
+  name shows the part of its ID that differs. Shortening per file would
+  give rows in different files the same label. On SPQR four of the top five rows are
   `ProstMessageMessage` instances in one file. The ranked lists use the
   same rule.
 - `computeUnverifiedHotspots` and `GraphSummary.unverifiedHotspots` are
