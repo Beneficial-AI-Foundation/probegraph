@@ -1,8 +1,8 @@
 # Viewer: trust base and proof frontier
 
-Status (2026-10-20): Phase 0 merged in #106. Phase 1 is split into three
-PRs (see "PR split" in Phase 1): PR 1 merged in #110, PR 2 in #112, and
-PR 3 is in review. Phase 2 is not started. Split out of the
+Status (2026-10-21): Phase 0 merged in #106. Phase 1 merged in three PRs
+(#110, #112, #115). Phase 2 is split into two PRs (see "Decisions
+(2026-10-21)" in Phase 2), and PR 1 is in review. Split out of the
 graph-insights brainstorm (`docs/archive/graph-insights.md`) after a Codex
 review on 2026-10-05. Depends on `viewer-filters-and-guide.md` Phase 4 for
 the SCC-condensed DAG and the reverse-reachability bitsets; that code
@@ -235,18 +235,21 @@ direction). This is the forward direction.
 
 ## Phase 2: proof frontier
 
-- **Ready**: an unfinished node (or an SCC of unfinished nodes, shown as
-  one work group) whose dependencies outside the group are all done. A
-  `verified` dependency blocks. Unknown dependencies block and the row says
-  "unknown closure". Blueprint `ready` is the same idea on the other
-  layer.
+- **Ready**: the unfinished members of one SCC (a work group) whose
+  dependencies outside the SCC are all done. A `verified` dependency
+  blocks on an enriched graph, because it is not done. An unknown member
+  or an unknown dependency blocks, so a ready row never has an unknown
+  closure. Blueprint `ready` is the same idea on the other layer, and it
+  is out of scope here.
 - **Two counts per ready node**, both on the condensed DAG:
   - *unfinished dependents affected*: unfinished nodes that reach it. An
     impact count, labelled as such.
   - *would become ready*: unfinished nodes for which this is the last
     blocker, that is, every other dependency is done. The unblocking
     count.
-  Rank by the second, ties by the first, then by ID.
+  Rank by the second, ties by the first, then by all transitive
+  dependents (finished or not), then by ID. The third key is on the graph
+  with the trust cut, so it can differ from `top N by dependents`.
 - **Guide.** A "Frontier" list that replaces the hotspots sentence in the
   Guide summary (Phase 0: the top fives differ on all three projects). The
   frontier can be empty on a project whose unfinished nodes all depend on
@@ -261,12 +264,41 @@ direction). This is the forward direction.
   `docs/guides/viewer.md`. It moved here from the search plan
   (`docs/archive/graph-search.md`), which is done.
 
+### Decisions (2026-10-21)
+
+- Two PRs. PR 1: the frontier in `src/trust-base.ts` (`proofFrontier`,
+  the counts, the size check `frontierCountsFit`), matched to the script
+  on the fixtures, and `is:frontier` with its row in the `is:` table. PR
+  2: the Guide Frontier list that replaces the hotspots sentence, what a
+  row click draws, the toast, and the Guide section of
+  `docs/guides/viewer.md`.
+- The third tie-break (all transitive dependents) is new, because the
+  ranking is flat (Phase 0). It changes rows 3 to 5 of the top five on
+  SPQR and on Aeneas dalek: rows with 2 dependents replace rows with 0 or
+  1. Only 4 distinct values occur over the 57 SPQR rows, so the ranking
+  stays nearly flat. The Guide shows the ready count with the top rows, and the
+  caption says that most rows unblock nothing yet. The script and the
+  fixtures add a `dependents` field, and the fixture
+  `dependents-tie-break` checks the order.
+- The frontier shows on `--skip-enrich` graphs. This reverses the
+  2026-10-17 answer (see Open questions). The fixture `skip-enrich`
+  checks a graph with no `transitively-verified` atom.
+- The word stays "ready". `docs/guides/viewer.md` says how it differs
+  from the File Map legend, whose Ready border counts a `verified`
+  dependency as done.
+- The counts cost one walk over the dependents of each row. Above
+  `rows x (components + links) = MAX_REACHABILITY_WORDS`, the rows have no
+  counts and come in ID order. On the three extracts, the whole frontier
+  takes under 10 ms, and the TypeScript output equals the script's.
+- Still open for PR 2: what a row click draws, and whether node details
+  get a "ready" line.
+
 ## Open questions
 
 - Settled 2026-10-17: an `admit`-trusted Verus node counts as done. Phase
   1 shows it under assumptions with its reason.
-- Settled 2026-10-17: the Guide hides the frontier on graphs extracted
-  with `--skip-enrich`, where `transitively-verified` does not exist, and
-  shows a note. Phase 0 found that the structural rule computes a correct
-  frontier there too (Aeneas dalek: 8 ready rows), so this can be revisited
-  in Phase 2.
+- Settled 2026-10-21: the frontier shows on graphs extracted with
+  `--skip-enrich`, where `transitively-verified` does not exist. Phase 0
+  found that the structural rule computes a correct frontier there too
+  (Aeneas dalek: 8 ready rows), and no metadata flag tells such graphs
+  apart. This replaces the 2026-10-17 answer, which hid it with a note.
