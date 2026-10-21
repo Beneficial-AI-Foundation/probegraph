@@ -90,7 +90,8 @@
       "low"
      ],
      "unblocks": 0,
-     "affected": 0
+     "affected": 0,
+     "dependents": 2
     }
    ],
    "groups": [
@@ -189,14 +190,16 @@
       "b1"
      ],
      "unblocks": 0,
-     "affected": 1
+     "affected": 1,
+     "dependents": 2
     },
     {
      "members": [
       "b2"
      ],
      "unblocks": 0,
-     "affected": 1
+     "affected": 1,
+     "dependents": 2
     }
    ],
    "groups": [
@@ -321,7 +324,8 @@
       "u2"
      ],
      "unblocks": 0,
-     "affected": 0
+     "affected": 0,
+     "dependents": 1
     }
    ]
   }
@@ -372,7 +376,8 @@
       "low"
      ],
      "unblocks": 1,
-     "affected": 1
+     "affected": 1,
+     "dependents": 2
     }
    ]
   }
@@ -462,7 +467,8 @@
       "impl"
      ],
      "unblocks": 0,
-     "affected": 0
+     "affected": 0,
+     "dependents": 0
     }
    ],
    "groups": [
@@ -2746,6 +2752,138 @@
      ]
     ]
    ]
+  }
+ },
+ {
+  "name": "dependents-tie-break",
+  "description": "Both rows unblock nothing and affect no unfinished node. b_many has two dependents and a_few one, so b_many ranks first against ID order.",
+  "data": {
+   "a_few": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [],
+    "verification-status": "unverified"
+   },
+   "b_many": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [],
+    "verification-status": "unverified"
+   },
+   "t1": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "b_many"
+    ],
+    "verification-status": "verified"
+   },
+   "t2": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "b_many"
+    ],
+    "verification-status": "verified"
+   },
+   "t3": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "a_few"
+    ],
+    "verification-status": "verified"
+   }
+  },
+  "expected": {
+   "frontier": [
+    {
+     "members": [
+      "b_many"
+     ],
+     "unblocks": 0,
+     "affected": 0,
+     "dependents": 2
+    },
+    {
+     "members": [
+      "a_few"
+     ],
+     "unblocks": 0,
+     "affected": 0,
+     "dependents": 1
+    }
+   ],
+   "done": {
+    "a_few": false,
+    "b_many": false,
+    "t1": false,
+    "t2": false,
+    "t3": false
+   }
+  }
+ },
+ {
+  "name": "skip-enrich",
+  "description": "No transitively-verified atom, as under --skip-enrich, where verified means locally clean. mid is done because leaf is, so work is ready.",
+  "data": {
+   "top": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "mid"
+    ],
+    "verification-status": "verified"
+   },
+   "mid": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "leaf"
+    ],
+    "verification-status": "verified"
+   },
+   "leaf": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [],
+    "verification-status": "verified"
+   },
+   "work": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "mid"
+    ],
+    "verification-status": "unverified"
+   },
+   "caller": {
+    "kind": "theorem",
+    "language": "lean",
+    "dependencies": [
+     "work"
+    ],
+    "verification-status": "verified"
+   }
+  },
+  "expected": {
+   "frontier": [
+    {
+     "members": [
+      "work"
+     ],
+     "unblocks": 0,
+     "affected": 0,
+     "dependents": 1
+    }
+   ],
+   "done": {
+    "caller": false,
+    "leaf": true,
+    "mid": true,
+    "top": true,
+    "work": false
+   }
   }
  }
 ]
