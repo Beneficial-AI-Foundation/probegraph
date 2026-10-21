@@ -655,7 +655,9 @@ const guideActions: GuideActions = {
     return lastRenderResult;
   },
   fillSearch: query => searchBox?.fill(query),
-  groupDrawing: row => (state.fullGraph ? groupDrawing(state.fullGraph, row) : []),
+  groupDrawing: row => (state.fullGraph
+    ? groupDrawing(state.fullGraph, row, MAX_RENDERED_NODES)
+    : { ids: [], complete: true }),
 };
 
 // Size of the last Call Graph / File Map render, for the Guide's toast

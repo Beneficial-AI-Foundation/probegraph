@@ -156,16 +156,30 @@ describe('witnesses', () => {
 describe('groupDrawing', () => {
   const graphOf = (name: string) => convertAtomDictToD3Graph(FIXTURES.find(f => f.name === name)!.data);
 
-  it('orders the base, then the chain nodes, then the theorems', () => {
-    // top -> l -> b1 -> ax and top -> r -> b2 -> ax
-    const g = graphOf('diamond-two-blockers');
-    expect(groupDrawing(g, { base: ['ax', 'b1', 'b2'], theorems: ['top'] }))
-      .toEqual(['ax', 'b1', 'b2', 'l', 'r', 'top']);
+  it('computes the groups once per analysis', () => {
+    const analysis = trustAnalysis(graphOf('chain'))!;
+    expect(analysis.groups()).toBe(analysis.groups());
   });
 
-  it('lists a theorem on another theorem\'s chain once, at its chain place', () => {
+  it('orders the base, then the theorems, then the chain nodes', () => {
+    // top -> l -> b1 -> ax and top -> r -> b2 -> ax
+    const g = graphOf('diamond-two-blockers');
+    expect(groupDrawing(g, { base: ['ax', 'b1', 'b2'], theorems: ['top'] }, 200))
+      .toEqual({ ids: ['ax', 'b1', 'b2', 'top', 'l', 'r'], complete: true });
+  });
+
+  it('lists a theorem on another theorem\'s chain once', () => {
     // top -> mid -> low -> ax; mid is on top's chain and in the group
     const g = graphOf('chain');
-    expect(groupDrawing(g, { base: ['ax', 'low'], theorems: ['mid', 'top'] })).toEqual(['ax', 'low', 'mid', 'top']);
+    expect(groupDrawing(g, { base: ['ax', 'low'], theorems: ['mid', 'top'] }, 200))
+      .toEqual({ ids: ['ax', 'low', 'mid', 'top'], complete: true });
+  });
+
+  it('stops the chains at the limit, but keeps the base and the theorems', () => {
+    const g = graphOf('diamond-two-blockers');
+    const group = { base: ['ax', 'b1', 'b2'], theorems: ['top'] };
+    expect(groupDrawing(g, group, 5)).toEqual({ ids: ['ax', 'b1', 'b2', 'top', 'l'], complete: false });
+    expect(groupDrawing(g, group, 2)).toEqual({ ids: ['ax', 'b1', 'b2', 'top'], complete: false });
+    expect(groupDrawing(g, group, 6).complete).toBe(true);
   });
 });

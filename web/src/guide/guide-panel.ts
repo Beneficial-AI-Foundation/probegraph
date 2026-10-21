@@ -133,7 +133,7 @@ export class GuidePanel {
     for (const r of list.rows) {
       const row = document.createElement('button');
       row.className = 'guide-row';
-      row.title = `${r.theorems.length} theorems rest on exactly: ${r.baseNames.join(', ')}`;
+      row.title = `${plural(r.theorems.length, 'theorem rests', 'theorems rest')} on exactly: ${r.baseNames.join(', ')}`;
       const name = document.createElement('span');
       name.className = 'guide-row-name';
       name.textContent = trustGroupCounts(r.assumptions, r.unfinished, r.unknown);
@@ -144,11 +144,12 @@ export class GuidePanel {
       const count = document.createElement('span');
       count.className = 'guide-row-count';
       count.textContent = String(r.theorems.length);
-      count.title = `${r.theorems.length} theorems`;
+      count.title = plural(r.theorems.length, 'theorem', 'theorems');
       row.append(name, count);
       row.addEventListener('click', () => {
+        const { ids, complete } = this.actions.groupDrawing(r);
         const action: SuggestedAction = {
-          type: 'showTrustGroup', ids: this.actions.groupDrawing(r), theorems: r.theorems.length, base: r.base.length,
+          type: 'showTrustGroup', ids, theorems: r.theorems.length, base: r.base.length, allChains: complete,
         };
         this.executeAction(action, trustGroupLabel(r.theorems.length));
       });
@@ -168,16 +169,18 @@ export class GuidePanel {
   }
 }
 
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
 /** "6 assumptions, 1 unfinished" (and the untracked count when there is one). */
 export function trustGroupCounts(assumptions: number, unfinished: number, unknown: number): string {
-  const parts = [`${assumptions} assumption${assumptions === 1 ? '' : 's'}`, `${unfinished} unfinished`];
+  const parts = [plural(assumptions, 'assumption', 'assumptions'), `${unfinished} unfinished`];
   if (unknown > 0) parts.push(`${unknown} untracked`);
   return parts.join(', ');
 }
 
 /** Query label of a drawn group, e.g. "30 theorems on a shared trust base". */
 export function trustGroupLabel(theorems: number): string {
-  return `${theorems} theorem${theorems === 1 ? '' : 's'} on a shared trust base`;
+  return `${plural(theorems, 'theorem', 'theorems')} on a shared trust base`;
 }
 
 function sectionElement(title: string, description: string): HTMLElement {
@@ -315,7 +318,11 @@ function describeAction(action: Exclude<StateAction, { type: 'switchView' }>): s
     case 'setSink': return `callers of ${action.label}`;
     case 'setCrateBoundary': return `${action.source} → ${action.target}`;
     case 'filterVerification': return `${action.statuses.join(', ')} only`;
-    case 'showTrustGroup': return `${action.theorems} theorems, the ${action.base} declarations they rest on and the chains between`;
+    case 'showTrustGroup': {
+      const base = action.base === 1 ? 'the declaration it rests on' : `the ${action.base} declarations they rest on`;
+      const chains = action.allChains ? 'the chains between' : 'some of the chains between';
+      return `${plural(action.theorems, 'theorem', 'theorems')}, ${base} and ${chains}`;
+    }
   }
 }
 

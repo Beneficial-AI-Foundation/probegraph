@@ -370,7 +370,9 @@ describe('shared trust bases', () => {
   });
 
   it('draws the group as an exact set in the Call Graph', () => {
-    const action: SuggestedAction = { type: 'showTrustGroup', ids: ['ax', 'u', 't1', 't2'], theorems: 2, base: 2 };
+    const action: SuggestedAction = {
+      type: 'showTrustGroup', ids: ['ax', 'u', 't1', 't2'], theorems: 2, base: 2, allChains: true,
+    };
     const t = guideTransition(action, trustGroupLabel(2));
     expect(t.intent).toEqual({
       kind: 'ids', ids: ['ax', 'u', 't1', 't2'], dir: 'none', label: '2 theorems on a shared trust base', origin: { type: 'guide' },
@@ -379,6 +381,13 @@ describe('shared trust bases', () => {
     const r = { shown: 200, total: 340, anchorsShown: 200, anchorsTotal: 340, missingAnchor: false, seeded: false, tooLarge: false };
     expect(resultMessage(action, 'x', r))
       .toBe('200 nodes: 2 theorems, the 2 declarations they rest on and the chains between (140 of 340 not shown)');
+  });
+
+  it('names one theorem, one base member and cut chains in the toast', () => {
+    const action: SuggestedAction = { type: 'showTrustGroup', ids: ['ax', 't3'], theorems: 1, base: 1, allChains: false };
+    const r = { shown: 2, total: 2, missingAnchor: false, seeded: false, tooLarge: false };
+    expect(resultMessage(action, 'x', r))
+      .toBe('2 nodes: 1 theorem, the declaration it rests on and some of the chains between');
   });
 
   it('names the counts on a row', () => {

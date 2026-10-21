@@ -728,14 +728,16 @@ Click a row to draw the group in the Call Graph. The drawing holds three
 parts, and the node cap keeps them in this order:
 
 1. The shared base: the assumptions and unfinished declarations.
-2. The declarations on the shortest chain from each theorem to each base
+2. The theorems.
+3. The declarations on the shortest chain from each theorem to each base
    member, as the grey chains in node details show them.
-3. The theorems.
 
-So when a group is larger than the 200-node cap, the base and the chains
-stay and some theorems are left out. The toast gives the counts, for
-example "45 nodes: 30 theorems, the 6 declarations they rest on and the
-chains between", and how many nodes the cap left out. The query bar shows
+So when a group is larger than the 200-node cap, the base and the
+theorems stay and some chain nodes are left out. The toast gives the
+counts, for example "45 nodes: 30 theorems, the 6 declarations they rest
+on and the chains between". If the cap cut the chains, it says "some of
+the chains between". If the base and the theorems alone pass the cap, it
+also says how many nodes the cap left out. The query bar shows
 `nodes 30 theorems on a shared trust base`. The click switches to the
 Call Graph and is one browser-history step.
 

@@ -50,8 +50,11 @@ export interface TrustAnalysis {
   condensation: Condensation;
   /** Trust base of a node; null for an ID that is not in the graph. */
   baseOf(id: string): TrustBase | null;
-  /** Theorems grouped by trust base, the theorem itself left out. Largest group first. */
-  groups(): TheoremGroup[];
+  /**
+   * Theorems grouped by trust base, the theorem itself left out. Largest
+   * group first. Computed once and shared between calls.
+   */
+  groups(): readonly TheoremGroup[];
 }
 
 /** Lean theorems and Verus proof functions, the viewer's `kind:lemma`. */
@@ -150,6 +153,8 @@ function analyze(graph: D3Graph): TrustAnalysis | null {
     return out;
   };
   const baseNodes = (k: number) => ids(bases[k], baseIds).map(id => byId.get(id)!);
+  // Computed on the first call: the graph does not change
+  let groups: readonly TheoremGroup[] | null = null;
 
   return {
     condensation: c,
@@ -165,6 +170,7 @@ function analyze(graph: D3Graph): TrustAnalysis | null {
       };
     },
     groups() {
+      if (groups) return groups;
       const byKey = new Map<string, TheoremGroup>();
       for (const n of [...byId.values()].sort((a, b) => compareIds(a.id, b.id))) {
         if (!THEOREM_KINDS.has(n.kind)) continue;
@@ -175,8 +181,9 @@ function analyze(graph: D3Graph): TrustAnalysis | null {
         if (!group) byKey.set(key, group = { base, theorems: [] });
         group.theorems.push(n.id);
       }
-      return [...byKey.values()].sort((a, b) =>
+      groups = [...byKey.values()].sort((a, b) =>
         b.theorems.length - a.theorems.length || compareIdLists(a.base, b.base));
+      return groups;
     },
   };
 }
@@ -248,20 +255,32 @@ export function witness(graph: D3Graph, start: string, target: string): string[]
   return witnesses(graph, start, [target]).get(target)!;
 }
 
+/** The nodes to draw for a theorem group (groupDrawing). */
+export interface GroupDrawing {
+  ids: string[];
+  /** False when the limit stopped the chain search early. */
+  complete: boolean;
+}
+
 /**
  * The nodes to draw for a theorem group, in the order the render cap keeps
- * them: the base, then the nodes on the shortest chain from each theorem to
- * each base member (theorems by ID, base members in order), then the
- * theorems. Each node appears once, at its first place.
+ * them: the base, then the theorems, then the nodes on the shortest chain
+ * from each theorem to each base member (theorems by ID, base members in
+ * order). Each node appears once, at its first place. The chains stop at
+ * `limit` nodes, so a large group does not search past what the cap shows.
  */
-export function groupDrawing(graph: D3Graph, group: TheoremGroup): string[] {
+export function groupDrawing(graph: D3Graph, group: TheoremGroup, limit: number): GroupDrawing {
   const byId = new Map(graph.nodes.map(n => [n.id, n]));
-  const order = new Set(group.base);
+  const order = new Set([...group.base, ...group.theorems]);
   for (const theorem of group.theorems) {
+    if (order.size >= limit) return { ids: [...order], complete: false };
     for (const path of witnessesIn(byId, theorem, group.base).values()) {
-      for (const id of path?.slice(1, -1) ?? []) order.add(id);
+      for (const id of path?.slice(1, -1) ?? []) {
+        if (order.has(id)) continue;
+        if (order.size >= limit) return { ids: [...order], complete: false };
+        order.add(id);
+      }
     }
   }
-  for (const theorem of group.theorems) order.add(theorem);
-  return [...order];
+  return { ids: [...order], complete: true };
 }

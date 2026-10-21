@@ -1,6 +1,7 @@
 import type { ProjectLanguage, VerificationStatus } from '../types';
 import type { QueryIntent } from '../intent';
 import type { ActiveView } from '../url-state';
+import type { GroupDrawing } from '../trust-base';
 
 // ============================================================================
 // Graph Summary (static analysis output)
@@ -103,7 +104,7 @@ export type SuggestedAction =
   | { type: 'filterVerification'; statuses: VerificationStatus[] }
   | { type: 'setCrateBoundary'; source: string; target: string }
   | { type: 'switchView'; view: ActiveView }
-  | { type: 'showTrustGroup'; ids: string[]; theorems: number; base: number }
+  | { type: 'showTrustGroup'; ids: string[]; theorems: number; base: number; allChains: boolean }
   | { type: 'fillSearch'; query: string };  // put the query into the search box
 
 /** Actions that change the graph state; `fillSearch` only fills the search box. */
@@ -167,5 +168,5 @@ export interface GuideActions {
   /** Put a query into the search box and open its result list */
   fillSearch(query: string): void;
   /** The nodes to draw for a theorem group, in cap order (trust-base.ts groupDrawing) */
-  groupDrawing(row: TrustGroupRow): string[];
+  groupDrawing(row: TrustGroupRow): GroupDrawing;
 }

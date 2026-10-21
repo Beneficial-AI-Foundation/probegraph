@@ -187,11 +187,15 @@ direction). This is the forward direction.
   with its endpoints joined.
   As built in PR 3: no new reveal was needed. A row sets an exact ID set
   without direction (`exactIntent(ids, 'none')`), and the render cap keeps
-  the IDs of such a set in order. The order is the base, then the witness
-  nodes from each theorem to each base member, then the theorems
-  (`groupDrawing` in `src/trust-base.ts`). A cut chain loses its middle
-  nodes but never gets a link that is not in the graph. The section lists
-  five groups, like the other ranked lists.
+  the IDs of such a set in order. The order is the base, then the
+  theorems, then the witness nodes from each theorem to each base member
+  (`groupDrawing` in `src/trust-base.ts`). A cut drawing keeps the group
+  and loses chain nodes first, so a large group still shows its theorems.
+  A cut chain loses nodes but never gets a link that is not in the graph.
+  The witness search stops at the cap, so a group of thousands of
+  theorems does not run thousands of searches on a click. The groups are
+  computed once per graph, not on every kind filter change. The section
+  lists five groups, like the other ranked lists.
 - **Display.** Dropped on 2026-10-20. The plan was a dashed border on the
   Call Graph, and a File Map marker, for nodes whose unfinished set is
   non-empty. On an enriched graph the status color already says this: on
