@@ -22,6 +22,11 @@ Rules:
 - Done: a `trusted` node, or a node that is not unfinished, not unknown,
   and whose dependencies are all done. `admit` is a trusted reason, so it
   counts as done.
+- Ready: the unfinished members of one component (a work group), when the
+  component has no unknown member and its dependencies are all done.
+  Ranked by "would become ready" (unfinished nodes for which it is the
+  last blocker), then "unfinished dependents affected", then all
+  transitive dependents, then ID.
 
 Usage:
     python3 scripts/trust_frontier.py check
@@ -288,8 +293,15 @@ def frontier(g: Graph, c: Condensation) -> list[dict]:
             for j in reach[k]
             if not ready[j] and is_ready(g, c, j, after)
         )
-        rows.append({"members": unfinished_members(g, c, k), "unblocks": unblocks, "affected": affected})
-    rows.sort(key=lambda r: (-r["unblocks"], -r["affected"], r["members"][0]))
+        # Every node that waits on k, finished or not: separates rows when both counts tie
+        dependents = sum(len(c.members[j]) for j in reach[k])
+        rows.append({
+            "members": unfinished_members(g, c, k),
+            "unblocks": unblocks,
+            "affected": affected,
+            "dependents": dependents,
+        })
+    rows.sort(key=lambda r: (-r["unblocks"], -r["affected"], -r["dependents"], r["members"][0]))
     return rows
 
 
