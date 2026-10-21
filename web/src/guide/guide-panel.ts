@@ -308,6 +308,10 @@ export function resultMessage(action: StateAction, label: string, result: GuideR
     }
   }
   if (result.displayRemoved) notes.push(`${result.displayRemoved} removed by display filters`);
+  // An exact set reports no display removals: the filters left out what the total lacks
+  if (action.type === 'showTrustGroup' && action.ids.length > result.total) {
+    notes.push(`${action.ids.length - result.total} removed by filters`);
+  }
   const note = notes.length > 0 ? ` (${notes.join(', ')})` : '';
   return `${result.shown} ${noun}: ${describeAction(action)}${note}`;
 }
@@ -319,7 +323,8 @@ function describeAction(action: Exclude<StateAction, { type: 'switchView' }>): s
     case 'setCrateBoundary': return `${action.source} → ${action.target}`;
     case 'filterVerification': return `${action.statuses.join(', ')} only`;
     case 'showTrustGroup': {
-      const base = action.base === 1 ? 'the declaration it rests on' : `the ${action.base} declarations they rest on`;
+      const rest = action.theorems === 1 ? 'it rests on' : 'they rest on';
+      const base = action.base === 1 ? `the declaration ${rest}` : `the ${action.base} declarations ${rest}`;
       const chains = action.allChains ? 'the chains between' : 'some of the chains between';
       return `${plural(action.theorems, 'theorem', 'theorems')}, ${base} and ${chains}`;
     }

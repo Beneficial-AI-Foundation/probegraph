@@ -222,7 +222,9 @@ function computeTrustGroups(graph: D3Graph, isCandidate: (node: D3Node) => boole
   const byId = new Map(graph.nodes.map(n => [n.id, n]));
   const groups = analysis.groups();
   const shown = groups.filter(g => g.theorems.some(id => isCandidate(byId.get(id)!)));
-  const rows = shown.slice(0, RANKED_LIST_LENGTH).map(({ theorems, base }): TrustGroupRow => {
+  const rows = shown.slice(0, RANKED_LIST_LENGTH).map((group): TrustGroupRow => {
+    const { theorems } = group;
+    const base = group.base();
     const nodes = base.map(id => byId.get(id)!);
     const unfinished = nodes.filter(isTrustUnfinished);
     const unknown = nodes.filter(isTrustUnknown);

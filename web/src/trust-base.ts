@@ -39,10 +39,16 @@ export interface TrustBase {
 
 /** Theorems that rest on exactly the same nodes. */
 export interface TheoremGroup {
-  /** The shared trust base (assumptions, unfinished and unknown), sorted by ID. */
-  base: string[];
   /** The theorems, sorted by ID. */
   theorems: string[];
+  /** Size of the shared base. */
+  baseSize: number;
+  /**
+   * The shared trust base (assumptions, unfinished and unknown), sorted by
+   * ID. Built on each call: the bases of all groups together can be
+   * quadratic in the graph size.
+   */
+  base(): string[];
 }
 
 export interface TrustAnalysis {
@@ -156,6 +162,20 @@ function analyze(graph: D3Graph): TrustAnalysis | null {
   // Computed on the first call: the graph does not change
   let groups: readonly TheoremGroup[] | null = null;
 
+  // A group is the base of component `k` with the bit `skip` (the theorem
+  // itself, -1 when it is not in a base) left out. Groups are matched by
+  // bitset, never by ID list, so the work stays linear in the bitsets.
+  interface Slot { k: number; skip: number; theorems: string[] }
+  const slotGroup = ({ k, skip, theorems }: Slot): TheoremGroup => ({
+    theorems,
+    baseSize: bases[k].count() - (skip >= 0 ? 1 : 0),
+    base: () => {
+      const out: string[] = [];
+      bases[k].forEach(i => { if (i !== skip) out.push(baseIds[i]); });
+      return out;
+    },
+  });
+
   return {
     condensation: c,
     baseOf(id) {
@@ -171,30 +191,31 @@ function analyze(graph: D3Graph): TrustAnalysis | null {
     },
     groups() {
       if (groups) return groups;
-      const byKey = new Map<string, TheoremGroup>();
+      const byHash = new Map<number, Slot[]>();
+      const slots: Slot[] = [];
       for (const n of [...byId.values()].sort((a, b) => compareIds(a.id, b.id))) {
         if (!THEOREM_KINDS.has(n.kind)) continue;
-        const base = ids(bases[c.componentOf.get(n.id)!], baseIds).filter(id => id !== n.id);
-        if (base.length === 0) continue;
-        const key = base.join('\0');
-        let group = byKey.get(key);
-        if (!group) byKey.set(key, group = { base, theorems: [] });
-        group.theorems.push(n.id);
+        const k = c.componentOf.get(n.id)!;
+        const skip = baseIndex.get(n.id) ?? -1;
+        if (bases[k].count() === (skip >= 0 ? 1 : 0)) continue;
+        const hash = bases[k].hash(skip);
+        const bucket = byHash.get(hash) ?? [];
+        let slot = bucket.find(s => bases[s.k].compare(s.skip, bases[k], skip) === 0);
+        if (!slot) {
+          slot = { k, skip, theorems: [] };
+          bucket.push(slot);
+          byHash.set(hash, bucket);
+          slots.push(slot);
+        }
+        slot.theorems.push(n.id);
       }
-      groups = [...byKey.values()].sort((a, b) =>
-        b.theorems.length - a.theorems.length || compareIdLists(a.base, b.base));
+      // Ties go by base ID list, a prefix first (the order of Python lists)
+      groups = slots
+        .sort((a, b) => b.theorems.length - a.theorems.length || bases[a.k].compare(a.skip, bases[b.k], b.skip))
+        .map(slotGroup);
       return groups;
     },
   };
-}
-
-/** Element by element, a prefix first (the order of Python lists). */
-function compareIdLists(a: string[], b: string[]): number {
-  for (let i = 0; i < Math.min(a.length, b.length); i++) {
-    const order = compareIds(a[i], b[i]);
-    if (order !== 0) return order;
-  }
-  return a.length - b.length;
 }
 
 /**
@@ -209,34 +230,8 @@ export function witnesses(
   start: string,
   targets: Iterable<string>,
 ): Map<string, string[] | null> {
-  return witnessesIn(new Map(graph.nodes.map(n => [n.id, n])), start, targets);
-}
-
-function witnessesIn(
-  byId: Map<string, D3Node>,
-  start: string,
-  targets: Iterable<string>,
-): Map<string, string[] | null> {
   const goals = [...targets];
-  const parent = new Map<string, string | null>();
-  if (byId.has(start)) {
-    parent.set(start, null);
-    // The BFS stops once every target is reached: later steps cannot
-    // change a parent already set
-    const remaining = new Set(goals.filter(t => t !== start));
-    const queue = [start];
-    for (let i = 0; i < queue.length && remaining.size > 0; i++) {
-      const deps = [...new Set(cutDependencies(byId.get(queue[i])!))]
-        .filter(d => byId.has(d))
-        .sort(compareIds);
-      for (const d of deps) {
-        if (parent.has(d)) continue;
-        parent.set(d, queue[i]);
-        remaining.delete(d);
-        queue.push(d);
-      }
-    }
-  }
+  const { parent } = shortestTree(new Map(graph.nodes.map(n => [n.id, n])), start, goals, Infinity);
   const result = new Map<string, string[] | null>();
   for (const target of goals) {
     if (!parent.has(target)) {
@@ -250,6 +245,38 @@ function witnessesIn(
   return result;
 }
 
+/**
+ * The BFS of `witnesses`: each reached node's parent, `start` mapped to
+ * null. It stops once every goal is reached, or once it has looked at
+ * more than `budget` dependency links (`exhausted`). A parent never changes
+ * once set, so the paths to the reached nodes hold either way.
+ */
+function shortestTree(
+  byId: Map<string, D3Node>,
+  start: string,
+  goals: readonly string[],
+  budget: number,
+): { parent: Map<string, string | null>; steps: number; exhausted: boolean } {
+  const parent = new Map<string, string | null>();
+  let steps = 0;
+  if (!byId.has(start)) return { parent, steps, exhausted: false };
+  parent.set(start, null);
+  const remaining = new Set(goals.filter(t => t !== start));
+  const queue = [start];
+  for (let i = 0; i < queue.length && remaining.size > 0; i++) {
+    const deps = cutDependencies(byId.get(queue[i])!);
+    steps += deps.length;
+    if (steps > budget) return { parent, steps, exhausted: true };
+    for (const d of [...new Set(deps)].filter(d => byId.has(d)).sort(compareIds)) {
+      if (parent.has(d)) continue;
+      parent.set(d, queue[i]);
+      remaining.delete(d);
+      queue.push(d);
+    }
+  }
+  return { parent, steps, exhausted: false };
+}
+
 /** Shortest path from `start` to `target` (see witnesses). */
 export function witness(graph: D3Graph, start: string, target: string): string[] | null {
   return witnesses(graph, start, [target]).get(target)!;
@@ -258,29 +285,54 @@ export function witness(graph: D3Graph, start: string, target: string): string[]
 /** The nodes to draw for a theorem group (groupDrawing). */
 export interface GroupDrawing {
   ids: string[];
-  /** False when the limit stopped the chain search early. */
+  /** False when the limit or the step budget stopped the chain search early. */
   complete: boolean;
 }
+
+/**
+ * Dependency links the chain search of one group drawing looks at, in
+ * total. A million links take tens of milliseconds, which keeps a row
+ * click responsive on any graph.
+ */
+export const GROUP_DRAWING_STEPS = 1_000_000;
 
 /**
  * The nodes to draw for a theorem group, in the order the render cap keeps
  * them: the base, then the theorems, then the nodes on the shortest chain
  * from each theorem to each base member (theorems by ID, base members in
  * order). Each node appears once, at its first place. The chains stop at
- * `limit` nodes, so a large group does not search past what the cap shows.
+ * `limit` nodes, or after `budget` dependency links, so a large group does
+ * not search past what the cap shows.
  */
-export function groupDrawing(graph: D3Graph, group: TheoremGroup, limit: number): GroupDrawing {
+export function groupDrawing(
+  graph: D3Graph,
+  group: { base: readonly string[]; theorems: readonly string[] },
+  limit: number,
+  budget = GROUP_DRAWING_STEPS,
+): GroupDrawing {
   const byId = new Map(graph.nodes.map(n => [n.id, n]));
   const order = new Set([...group.base, ...group.theorems]);
+  const cut = (): GroupDrawing => ({ ids: [...order], complete: false });
   for (const theorem of group.theorems) {
-    if (order.size >= limit) return { ids: [...order], complete: false };
-    for (const path of witnessesIn(byId, theorem, group.base).values()) {
-      for (const id of path?.slice(1, -1) ?? []) {
+    if (order.size >= limit) return cut();
+    const tree = shortestTree(byId, theorem, group.base, budget);
+    budget -= tree.steps;
+    // Walk each chain up from its base member to the part an earlier chain
+    // of this theorem already walked, so each tree node is walked once
+    const walked = new Set([theorem]);
+    for (const target of group.base) {
+      if (!tree.parent.has(target)) continue;
+      const segment: string[] = [];
+      for (let v = tree.parent.get(target)!; v !== null && !walked.has(v); v = tree.parent.get(v)!) segment.push(v);
+      walked.add(target);
+      for (const id of segment.reverse()) {
+        walked.add(id);
         if (order.has(id)) continue;
-        if (order.size >= limit) return { ids: [...order], complete: false };
+        if (order.size >= limit) return cut();
         order.add(id);
       }
     }
+    if (tree.exhausted) return cut();
   }
   return { ids: [...order], complete: true };
 }

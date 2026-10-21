@@ -383,6 +383,13 @@ describe('shared trust bases', () => {
       .toBe('200 nodes: 2 theorems, the 2 declarations they rest on and the chains between (140 of 340 not shown)');
   });
 
+  it('names the group nodes the filters removed', () => {
+    const action: SuggestedAction = { type: 'showTrustGroup', ids: ['ax', 't1', 't2'], theorems: 2, base: 1, allChains: true };
+    const r = { shown: 2, total: 2, missingAnchor: false, seeded: false, tooLarge: false, displayRemoved: 0 };
+    expect(resultMessage(action, 'x', r))
+      .toBe('2 nodes: 2 theorems, the declaration they rest on and the chains between (1 removed by filters)');
+  });
+
   it('names one theorem, one base member and cut chains in the toast', () => {
     const action: SuggestedAction = { type: 'showTrustGroup', ids: ['ax', 't3'], theorems: 1, base: 1, allChains: false };
     const r = { shown: 2, total: 2, missingAnchor: false, seeded: false, tooLarge: false };

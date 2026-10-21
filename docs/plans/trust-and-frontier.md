@@ -192,9 +192,14 @@ direction). This is the forward direction.
   (`groupDrawing` in `src/trust-base.ts`). A cut drawing keeps the group
   and loses chain nodes first, so a large group still shows its theorems.
   A cut chain loses nodes but never gets a link that is not in the graph.
-  The witness search stops at the cap, so a group of thousands of
-  theorems does not run thousands of searches on a click. The groups are
-  computed once per graph, not on every kind filter change. The section
+  The witness search stops at the cap, or after a million dependency
+  links (`GROUP_DRAWING_STEPS`), so a click on a large group stays
+  responsive. The groups are computed once per graph, not on every kind
+  filter change. They are matched by base bitset (hash, then exact
+  compare), and a group's base ID list is built only for the shown rows:
+  a chain of unfinished theorems has quadratic total base size. The toast
+  counts the group nodes that filters removed, because an exact set
+  reports no display removals. The section
   lists five groups, like the other ranked lists.
 - **Display.** Dropped on 2026-10-20. The plan was a dashed border on the
   Call Graph, and a File Map marker, for nodes whose unfinished set is

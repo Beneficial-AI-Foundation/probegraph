@@ -735,9 +735,12 @@ parts, and the node cap keeps them in this order:
 So when a group is larger than the 200-node cap, the base and the
 theorems stay and some chain nodes are left out. The toast gives the
 counts, for example "45 nodes: 30 theorems, the 6 declarations they rest
-on and the chains between". If the cap cut the chains, it says "some of
-the chains between". If the base and the theorems alone pass the cap, it
-also says how many nodes the cap left out. The query bar shows
+on and the chains between". If the cap cut the chains, or the group is so
+large that the chain search stopped early, it says "some of the chains
+between". If the base and the theorems alone pass the cap, it also says
+how many nodes the cap left out. If filters hide part of the group, for
+example the Axioms kind box or hidden nodes, it says how many nodes the
+filters removed. The query bar shows
 `nodes 30 theorems on a shared trust base`. The click switches to the
 Call Graph and is one browser-history step.
 
