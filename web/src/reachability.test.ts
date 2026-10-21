@@ -69,6 +69,26 @@ describe('Bitset', () => {
     expect(a.countShared(b)).toBe(3);
   });
 
+  it('compares a set with bit 31 and a skip equal to the same set without the skip', () => {
+    const x = new Bitset(32);
+    x.add(0);
+    x.add(31);
+    const y = new Bitset(32);
+    y.add(31);
+    expect(x.compare(0, y, -1)).toBe(0);
+    expect(y.compare(-1, x, 0)).toBe(0);
+    expect(x.hash(0)).toBe(y.hash());
+  });
+
+  it('compares one set with itself under two skips', () => {
+    const s = new Bitset(8);
+    s.add(0);
+    s.add(1);
+    expect(s.compare(0, s, 1)).toBe(1);   // [1] after [0]
+    expect(s.compare(1, s, 0)).toBe(-1);
+    expect(s.compare(1, s, 1)).toBe(0);
+  });
+
   it('compares and hashes member lists with one member left out', () => {
     // Reference: the sorted lists, element by element, a prefix first
     const list = (members: number[], skip: number) => members.filter(i => i !== skip).sort((x, y) => x - y);
