@@ -4,8 +4,8 @@ import { resolve } from 'node:path';
 import { convertAtomDictToD3Graph } from './graph-loader';
 import type { Condensation } from './reachability';
 import {
-  MAX_TRUST_BASE_WORDS, frontierCountsFit, groupDrawing, isTrustAssumption, isTrustUnfinished, isTrustUnknown,
-  proofFrontier, trustAnalysis, trustBaseFits, witness, witnesses,
+  MAX_FRONTIER_STEPS, MAX_TRUST_BASE_WORDS, frontierCountsFit, groupDrawing, isTrustAssumption, isTrustUnfinished,
+  isTrustUnknown, proofFrontier, trustAnalysis, trustBaseFits, witness, witnesses,
 } from './trust-base';
 import type { D3Graph, ProbeAtom } from './types';
 
@@ -43,7 +43,7 @@ describe('trust base fixtures (scripts/trust_frontier.py)', () => {
         expect(groups.map(g => g.baseSize)).toEqual(groups.map(g => g.base().length));
       }
       if (fixture.expected.frontier) {
-        expect(proofFrontier(g).rows.map(r => ({ members: r.members, ...r.counts })))
+        expect(proofFrontier(g).rows().map(r => ({ members: r.members, ...r.counts })))
           .toEqual(fixture.expected.frontier);
       }
     });
@@ -118,7 +118,7 @@ describe('proofFrontier', () => {
   it('tells the members of a row from the other nodes', () => {
     const fixture = FIXTURES.find(f => f.name === 'unfinished-scc')!;
     const frontier = proofFrontier(convertAtomDictToD3Graph(fixture.data));
-    expect(frontier.rows.map(r => r.members)).toEqual([['u1', 'u2']]);
+    expect(frontier.rows().map(r => r.members)).toEqual([['u1', 'u2']]);
     for (const id of Object.keys(fixture.data)) expect(frontier.isReady(id), id).toBe(id === 'u1' || id === 'u2');
   });
 
@@ -142,7 +142,7 @@ describe('proofFrontier', () => {
         } as ProbeAtom;
       }
       const g = convertAtomDictToD3Graph(atoms);
-      const rows = proofFrontier(g).rows.map(r => ({ members: r.members, ...r.counts }));
+      const rows = proofFrontier(g).rows().map(r => ({ members: r.members, ...r.counts }));
       expect(rows, `round ${round}`).toEqual(bruteForceFrontier(g));
     }
   });
@@ -154,10 +154,11 @@ describe('frontierCountsFit', () => {
     dependencies: Array.from({ length: components }, () => new Array(edgesPer).fill(0)),
   } as unknown as Condensation);
 
-  it('bounds rows x (components + links)', () => {
-    // 250 million steps: 1000 rows over 1000 components with 249 links each
-    expect(frontierCountsFit(sized(1000, 249), 1000)).toBe(true);
-    expect(frontierCountsFit(sized(1000, 249), 1001)).toBe(false);
+  it('bounds rows x (components + links) by MAX_FRONTIER_STEPS', () => {
+    // 10 million steps: 1000 rows over 1000 components with 9 links each
+    expect(MAX_FRONTIER_STEPS).toBe(10_000_000);
+    expect(frontierCountsFit(sized(1000, 9), 1000)).toBe(true);
+    expect(frontierCountsFit(sized(1000, 9), 1001)).toBe(false);
   });
 });
 

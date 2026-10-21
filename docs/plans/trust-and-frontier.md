@@ -286,9 +286,14 @@ direction). This is the forward direction.
 - The word stays "ready". `docs/guides/viewer.md` says how it differs
   from the File Map legend, whose Ready border counts a `verified`
   dependency as done.
-- The counts cost one walk over the dependents of each row. Above
-  `rows x (components + links) = MAX_REACHABILITY_WORDS`, the rows have no
-  counts and come in ID order. On the three extracts, the whole frontier
+- The counts cost one walk over the dependents of each row. They run on
+  the main thread, so they have their own limit, `MAX_FRONTIER_STEPS` (10
+  million steps of `rows x (components + links)`), far below
+  `MAX_REACHABILITY_WORDS`. Above it, the rows have no counts and come in
+  ID order. A synthetic graph costs about 15 ns per step in Node, so the
+  counts take at most about 150 ms. SPQR uses 0.87 million steps. The
+  counts are computed on the first call to `rows()`, so `is:frontier`
+  reads the ready set only. On the three extracts, the whole frontier
   takes under 10 ms, and the TypeScript output equals the script's.
 - A click on a Frontier row draws the work group and every node that
   depends on it, like a row of the other ranked Guide lists. A row with
