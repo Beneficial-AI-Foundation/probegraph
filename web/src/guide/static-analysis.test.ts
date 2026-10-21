@@ -3,13 +3,16 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { buildGraphSummary, formatSummaryText } from './static-analysis';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { buildGraphSummary, formatSummaryText, idDifferences } from './static-analysis';
 import {
-  MAX_LEVEL_ROWS, guideTransition, levelRows, levelShares, resultMessage, trustGroupCounts, trustGroupLabel,
+  MAX_LEVEL_ROWS, frontierDescription, guideTransition, levelRows, levelShares, resultMessage, trustGroupCounts,
+  trustGroupLabel, workGroupLabel,
 } from './guide-panel';
 import { convertAtomDictToD3Graph } from '../graph-loader';
 import type { ProbeAtom } from '../types';
-import type { SuggestedAction } from './types';
+import type { FrontierList, SuggestedAction } from './types';
 import { D3Graph, D3Link, D3Node, VerificationStatus } from '../types';
 import { MAX_REACHABILITY_COMPONENTS, graphReachability, rankByTransitiveDependents } from '../reachability';
 
@@ -401,5 +404,80 @@ describe('shared trust bases', () => {
     expect(trustGroupCounts(1, 0, 0)).toBe('1 assumption, 0 unfinished');
     expect(trustGroupCounts(6, 2, 1)).toBe('6 assumptions, 2 unfinished, 1 untracked');
     expect(trustGroupLabel(1)).toBe('1 theorem on a shared trust base');
+  });
+});
+
+describe('frontier list', () => {
+  const FIXTURES: { name: string; data: Record<string, ProbeAtom> }[] = JSON.parse(
+    readFileSync(resolve(__dirname, '../test-data/trust-frontier.json'), 'utf8'),
+  );
+  const fixture = (name: string) => convertAtomDictToD3Graph(FIXTURES.find(f => f.name === name)!.data);
+  const all = { isCandidate: () => true, isLinkShown: () => true };
+
+  it('lists the ready rows with their counts', () => {
+    // low is ready; once it is done, mid is done and top becomes ready
+    expect(buildGraphSummary(fixture('contaminated-intermediary'), all).frontier).toEqual({
+      rows: [{ members: ['low'], names: ['low'], counts: { unblocks: 1, affected: 1, dependents: 2 } }],
+      ready: 1, groups: 1, unblockNothing: 0, unfinished: 2, all: 1, counted: true,
+    });
+  });
+
+  it('opens a single member as the Sink and a cycle as an exact set with its callers', () => {
+    const one = buildGraphSummary(fixture('chain'), all).frontier!.rows[0];
+    expect(one.members).toEqual(['low']);
+    const cycle = buildGraphSummary(fixture('unfinished-scc'), all).frontier!;
+    expect(cycle.rows.map(r => r.members)).toEqual([['u1', 'u2']]);
+    expect(cycle.ready).toBe(2);
+    const label = workGroupLabel(cycle.rows[0].names);
+    expect(label).toBe('u1 and 1 more');
+    const action: SuggestedAction = { type: 'showWorkGroup', ids: ['u1', 'u2'], label };
+    expect(guideTransition(action, label).intent).toEqual({
+      kind: 'ids', ids: ['u1', 'u2'], dir: 'callers', label, origin: { type: 'guide' },
+    });
+    const r = { shown: 3, total: 3, missingAnchor: false, seeded: false, tooLarge: false };
+    expect(resultMessage(action, label, r)).toBe('3 nodes: callers of u1 and 1 more');
+    expect(resultMessage(action, label, { ...r, shown: 0, total: 0, missingAnchor: true }))
+      .toBe('u1 and 1 more are hidden by the current filters');
+  });
+
+  it('follows the kind filters, but counts the whole graph', () => {
+    const f = buildGraphSummary(fixture('contaminated-intermediary'), { ...all, isCandidate: () => false }).frontier!;
+    expect([f.rows.length, f.ready, f.groups, f.all]).toEqual([0, 0, 0, 1]);
+  });
+
+  it('knows when nothing is ready and when nothing is unfinished', () => {
+    // u waits on the untracked x
+    const blocked = buildGraphSummary(fixture('missing-and-unknown'), all).frontier!;
+    expect([blocked.all, blocked.unfinished]).toEqual([0, 1]);
+    const finished = convertAtomDictToD3Graph({
+      a: { ...FIXTURES[0].data.top, dependencies: [], "verification-status": 'transitively-verified' },
+    });
+    expect(buildGraphSummary(finished, all).frontier).toMatchObject({ rows: [], unfinished: 0, all: 0 });
+  });
+
+  it('is left out without verification data, and replaces the hotspots sentence', () => {
+    const atom = (over: Partial<ProbeAtom>): ProbeAtom => ({
+      "display-name": 'x', dependencies: [], "code-text": null, "code-path": 'X.lean',
+      "code-module": 'X', kind: 'theorem', language: 'lean', ...over,
+    });
+    const plain = convertAtomDictToD3Graph({ a: atom({ dependencies: ['b'] }), b: atom({}) });
+    expect(buildGraphSummary(plain, all).frontier).toBeNull();
+    expect(formatSummaryText(buildGraphSummary(fixture('chain'), all))).not.toContain('hotspots');
+  });
+
+  it('says how flat the ranking is, and when the rows have no counts', () => {
+    const list: FrontierList = { rows: [], ready: 57, groups: 57, unblockNothing: 56, unfinished: 58, all: 57, counted: true };
+    expect(frontierDescription(list)).toContain('56 of 57 would make nothing else ready yet.');
+    expect(frontierDescription({ ...list, unblockNothing: 20 })).not.toContain('nothing else ready');
+    expect(frontierDescription({ ...list, counted: false }))
+      .toContain('In ID order: the graph is too large to count what each row unblocks.');
+  });
+});
+
+describe('row context', () => {
+  it('keeps the part of the IDs that differs, cut at separators', () => {
+    expect(idDifferences(['p:a.HeaderSent.Insts.M', 'p:a.HeaderReceived.Insts.M', 'p:a.Keys.Insts.M']))
+      .toEqual(['HeaderSent', 'HeaderReceived', 'Keys']);
+    expect(idDifferences(['crate/m/f()', 'crate/n/f()'])).toEqual(['m', 'n']);
   });
 });

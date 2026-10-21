@@ -119,6 +119,31 @@ test.describe('Guide on the Lean graph', () => {
     await expect.poll(async () => (await shownNodes(page)).map(n => n.id).sort()).toEqual([...ids].sort());
   });
 
+  test('the Frontier list replaces the hotspots and opens the callers of a row', async ({ page }) => {
+    await open(page);
+    await expect(page.locator('#guide-summary')).not.toContainText('hotspots');
+    const section = page.locator('.guide-section').filter({ hasText: 'Frontier' });
+    await expect(section.locator('.guide-section-title')).toHaveText(/^Frontier \(\d+ ready, top 5\) query$/);
+    // Most ready rows on this graph unblock nothing, and the caption says so
+    await expect(section.locator('.guide-section-desc')).toContainText(/\d+ of \d+ would make nothing else ready yet/);
+    await expect(rows(page, 'Frontier')).toHaveCount(5);
+    await expect(rows(page, 'Frontier').first().locator('.guide-row-count')).toHaveText(/^\d+ · \d+$/);
+
+    const { id, toast } = await clickFirstRow(page, 'Frontier');
+    expect(param(page, 'id')).toBe(id);
+    expect(param(page, 'dir')).toBe('callers');
+    expect(toast).toMatch(/^\d+ nodes?: callers of /);
+    await expect.poll(async () => (await shownNodes(page)).map(n => n.id)).toContain(id);
+    expect((await shownNodes(page)).find(n => n.id === id)!.status).toBe('unverified');
+  });
+
+  test('the Frontier query button lists the ready work in the search box', async ({ page }) => {
+    await open(page);
+    const section = page.locator('.guide-section').filter({ hasText: 'Frontier' });
+    await section.locator('.guide-query').click();
+    await expect(page.locator('#search-input')).toHaveValue('is:frontier');
+  });
+
   test('ranked lists follow the kind filters', async ({ page }) => {
     await open(page);
     await expect(rows(page, 'Keystone lemmas')).toHaveCount(5);

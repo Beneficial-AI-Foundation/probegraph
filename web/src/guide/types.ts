@@ -1,7 +1,7 @@
 import type { ProjectLanguage, VerificationStatus } from '../types';
 import type { QueryIntent } from '../intent';
 import type { ActiveView } from '../url-state';
-import type { GroupDrawing } from '../trust-base';
+import type { FrontierCounts, GroupDrawing } from '../trust-base';
 
 // ============================================================================
 // Graph Summary (static analysis output)
@@ -76,6 +76,29 @@ export interface TrustGroupList {
   all: number;
 }
 
+/** A row of the Guide Frontier list: one work group (trust-base.ts proofFrontier). */
+export interface FrontierListRow {
+  members: string[];               // the unfinished members, sorted by ID
+  names: string[];                 // their display names
+  context?: string;                // module or path of the first member, when another row has the same name
+  counts: FrontierCounts | null;   // null when the counts do not fit (rows in ID order)
+}
+
+/** The top work groups that can be worked on now. */
+export interface FrontierList {
+  rows: FrontierListRow[];
+  /** Ready declarations in the groups the kind filters leave. */
+  ready: number;
+  /** Ready groups the kind filters leave, and how many of them would make nothing else ready. */
+  groups: number;
+  unblockNothing: number;
+  /** Unfinished declarations in the graph; 0 means nothing is left to do. */
+  unfinished: number;
+  /** Ready groups before the kind filters. */
+  all: number;
+  counted: boolean;
+}
+
 /**
  * Nodes on one topological level of the SCC-condensed graph. Level 0 has
  * no dependencies. Statuses use the same definitions as VerificationBreakdown.
@@ -105,6 +128,7 @@ export type SuggestedAction =
   | { type: 'setCrateBoundary'; source: string; target: string }
   | { type: 'switchView'; view: ActiveView }
   | { type: 'showTrustGroup'; ids: string[]; theorems: number; base: number; allChains: boolean }
+  | { type: 'showWorkGroup'; ids: string[]; label: string }  // a ready cycle with its callers
   | { type: 'fillSearch'; query: string };  // put the query into the search box
 
 /** Actions that change the graph state; `fillSearch` only fills the search box. */
@@ -125,8 +149,8 @@ export interface GraphSummary {
   keystonesAreLemmas: boolean;
   rankingsSkipped: { components: number; links: number } | null;  // condensed size when too large (lists empty)
   trustGroups: TrustGroupList | null;  // null: no verification data, blueprint layer, or too large
+  frontier: FrontierList | null;  // null: no verification data or blueprint layer
   levels: LevelStat[];
-  unverifiedHotspots: NodeRank[];
   failedNodes: NodeRank[];
   suggestedQueries: SuggestedQuery[];
   roleFilterActive: boolean;  // rankings use the full relation while a role box is off

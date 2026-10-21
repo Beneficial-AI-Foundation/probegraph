@@ -1580,6 +1580,7 @@ select.search-input {
 .guide-row-count {
   font-variant-numeric: tabular-nums;
   color: var(--pg-text-muted);
+  white-space: nowrap;
 }
 
 .guide-levels {

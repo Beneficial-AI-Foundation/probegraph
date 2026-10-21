@@ -9,7 +9,7 @@
 
 import type {
   GraphSummary, SuggestedAction, GuideActions, GuideResult, GuideTransition, LevelStat, RankedList, StateAction,
-  TrustGroupList,
+  TrustGroupList, FrontierList, FrontierListRow,
 } from './types';
 import { NONE_INTENT, exactIntent, boundaryIntent } from '../intent';
 import { escapeHtml } from '../html';
@@ -56,8 +56,10 @@ export class GuidePanel {
           ? this.rankedSection('Keystone lemmas', 'By unique transitive dependents', summary.keystones)
           : this.rankedSection('Most depended on', 'By unique transitive dependents', summary.keystones),
       ];
+    const frontier = summary.frontier ? [this.frontierSection(summary.frontier)] : [];
     const trust = summary.trustGroups ? [this.trustGroupSection(summary.trustGroups)] : [];
-    document.getElementById('guide-answers')?.replaceChildren(...lists, ...trust, levelsSection(summary.levels));
+    document.getElementById('guide-answers')?.replaceChildren(
+      ...lists, ...frontier, ...trust, levelsSection(summary.levels));
 
     chipsEl.innerHTML = '';
     for (const q of summary.suggestedQueries) {
@@ -109,6 +111,58 @@ export class GuidePanel {
       row.append(name, count);
       const action: SuggestedAction = { type: 'setSink', id: r.id, label: r.displayName };
       row.addEventListener('click', () => this.executeAction(action, r.displayName));
+      section.appendChild(row);
+    }
+    return section;
+  }
+
+  /** Ready work groups; a row opens the group and its dependents. */
+  private frontierSection(list: FrontierList): HTMLElement {
+    const top = list.groups > list.rows.length ? `, top ${list.rows.length}` : '';
+    const section = sectionElement(`Frontier (${list.ready} ready${top})`, frontierDescription(list));
+    const query = document.createElement('button');
+    query.className = 'guide-query';
+    query.textContent = 'query';
+    query.title = 'Put "is:frontier" into the search box';
+    query.addEventListener('click', () => this.executeAction({ type: 'fillSearch', query: 'is:frontier' }, 'is:frontier'));
+    section.querySelector('.guide-section-title')!.append(' ', query);
+    if (list.rows.length === 0) {
+      const empty = document.createElement('p');
+      empty.className = 'guide-empty';
+      empty.textContent = list.unfinished === 0 ? 'Nothing is unfinished.'
+        : list.all === 0 ? 'No unfinished declaration is ready: each one waits on other unfinished work or on an untracked declaration.'
+        : 'None among the shown declaration kinds.';
+      section.appendChild(empty);
+      return section;
+    }
+    for (const r of list.rows) {
+      const label = workGroupLabel(r.names);
+      const row = document.createElement('button');
+      row.className = 'guide-row';
+      row.dataset.id = r.members[0];
+      row.title = r.members.length === 1 ? r.members[0]
+        : `A cycle of ${r.members.length} unfinished declarations, ready together: ${r.names.join(', ')}`;
+      const name = document.createElement('span');
+      name.className = 'guide-row-name';
+      name.textContent = label;
+      if (r.context) {
+        const ctx = document.createElement('small');
+        ctx.className = 'guide-row-context';
+        ctx.textContent = r.context;
+        name.append(' ', ctx);
+      }
+      row.append(name);
+      if (r.counts) {
+        const count = document.createElement('span');
+        count.className = 'guide-row-count';
+        count.textContent = `${r.counts.unblocks} · ${r.counts.dependents}`;
+        count.title = frontierCountsTitle(r);
+        row.append(count);
+      }
+      const action: SuggestedAction = r.members.length === 1
+        ? { type: 'setSink', id: r.members[0], label }
+        : { type: 'showWorkGroup', ids: r.members, label };
+      row.addEventListener('click', () => this.executeAction(action, label));
       section.appendChild(row);
     }
     return section;
@@ -176,6 +230,33 @@ export function trustGroupCounts(assumptions: number, unfinished: number, unknow
   const parts = [plural(assumptions, 'assumption', 'assumptions'), `${unfinished} unfinished`];
   if (unknown > 0) parts.push(`${unknown} untracked`);
   return parts.join(', ');
+}
+
+/** "decode" for one member, "decode and 2 more" for a cycle. */
+export function workGroupLabel(names: string[]): string {
+  return names.length === 1 ? names[0] : `${names[0]} and ${names.length - 1} more`;
+}
+
+/** The Frontier caption: the ranking, and how flat it is. */
+export function frontierDescription(list: FrontierList): string {
+  const parts = ['Unfinished declarations whose dependencies are all done, so they can be worked on now.'];
+  if (list.counted) {
+    parts.push('Ranked by the left number: the unfinished declarations that would become ready once the row'
+      + ' is done. The right number counts every declaration that depends on the row.');
+    if (list.groups > 0 && 2 * list.unblockNothing > list.groups) {
+      parts.push(`${list.unblockNothing} of ${list.groups} would make nothing else ready yet.`);
+    }
+  } else {
+    parts.push('In ID order: the graph is too large to count what each row unblocks.');
+  }
+  parts.push('Click a row to draw it with everything that depends on it.');
+  return parts.join(' ');
+}
+
+function frontierCountsTitle(r: FrontierListRow): string {
+  const c = r.counts!;
+  return `Would make ${c.unblocks} more ready; ${plural(c.affected, 'unfinished declaration depends', 'unfinished declarations depend')}`
+    + ` on it; ${plural(c.dependents, 'declaration depends', 'declarations depend')} on it in all`;
 }
 
 /** Query label of a drawn group, e.g. "30 theorems on a shared trust base". */
@@ -295,6 +376,9 @@ export function resultMessage(action: StateAction, label: string, result: GuideR
   if (result.missingAnchor && (action.type === 'setSource' || action.type === 'setSink')) {
     return `${action.label} is hidden by the current filters`;
   }
+  if (result.missingAnchor && action.type === 'showWorkGroup') {
+    return `${action.label} are hidden by the current filters`;
+  }
   const noun = result.shown === 1 ? 'node' : 'nodes';
   const notes: string[] = [];
   if (result.seeded) {
@@ -320,6 +404,7 @@ function describeAction(action: Exclude<StateAction, { type: 'switchView' }>): s
   switch (action.type) {
     case 'setSource': return `callees of ${action.label}`;
     case 'setSink': return `callers of ${action.label}`;
+    case 'showWorkGroup': return `callers of ${action.label}`;
     case 'setCrateBoundary': return `${action.source} → ${action.target}`;
     case 'filterVerification': return `${action.statuses.join(', ')} only`;
     case 'showTrustGroup': {
@@ -347,6 +432,8 @@ export function guideTransition(action: StateAction, label: string): GuideTransi
       return { intent: NONE_INTENT, status: [...action.statuses], label };
     case 'switchView':
       return { intent: NONE_INTENT, status: null, view: action.view, label };
+    case 'showWorkGroup':
+      return { intent: exactIntent(action.ids, 'callers', action.label, { type: 'guide' }), status: null, depth: null, label };
     case 'showTrustGroup':
       // The Call Graph draws exact sets; the cap keeps the first IDs
       return { intent: exactIntent(action.ids, 'none', label, { type: 'guide' }), status: null, view: 'callgraph', label };
