@@ -567,29 +567,25 @@ middle. Hover the line to see the full chain. Each entry is a link that
 shows its details in this panel, and the graph does not change. A list shows
 50 entries at most, then "and N more".
 
-The **show path** button next to an entry draws the paths from the
-selected declaration to that entry in the Call Graph. It sets the same
-query as Source and Sink with exact IDs, and the query bar shows it as
-`paths A → B`. Node details stay on the selected declaration, so you can
-try the entries one after another. One click is one browser-history step.
-The drawing can hold more than the grey chain, for two reasons:
-
-- It draws every path between the two declarations, not only the
-  shortest one.
-- It uses all links. A path through a trusted declaration also shows,
-  but the counts above ignore it.
-
-The display filters still apply. If they or the node cap leave out either
-end, a toast says why.
+The **show path** button next to an entry draws the grey chain in the
+Call Graph: the selected declaration, the entry, and the declarations
+between them, with no other nodes. The query bar shows it as `nodes
+shortest chain A → B`. Node details stay on the selected declaration, so
+you can try the entries one after another. One click is one
+browser-history step. The click also unhides the declarations of the chain
+that you hid with Shift+click. The other display filters still apply. If
+they or the node cap leave out a declaration of the chain, a toast says
+which one and why.
 
 Example on the SPQR demo graph. `ConcreteErasureCode_correct` is marked
 verified, so the colour does not say what is still open. Its trust base
 shows 22 assumptions and 1 unfinished declaration, `collect_default_bridge`.
 The unfinished declaration is 9 steps away, through `encode_toModel`,
 `chunk_at_spec_points` and several `loop_spec` and `body_spec` lemmas. The
-graph around the theorem does not show it. **show path** draws the 15
-nodes on the paths between the two. The drawing is a long chain that the
-view fits small, so zoom in to read the labels.
+graph around the theorem does not show it. **show path** draws the 10
+declarations of the chain. The drawing is a long line that the view fits
+small, so zoom in to read the labels
+([#113](https://github.com/Beneficial-AI-Foundation/probegraph/issues/113)).
 
 The rules behind the counts:
 
@@ -686,6 +682,14 @@ involved.
   Above 20,000 groups, or with too many links for that number of groups,
   the Guide does not compute them and says so. This limits the memory and
   the time the page is blocked. The Dependency levels strip still shows.
+- **Shared trust bases** groups the theorems (Lean theorems, Verus proof
+  functions) that rest on exactly the same assumptions and unfinished
+  declarations. See [Trust base](#trust-base) for what a declaration rests
+  on. It lists the five largest groups, ties by the IDs of their base. A row shows
+  the counts, for example "4 assumptions, 1 unfinished", the first two
+  names (unfinished first), and the number of theorems on the right. Hover
+  the row to see every name. A theorem that rests on nothing is in no
+  group. See [Shared trust bases](#shared-trust-bases).
 - The **Dependency levels** strip shows how verification is spread over
   the dependency stack. See [Dependency levels](#dependency-levels).
 - Lists and suggestions only name nodes and edges the current kind and
@@ -717,6 +721,41 @@ involved.
   gives the number of nodes not shown, and when display filters (origin,
   status, language, files) removed nodes, it says how many. Browser back
   undoes it.
+
+### Shared trust bases
+
+Click a row to draw the group in the Call Graph. The drawing holds three
+parts, and the node cap keeps them in this order:
+
+1. The shared base: the assumptions and unfinished declarations.
+2. The theorems.
+3. The declarations on the shortest chain from each theorem to each base
+   member, as the grey chains in node details show them.
+
+So when a group is larger than the 200-node cap, the base and the
+theorems stay and some chain nodes are left out. The toast gives the
+counts, for example "45 nodes: 30 theorems, the 6 declarations they rest
+on and the chains between". If the cap cut the chains, or the group is so
+large that the chain search stopped early, it says "some of the chains
+between". If the base and the theorems alone pass the cap, it also says
+how many nodes the cap left out. If filters hide part of the group, for
+example the Axioms kind box or hidden nodes, it says how many nodes the
+filters removed. The query bar shows
+`nodes 30 theorems on a shared trust base`. The click switches to the
+Call Graph and is one browser-history step.
+
+A group with many theorems and few assumptions is a dependency that much
+of the project shares. For example, on the SPQR demo graph the largest
+group holds 30 theorems that rest on the same 6 trusted `core` slice
+functions, such as `get` and `get_mut`. A group with an unfinished member
+shows the theorems that a single missing proof holds back.
+
+The groups use the whole graph, like the trust base. The Declaration Kind
+boxes decide which groups show: a group shows when at least one of its
+theorems is of a shown kind. The theorem count always counts the whole
+group. The section is left out on the blueprint layer, on graphs without
+verification data, and when the trust bases do not fit in the memory
+limit.
 
 ### Dependency levels
 

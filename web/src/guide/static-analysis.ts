@@ -6,6 +6,7 @@
  */
 
 import type { D3Graph, D3Link, D3Node, ProjectLanguage } from '../types';
+import { isTrustAssumption, isTrustUnfinished, isTrustUnknown, trustAnalysis } from '../trust-base';
 import { crateNoun, detectProjectLanguage, getKindSetsForLanguage, isVerifiedStatus } from '../types';
 import { getLinkId } from '../query';
 import {
@@ -16,7 +17,7 @@ import {
 } from '../query-words';
 import type {
   GraphSummary, CrateSummary, GroupBoundary, VerificationBreakdown,
-  KindBreakdown, NodeRank, SuggestedQuery, RankedAnswer, RankedList, LevelStat,
+  KindBreakdown, NodeRank, SuggestedQuery, RankedAnswer, RankedList, LevelStat, TrustGroupList, TrustGroupRow,
 } from './types';
 
 /** Rows per ranked list. */
@@ -46,6 +47,7 @@ export function buildGraphSummary(graph: D3Graph, visibility: SummaryVisibility 
   const kinds = computeKinds(nodes);
   const ranked = computeRankedLists(graph, lang, isCandidate);
   const levels = computeLevels(graph);
+  const trustGroups = lang === 'blueprint' ? null : computeTrustGroups(graph, isCandidate);
   const unverifiedHotspots = computeUnverifiedHotspots(candidates, nodes, 5);
   const failedNodes = nodes
     .filter(n => n.verification_status === 'failed')
@@ -67,6 +69,7 @@ export function buildGraphSummary(graph: D3Graph, visibility: SummaryVisibility 
     verification,
     kinds,
     ...ranked,
+    trustGroups,
     levels,
     unverifiedHotspots,
     failedNodes,
@@ -205,6 +208,34 @@ function computeRankedLists(
     keystonesAreLemmas,
     rankingsSkipped,
   };
+}
+
+/**
+ * The largest theorem groups by shared trust base. `isCandidate` keeps the
+ * groups with at least one shown theorem; the counts use the whole group.
+ * Null without verification data or when the trust bases do not fit.
+ */
+function computeTrustGroups(graph: D3Graph, isCandidate: (node: D3Node) => boolean): TrustGroupList | null {
+  if (!graph.nodes.some(n => n.verification_status !== undefined || n.untracked === true)) return null;
+  const analysis = trustAnalysis(graph);
+  if (!analysis) return null;
+  const byId = new Map(graph.nodes.map(n => [n.id, n]));
+  const groups = analysis.groups();
+  const shown = groups.filter(g => g.theorems.some(id => isCandidate(byId.get(id)!)));
+  const rows = shown.slice(0, RANKED_LIST_LENGTH).map((group): TrustGroupRow => {
+    const { theorems } = group;
+    const base = group.base();
+    const nodes = base.map(id => byId.get(id)!);
+    const unfinished = nodes.filter(isTrustUnfinished);
+    const unknown = nodes.filter(isTrustUnknown);
+    const assumptions = nodes.filter(isTrustAssumption);
+    return {
+      theorems, base,
+      assumptions: assumptions.length, unfinished: unfinished.length, unknown: unknown.length,
+      baseNames: [...unfinished, ...unknown, ...assumptions].map(n => n.display_name),
+    };
+  });
+  return { rows, total: shown.length, all: groups.length };
 }
 
 /** Rows that share a display name show their module or path. */

@@ -1,8 +1,8 @@
 # Viewer: trust base and proof frontier
 
 Status (2026-10-20): Phase 0 merged in #106. Phase 1 is split into three
-PRs (see "PR split" in Phase 1): PR 1 merged in #110, and PR 2 is in
-review. Phase 2 is not started. Split out of the
+PRs (see "PR split" in Phase 1): PR 1 merged in #110, PR 2 in #112, and
+PR 3 is in review. Phase 2 is not started. Split out of the
 graph-insights brainstorm (`docs/archive/graph-insights.md`) after a Codex
 review on 2026-10-05. Depends on `viewer-filters-and-guide.md` Phase 4 for
 the SCC-condensed DAG and the reverse-reachability bitsets; that code
@@ -185,6 +185,22 @@ direction). This is the forward direction.
   until the cap. The toast gives the full count and the drawn count; a
   truncated witness is listed in the details panel as text, never drawn
   with its endpoints joined.
+  As built in PR 3: no new reveal was needed. A row sets an exact ID set
+  without direction (`exactIntent(ids, 'none')`), and the render cap keeps
+  the IDs of such a set in order. The order is the base, then the
+  theorems, then the witness nodes from each theorem to each base member
+  (`groupDrawing` in `src/trust-base.ts`). A cut drawing keeps the group
+  and loses chain nodes first, so a large group still shows its theorems.
+  A cut chain loses nodes but never gets a link that is not in the graph.
+  The witness search stops at the cap, or after a million dependency
+  links (`GROUP_DRAWING_STEPS`), so a click on a large group stays
+  responsive. The groups are computed once per graph, not on every kind
+  filter change. They are matched by base bitset (hash, then exact
+  compare), and a group's base ID list is built only for the shown rows:
+  a chain of unfinished theorems has quadratic total base size. The toast
+  counts the group nodes that filters removed, because an exact set
+  reports no display removals. The section
+  lists five groups, like the other ranked lists.
 - **Display.** Dropped on 2026-10-20. The plan was a dashed border on the
   Call Graph, and a File Map marker, for nodes whose unfinished set is
   non-empty. On an enriched graph the status color already says this: on
@@ -211,8 +227,11 @@ direction). This is the forward direction.
    trusted nodes, so it can show more than the witness. PR 3 adds an
    exact-set reveal for the Guide groups. The button can then switch to
    the exact witness chain.
-3. Guide: the theorem groups, opened through the reveal path, with the
-   toast counts. User docs: the Guide section in `docs/guides/viewer.md`.
+3. Guide: the theorem groups, opened as an exact set, with the toast
+   counts. The "show path" button switches to the same kind of exact set
+   and draws only the witness chain. User docs: "Shared trust bases" in the
+   Guide section of `docs/guides/viewer.md`, and the changed button under
+   "Trust base". The layout of long chains is issue #113.
 
 ## Phase 2: proof frontier
 

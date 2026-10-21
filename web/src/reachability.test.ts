@@ -68,6 +68,45 @@ describe('Bitset', () => {
     expect(a.has(64)).toBe(false);
     expect(a.countShared(b)).toBe(3);
   });
+
+  it('compares a set with bit 31 and a skip equal to the same set without the skip', () => {
+    const x = new Bitset(32);
+    x.add(0);
+    x.add(31);
+    const y = new Bitset(32);
+    y.add(31);
+    expect(x.compare(0, y, -1)).toBe(0);
+    expect(y.compare(-1, x, 0)).toBe(0);
+    expect(x.hash(0)).toBe(y.hash());
+  });
+
+  it('compares one set with itself under two skips', () => {
+    const s = new Bitset(8);
+    s.add(0);
+    s.add(1);
+    expect(s.compare(0, s, 1)).toBe(1);   // [1] after [0]
+    expect(s.compare(1, s, 0)).toBe(-1);
+    expect(s.compare(1, s, 1)).toBe(0);
+  });
+
+  it('compares and hashes member lists with one member left out', () => {
+    // Reference: the sorted lists, element by element, a prefix first
+    const list = (members: number[], skip: number) => members.filter(i => i !== skip).sort((x, y) => x - y);
+    const order = (x: number[], y: number[]) => {
+      for (let i = 0; i < Math.min(x.length, y.length); i++) if (x[i] !== y[i]) return Math.sign(x[i] - y[i]);
+      return Math.sign(x.length - y.length);
+    };
+    let seed = 7;
+    const random = (n: number) => (seed = (seed * 1103515245 + 12345) % 2 ** 31) % n;
+    for (let round = 0; round < 500; round++) {
+      const members = [0, 1].map(() => [...new Set(Array.from({ length: random(6) }, () => random(70)))]);
+      const [x, y] = members.map(m => { const s = new Bitset(70); m.forEach(i => s.add(i)); return s; });
+      const [sx, sy] = members.map(m => (m.length > 0 && random(2) === 0 ? m[0] : -1));
+      const expected = order(list(members[0], sx), list(members[1], sy));
+      expect(Math.sign(x.compare(sx, y, sy))).toBe(expected);
+      if (expected === 0) expect(x.hash(sx)).toBe(y.hash(sy));
+    }
+  });
 });
 
 describe('condense', () => {

@@ -1,6 +1,7 @@
 import type { ProjectLanguage, VerificationStatus } from '../types';
 import type { QueryIntent } from '../intent';
 import type { ActiveView } from '../url-state';
+import type { GroupDrawing } from '../trust-base';
 
 // ============================================================================
 // Graph Summary (static analysis output)
@@ -57,6 +58,24 @@ export interface RankedList {
   query: string;  // the search box query of the list, e.g. `top 5 by dependents is:unfinished`
 }
 
+/** A group of theorems that rest on exactly the same nodes (trust-base.ts). */
+export interface TrustGroupRow {
+  theorems: string[];   // sorted by ID
+  base: string[];       // the shared trust base, sorted by ID
+  assumptions: number;  // base members per kind
+  unfinished: number;
+  unknown: number;
+  baseNames: string[];  // display names of the base: unfinished, untracked, then assumptions
+}
+
+/** The largest groups, and how many groups the kind filters leave. */
+export interface TrustGroupList {
+  rows: TrustGroupRow[];
+  total: number;
+  /** Groups before the kind filters; 0 when no theorem rests on anything. */
+  all: number;
+}
+
 /**
  * Nodes on one topological level of the SCC-condensed graph. Level 0 has
  * no dependencies. Statuses use the same definitions as VerificationBreakdown.
@@ -85,6 +104,7 @@ export type SuggestedAction =
   | { type: 'filterVerification'; statuses: VerificationStatus[] }
   | { type: 'setCrateBoundary'; source: string; target: string }
   | { type: 'switchView'; view: ActiveView }
+  | { type: 'showTrustGroup'; ids: string[]; theorems: number; base: number; allChains: boolean }
   | { type: 'fillSearch'; query: string };  // put the query into the search box
 
 /** Actions that change the graph state; `fillSearch` only fills the search box. */
@@ -104,6 +124,7 @@ export interface GraphSummary {
   keystones: RankedList;     // lemmas (proof kinds), or every node when the graph has none
   keystonesAreLemmas: boolean;
   rankingsSkipped: { components: number; links: number } | null;  // condensed size when too large (lists empty)
+  trustGroups: TrustGroupList | null;  // null: no verification data, blueprint layer, or too large
   levels: LevelStat[];
   unverifiedHotspots: NodeRank[];
   failedNodes: NodeRank[];
@@ -146,4 +167,6 @@ export interface GuideActions {
   apply(t: GuideTransition): GuideResult | null;
   /** Put a query into the search box and open its result list */
   fillSearch(query: string): void;
+  /** The nodes to draw for a theorem group, in cap order (trust-base.ts groupDrawing) */
+  groupDrawing(row: TrustGroupRow): GroupDrawing;
 }

@@ -65,6 +65,46 @@ export class Bitset {
     return n;
   }
 
+  /** Word `k`, with member `skip` left out (-1: none), unsigned like the stored words. */
+  private wordWithout(k: number, skip: number): number {
+    return skip >= 0 && k === skip >>> 5 ? (this.words[k] & ~(1 << (skip & 31))) >>> 0 : this.words[k];
+  }
+
+  /** Hash of the members, `skip` left out (-1: none). Equal sets hash equal. */
+  hash(skip = -1): number {
+    let h = 0x811c9dc5;  // FNV-1a over the words
+    for (let k = 0; k < this.words.length; k++) h = Math.imul(h ^ this.wordWithout(k, skip), 0x01000193);
+    return h >>> 0;
+  }
+
+  /**
+   * Order of the member lists in increasing order, element by element, a
+   * prefix first; `skip` is left out of this set and `otherSkip` out of
+   * `other` (-1: none). Same size. 0 when the sets are equal.
+   */
+  compare(skip: number, other: Bitset, otherSkip: number): number {
+    for (let k = 0; k < this.words.length; k++) {
+      const a = this.wordWithout(k, skip);
+      const b = other.wordWithout(k, otherSkip);
+      if (a === b) continue;
+      // The lists agree below the lowest differing member. The set that has
+      // it comes first, unless the other set has nothing after it (a prefix).
+      // `other` can be this same set with another skip, so track the side by flag
+      const low = (a ^ b) & -(a ^ b);
+      const thisHas = (a & low) !== 0;
+      const lacksMore = thisHas ? other.hasAbove(k, low, otherSkip) : this.hasAbove(k, low, skip);
+      return thisHas === lacksMore ? -1 : 1;
+    }
+    return 0;
+  }
+
+  /** Whether a member is above bit `low` of word `k`, `skip` left out. */
+  private hasAbove(k: number, low: number, skip: number): boolean {
+    if ((this.wordWithout(k, skip) & ~((low << 1) - 1)) !== 0) return true;
+    for (let j = k + 1; j < this.words.length; j++) if (this.wordWithout(j, skip) !== 0) return true;
+    return false;
+  }
+
   /** Number of members of both this set and `other` (same size). */
   countShared(other: Bitset): number {
     const w = this.words;

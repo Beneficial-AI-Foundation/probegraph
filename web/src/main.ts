@@ -1,6 +1,7 @@
 import { D3Graph, D3Node, GraphState, FilterOptions, ProjectLanguage, BLUEPRINT_LANGUAGE, compileKindFlag, crateMapLabel, crateNoun, detectProjectLanguage, getKindSetsForLanguage, extractCrateName, isSchema2Envelope } from './types';
 import { blueprintBackrefHtml, blueprintNodeDetailsHtml } from './blueprint-details';
 import { trustDetailsHtml } from './trust-details';
+import { groupDrawing, witness } from './trust-base';
 import { applyFilters, getCallers, getCallees } from './filters';
 import {
   compileQuery, GraphQuery, NodeMatcher, filterLinksByType, linkTypeShown, roleFilteredGraph,
@@ -23,7 +24,7 @@ import { SearchBox } from './search-box';
 import { escapeHtml } from './html';
 import { StatusGroup, exactStatusFilter, groupCheckState, withGroupChecked } from './status-filter';
 import {
-  QueryIntent, NONE_INTENT, textIntent, focusIntent, boundaryIntent, exactIntent, idPathsIntent,
+  QueryIntent, NONE_INTENT, textIntent, focusIntent, boundaryIntent, exactIntent,
   isFocusIntent, inputsForIntent, intentAfterInputEdit, vscodeIntent, vscodeSetQueryIntent,
 } from './intent';
 import { ActiveView, Layer, defaultFilters, readURLState, writeURLState } from './url-state';
@@ -654,6 +655,9 @@ const guideActions: GuideActions = {
     return lastRenderResult;
   },
   fillSearch: query => searchBox?.fill(query),
+  groupDrawing: row => (state.fullGraph
+    ? groupDrawing(state.fullGraph, row, MAX_RENDERED_NODES)
+    : { ids: [], complete: true }),
 };
 
 // Size of the last Call Graph / File Map render, for the Guide's toast
@@ -3895,34 +3899,37 @@ function revealNode(id: string, opts: RevealOptions): RevealResult {
 }
 
 /**
- * The "show path" button of a trust-base entry: the paths from `fromId` to
- * `toId` in the Call Graph, as one history entry with the view change and
- * the unhiding. Node details stay on `fromId`. A toast says when the
- * filters or the render cap leave either end out.
+ * The "show path" button of a trust-base entry: the shortest chain from
+ * `fromId` to `toId` (the witness, with trusted links cut) in the Call
+ * Graph, as one history entry with the view change and the unhiding of the
+ * chain. Node details stay on `fromId`. A toast says when the filters or
+ * the render cap leave a node of the chain out.
  */
 function showTrustPath(fromId: string, toId: string): void {
   const graph = state.fullGraph;
   const from = graph?.nodes.find(n => n.id === fromId);
   const to = graph?.nodes.find(n => n.id === toId);
-  if (!from || !to) return;
+  const chain = graph && witness(graph, fromId, toId);
+  if (!from || !to || !chain) return;
   dropRevealEffects();
   flushDebouncedApply();
-  setIntent(idPathsIntent([fromId], [toId], from.display_name, to.display_name, { type: 'search' }), {
+  const label = `shortest chain ${from.display_name} → ${to.display_name}`;
+  setIntent(exactIntent(chain, 'none', label, { type: 'search' }), {
     history: 'push',
     pushed: true,
     before: () => {
       if (activeView !== 'callgraph') switchView('callgraph', { apply: false });
-      state.filters.hiddenNodes.delete(fromId);
-      state.filters.hiddenNodes.delete(toId);
+      for (const id of chain) state.filters.hiddenNodes.delete(id);
     },
   });
   state.selectedNode = from;
   updateNodeInfo();
   const ctx = revealContext();
-  for (const node of [from, to]) {
-    const result = classifyReveal(ctx, node.id);
+  for (const id of chain) {
+    const result = classifyReveal(ctx, id);
     if (result.reason !== 'shown') {
-      revealToast = showActionToast(revealMessage(node.display_name, result, renderCap()), []);
+      const name = graph.nodes.find(n => n.id === id)!.display_name;
+      revealToast = showActionToast(revealMessage(name, result, renderCap()), []);
       break;
     }
   }
