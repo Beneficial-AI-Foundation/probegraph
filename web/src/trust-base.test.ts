@@ -4,8 +4,8 @@ import { resolve } from 'node:path';
 import { convertAtomDictToD3Graph } from './graph-loader';
 import type { Condensation } from './reachability';
 import {
-  MAX_TRUST_BASE_WORDS, groupDrawing, isTrustAssumption, isTrustUnfinished, isTrustUnknown, trustAnalysis,
-  trustBaseFits, witness, witnesses,
+  MAX_TRUST_BASE_WORDS, frontierCountsFit, groupDrawing, isTrustAssumption, isTrustUnfinished, isTrustUnknown,
+  proofFrontier, trustAnalysis, trustBaseFits, witness, witnesses,
 } from './trust-base';
 import type { D3Graph, ProbeAtom } from './types';
 
@@ -16,10 +16,12 @@ interface Fixture {
     trust_base?: Record<string, unknown>;
     witness?: [string, string, string[] | null][];
     groups?: unknown;
+    frontier?: { members: string[]; unblocks: number; affected: number; dependents: number }[];
   };
 }
 
-// Shared with scripts/trust_frontier.py check; done and frontier are Phase 2
+// Shared with scripts/trust_frontier.py check. `done` is internal to the
+// frontier, so only the script checks it.
 const FIXTURES: Fixture[] = JSON.parse(
   readFileSync(resolve(__dirname, 'test-data/trust-frontier.json'), 'utf8'),
 );
@@ -39,6 +41,10 @@ describe('trust base fixtures (scripts/trust_frontier.py)', () => {
         const groups = analysis.groups();
         expect(groups.map(g => ({ base: g.base(), theorems: g.theorems }))).toEqual(fixture.expected.groups);
         expect(groups.map(g => g.baseSize)).toEqual(groups.map(g => g.base().length));
+      }
+      if (fixture.expected.frontier) {
+        expect(proofFrontier(g).rows.map(r => ({ members: r.members, ...r.counts })))
+          .toEqual(fixture.expected.frontier);
       }
     });
   }
@@ -102,6 +108,120 @@ describe('trustBaseFits', () => {
     expect(trustBaseFits(sized(1000, 20), 12_500)).toBe(false);
   });
 });
+
+describe('proofFrontier', () => {
+  it('is computed once per graph object', () => {
+    const g = convertAtomDictToD3Graph(FIXTURES[0].data);
+    expect(proofFrontier(g)).toBe(proofFrontier(g));
+  });
+
+  it('tells the members of a row from the other nodes', () => {
+    const fixture = FIXTURES.find(f => f.name === 'unfinished-scc')!;
+    const frontier = proofFrontier(convertAtomDictToD3Graph(fixture.data));
+    expect(frontier.rows.map(r => r.members)).toEqual([['u1', 'u2']]);
+    for (const id of Object.keys(fixture.data)) expect(frontier.isReady(id), id).toBe(id === 'u1' || id === 'u2');
+  });
+
+  it('matches the rules applied node by node for random graphs', () => {
+    const statuses = [undefined, 'verified', 'transitively-verified', 'trusted', 'unverified', 'unverified', 'failed'];
+    let seed = 11;
+    const rand = (n: number) => {
+      seed = (seed * 48271) % 2147483647;
+      return seed % n;
+    };
+    for (let round = 0; round < 200; round++) {
+      const size = 3 + rand(14);
+      const ids = Array.from({ length: size }, (_, i) => `n${i}`);
+      const atoms: Record<string, ProbeAtom> = {};
+      for (const id of ids) {
+        const status = statuses[rand(statuses.length)];
+        atoms[id] = {
+          kind: 'theorem', language: 'lean', dependencies: ids.filter(() => rand(5) === 0),
+          ...(status && { 'verification-status': status }),
+          ...(rand(10) === 0 && { untracked: true }),
+        } as ProbeAtom;
+      }
+      const g = convertAtomDictToD3Graph(atoms);
+      const rows = proofFrontier(g).rows.map(r => ({ members: r.members, ...r.counts }));
+      expect(rows, `round ${round}`).toEqual(bruteForceFrontier(g));
+    }
+  });
+});
+
+describe('frontierCountsFit', () => {
+  const sized = (components: number, edgesPer: number) => ({
+    members: Array.from({ length: components }, () => ['']),
+    dependencies: Array.from({ length: components }, () => new Array(edgesPer).fill(0)),
+  } as unknown as Condensation);
+
+  it('bounds rows x (components + links)', () => {
+    // 250 million steps: 1000 rows over 1000 components with 249 links each
+    expect(frontierCountsFit(sized(1000, 249), 1000)).toBe(true);
+    expect(frontierCountsFit(sized(1000, 249), 1001)).toBe(false);
+  });
+});
+
+/**
+ * The frontier from its definitions, node by node, with no condensation:
+ * done is the largest fixed point, a work group is the unfinished members
+ * of a cycle class, and the counts rerun done with the group forced done.
+ */
+function bruteForceFrontier(g: D3Graph) {
+  const byId = new Map(g.nodes.map(n => [n.id, n]));
+  const ids = [...byId.keys()];
+  const deps = (id: string) => (isTrustAssumption(byId.get(id)!) ? [] : byId.get(id)!.dependencies);
+  const reach = new Map(ids.map(start => {
+    const seen = new Set<string>();
+    const queue = [...deps(start)];
+    while (queue.length > 0) {
+      const v = queue.pop()!;
+      if (seen.has(v)) continue;
+      seen.add(v);
+      queue.push(...deps(v));
+    }
+    return [start, seen];
+  }));
+  const classOf = (id: string) => ids.filter(o => o === id || (reach.get(id)!.has(o) && reach.get(o)!.has(id)));
+  const unfinished = (id: string) => isTrustUnfinished(byId.get(id)!);
+  const unknown = (id: string) => isTrustUnknown(byId.get(id)!);
+  const doneSet = (forced: Set<string>) => {
+    const done = new Set(ids.filter(id => isTrustAssumption(byId.get(id)!) || (!unfinished(id) && !unknown(id))));
+    for (let changed = true; changed;) {
+      changed = false;
+      for (const id of [...done]) {
+        if (isTrustAssumption(byId.get(id)!)) continue;
+        if (deps(id).some(d => !done.has(d) && !forced.has(d))) {
+          done.delete(id);
+          changed = true;
+        }
+      }
+    }
+    return new Set([...done, ...forced]);
+  };
+  const isReady = (id: string, done: Set<string>) => {
+    const cls = new Set(classOf(id));
+    return unfinished(id) && ![...cls].some(unknown)
+      && [...cls].every(m => deps(m).every(d => cls.has(d) || done.has(d)));
+  };
+  const done = doneSet(new Set());
+  const rows: { members: string[]; unblocks: number; affected: number; dependents: number }[] = [];
+  const placed = new Set<string>();
+  for (const id of ids.sort()) {
+    if (placed.has(id) || !isReady(id, done)) continue;
+    const cls = classOf(id);
+    cls.forEach(m => placed.add(m));
+    const callers = ids.filter(o => !cls.includes(o) && reach.get(o)!.has(id));
+    const after = doneSet(new Set(cls));
+    rows.push({
+      members: cls.filter(unfinished),
+      unblocks: callers.filter(o => unfinished(o) && !isReady(o, done) && isReady(o, after)).length,
+      affected: callers.filter(unfinished).length,
+      dependents: callers.length,
+    });
+  }
+  return rows.sort((a, b) => b.unblocks - a.unblocks || b.affected - a.affected || b.dependents - a.dependents
+    || (a.members[0] < b.members[0] ? -1 : 1));
+}
 
 /** Trust base by BFS from one node on the graph with the trust cut. */
 function bruteForce(g: D3Graph, start: string) {

@@ -1,6 +1,8 @@
 /**
  * Trust base: for each node, the assumptions, unfinished declarations and
  * unknown closures it rests on (docs/plans/trust-and-frontier.md, Phase 1).
+ * Proof frontier: the unfinished work that can be done now, and what it
+ * would unblock (Phase 2).
  *
  * The reference implementation is `scripts/trust_frontier.py`; this module
  * gives the same answers on the fixtures in
@@ -13,6 +15,9 @@
  *   goes through it and it adds nothing.
  * - A `dependencies` target that is not in the graph does not block. It is
  *   listed under `missing`, for information.
+ * - Done: a `trusted` node, or a node that is not unfinished, not unknown,
+ *   and whose dependencies are all done. A `verified` dependency blocks,
+ *   because something unfinished sits below it.
  *
  * Callers pass the full code-layer graph (`state.fullGraph`), never a
  * filtered one, so a hidden link cannot remove an assumption.
@@ -102,6 +107,18 @@ export function trustBaseFits(c: Condensation, wordsPer: number): boolean {
     && (links + components) * wordsPer <= MAX_REACHABILITY_WORDS;
 }
 
+const cutCache = new WeakMap<D3Graph, Condensation>();
+
+/** Condensation of the graph with the trust cut, computed once per graph object. */
+function cutCondensation(graph: D3Graph, byId: Map<string, D3Node>): Condensation {
+  let c = cutCache.get(graph);
+  if (!c) {
+    c = condense(byId.keys(), id => cutDependencies(byId.get(id)!));
+    cutCache.set(graph, c);
+  }
+  return c;
+}
+
 const analysisCache = new WeakMap<D3Graph, TrustAnalysis | null>();
 
 /**
@@ -118,7 +135,7 @@ export function trustAnalysis(graph: D3Graph): TrustAnalysis | null {
 
 function analyze(graph: D3Graph): TrustAnalysis | null {
   const byId = new Map(graph.nodes.map(n => [n.id, n]));
-  const c = condense(byId.keys(), id => cutDependencies(byId.get(id)!));
+  const c = cutCondensation(graph, byId);
   const count = c.members.length;
 
   // Bit indices: the nodes a base can hold, then the missing targets
@@ -216,6 +233,127 @@ function analyze(graph: D3Graph): TrustAnalysis | null {
       return groups;
     },
   };
+}
+
+/** The counts of one frontier row. */
+export interface FrontierCounts {
+  /** Unfinished nodes for which this row is the last blocker: they become ready once it is done. */
+  unblocks: number;
+  /** Unfinished nodes that depend on this row, directly or not. An impact count. */
+  affected: number;
+  /** Nodes that depend on this row, directly or not, finished or not. */
+  dependents: number;
+}
+
+/**
+ * A work group that can be worked on now: the unfinished members of one
+ * component, whose dependencies outside the component are all done.
+ */
+export interface FrontierRow {
+  /** The unfinished members, sorted by ID. */
+  members: string[];
+  /** Null when the counts do not fit (frontierCountsFit). */
+  counts: FrontierCounts | null;
+}
+
+export interface Frontier {
+  /**
+   * Ranked by unblocks, then affected, then dependents, then the first
+   * member's ID. In ID order when the counts do not fit.
+   */
+  rows: readonly FrontierRow[];
+  /** Whether a node is a member of a row. */
+  isReady(id: string): boolean;
+}
+
+/**
+ * Whether the frontier counts fit: one walk over the dependents of each
+ * row, at most `rows` x (components + links) steps, within
+ * MAX_REACHABILITY_WORDS like the other closures.
+ */
+export function frontierCountsFit(c: Condensation, rows: number): boolean {
+  const { components, links } = condensedSize(c);
+  return rows * (components + links) <= MAX_REACHABILITY_WORDS;
+}
+
+const frontierCache = new WeakMap<D3Graph, Frontier>();
+
+/**
+ * The proof frontier of a graph, computed once per graph object. Pass the
+ * full code-layer graph. The graph's dependencies and statuses must not
+ * change after the first call.
+ */
+export function proofFrontier(graph: D3Graph): Frontier {
+  let f = frontierCache.get(graph);
+  if (!f) {
+    f = computeFrontier(graph);
+    frontierCache.set(graph, f);
+  }
+  return f;
+}
+
+function computeFrontier(graph: D3Graph): Frontier {
+  const byId = new Map(graph.nodes.map(n => [n.id, n]));
+  const c = cutCondensation(graph, byId);
+  const count = c.members.length;
+  const unfinished = c.members.map(m => m.filter(id => isTrustUnfinished(byId.get(id)!)));
+  const unknown = c.members.map(m => m.some(id => isTrustUnknown(byId.get(id)!)));
+  const settled = (k: number) => c.members[k].every(id => isTrustAssumption(byId.get(id)!));
+
+  // Dependencies come after their callers, so walk backwards
+  const done = new Uint8Array(count);
+  const ready = new Uint8Array(count);
+  for (let k = count - 1; k >= 0; k--) {
+    const depsDone = c.dependencies[k].every(d => done[d]);
+    if (settled(k)) done[k] = 1;
+    else if (unfinished[k].length > 0 || unknown[k]) ready[k] = Number(!unknown[k] && depsDone);
+    else done[k] = Number(depsDone);
+  }
+
+  const readyComponents: number[] = [];
+  for (let k = 0; k < count; k++) if (ready[k]) readyComponents.push(k);
+  const counted = frontierCountsFit(c, readyComponents.length);
+
+  // Per row: the components that reach it, and the done pass rerun on
+  // them alone with the row treated as done. Nothing else can change.
+  const seen = new Int32Array(count).fill(-1);
+  const after = new Uint8Array(count);
+  const countsOf = (row: number): FrontierCounts => {
+    seen[row] = row;
+    const reach: number[] = [];
+    for (let i = -1; i < reach.length; i++) {
+      for (const p of c.dependents[i < 0 ? row : reach[i]]) {
+        if (seen[p] === row) continue;
+        seen[p] = row;
+        reach.push(p);
+      }
+    }
+    const doneAfter = (d: number) => (d === row ? 1 : seen[d] === row ? after[d] : done[d]);
+    let unblocks = 0;
+    let affected = 0;
+    let dependents = 0;
+    for (const j of reach.sort((a, b) => b - a)) {
+      const depsDone = c.dependencies[j].every(doneAfter);
+      after[j] = Number(settled(j) || (unfinished[j].length === 0 && !unknown[j] && depsDone));
+      if (unfinished[j].length > 0 && !ready[j] && !unknown[j] && depsDone) unblocks += unfinished[j].length;
+      affected += unfinished[j].length;
+      dependents += c.members[j].length;
+    }
+    return { unblocks, affected, dependents };
+  };
+
+  const rows: FrontierRow[] = readyComponents.map(k => ({
+    members: unfinished[k],
+    counts: counted ? countsOf(k) : null,
+  }));
+  rows.sort((a, b) => {
+    const x = a.counts;
+    const y = b.counts;
+    return (x && y ? y.unblocks - x.unblocks || y.affected - x.affected || y.dependents - x.dependents : 0)
+      || compareIds(a.members[0], b.members[0]);
+  });
+  const members = new Set(rows.flatMap(r => r.members));
+  return { rows, isReady: id => members.has(id) };
 }
 
 /**
