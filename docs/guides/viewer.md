@@ -236,7 +236,7 @@ query. The keys and the case of the values do not matter.
 | `file:` | A glob on the file name, as Include Files reads it. With a `/`, a glob on the file path | `file:edwards.rs`, `file:*.lean` |
 | `level:` | The dependency level, as the [Dependency levels](#dependency-levels) strip counts it | `level:0` |
 | `crate:` | A substring of the crate name | `crate:dalek` |
-| `is:` | A fixed property: `unfinished`, `assumption`, `unused` or `surface` (see below) | `is:unused` |
+| `is:` | A fixed property: `unfinished`, `assumption`, `unused`, `surface` or `frontier` (see below) | `is:unused` |
 
 The `module:` rule. The viewer splits the value and the file path into
 segments at `/`, `.` and `::`, and drops the file extension. The segments of the value must
@@ -267,6 +267,7 @@ rules, so a query and a Guide list cannot disagree.
 | `is:assumption` | An axiom, or a declaration with the status trusted, as the Guide's Assumptions list | |
 | `is:unused` | A declaration that no other declaration of the layer depends on | Entry points, generated declarations (`@[step]` lemmas of Aeneas, Lean auxiliaries) and hidden declarations. A call to itself does not count |
 | `is:surface` | A public function without a contract (see below) | Graphs without public API data |
+| `is:frontier` | Ready work: an unfinished declaration whose dependencies are all done (see below) | Unfinished declarations that wait on other unfinished work or on an untracked declaration |
 
 `is:surface` depends on the extract. In a Verus extract, it matches a
 public exec function with no `requires` and no `ensures` dependency. In
@@ -280,6 +281,23 @@ not unused. A Lean lemma that the extract shows without callers can still
 be in use, through `@[simp]` or `@[grind]`, because the extract does not
 record uses by attribute. A lemma that calls others but has no callers is
 unused.
+
+`is:frontier` also reads the whole layer. A declaration is done when it
+has the status trusted, or when it is not unfinished, not untracked, and
+its dependencies are all done. In a graph with transitively-verified
+declarations, a dependency with the status verified is never done,
+because unfinished work sits below it. The links out of a
+trusted declaration do not count. A declaration without a status lets
+the check pass through it, and a dependency that is not in the extract
+does not block. Unfinished declarations that depend on each other are one
+work group, and they are ready together. For example,
+`top 10 by dependents is:frontier` ranks the ready work by how much
+depends on it. The rule also works on graphs extracted with
+`--skip-enrich`. There, no declaration is transitively-verified, and
+verified means that the declaration itself is clean.
+
+The File Map legend also says Ready, with other rules. Its border color
+counts a dependency with the status verified as done.
 
 In the search box, the filter words narrow the result list. The sidebar
 filters still do not. If the query has filter words only, the list shows
@@ -373,7 +391,7 @@ screen reader announces it:
 | Not a query yet: top [N] by dependents [filter words] | The text starts with `top`, but `by dependents` is missing |
 | top takes a number from 1 to 200 | N is 0 or above 200 |
 | top takes filter words only, for example module:field | A plain word after `by dependents` |
-| is:*value* is not known. Use unfinished, assumption, unused, surface | An unknown `is:` name |
+| is:*value* is not known. Use unfinished, assumption, unused, surface, frontier | An unknown `is:` name |
 | *key*: needs a value, for example *word* | A filter word without a value, such as `kind:` |
 | status:*value* is not a status. Use verified, transitively-verified, trusted, failed or unverified | An unknown status |
 | level:*value* is not a level. Use a whole number, for example level:0 | A level that is not a whole number |

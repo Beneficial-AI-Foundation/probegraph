@@ -297,6 +297,17 @@ describe('is: words', () => {
     expect(matching(g, 'is:surface')).toEqual([]);
   });
 
+  it('is:frontier lists the unfinished nodes whose dependencies are all done', () => {
+    const g = graph([
+      node('ready', { verification_status: 'unverified' }),
+      node('blocked', { verification_status: 'failed' }),
+      node('clean', { verification_status: 'transitively-verified' }),
+      node('admit', { verification_status: 'trusted' }),
+      node('caller', { verification_status: 'verified' }),
+    ], [['ready', 'clean'], ['ready', 'admit'], ['blocked', 'ready'], ['caller', 'blocked']]);
+    expect(matching(g, 'is:frontier')).toEqual(['ready']);
+  });
+
   it('reads the facts of the node layer when given two layers', () => {
     const code = graph([node('a'), node('b')], [['a', 'b']]);
     const blueprint = graph([node('x'), node('b2')], [['x', 'b2']]);

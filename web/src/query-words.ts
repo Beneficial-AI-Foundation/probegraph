@@ -19,6 +19,7 @@ import {
 } from './reachability';
 import type { D3Graph, D3Link, D3Node, VerificationStatus } from './types';
 import { isVerificationStatus } from './status-filter';
+import { proofFrontier } from './trust-base';
 
 export const FILTER_KEYS = ['crate', 'kind', 'status', 'module', 'file', 'level', 'is'] as const;
 export type FilterKey = typeof FILTER_KEYS[number];
@@ -208,8 +209,8 @@ function compileValue(key: FilterKey, value: string, context: WordContext): (nod
 // `is:` words
 // ============================================================================
 
-/** The names `is:` takes. `frontier` comes with trust-and-frontier.md Phase 2. */
-export const IS_NAMES = ['unfinished', 'assumption', 'unused', 'surface'] as const;
+/** The names `is:` takes. */
+export const IS_NAMES = ['unfinished', 'assumption', 'unused', 'surface', 'frontier'] as const;
 export type IsName = typeof IS_NAMES[number];
 
 /** What the `is:` words read from a node's layer. */
@@ -220,6 +221,8 @@ interface LayerFacts {
   withContract: Set<string>;
   /** Which `is:surface` rule the layer gets */
   surface: 'verus' | 'aeneas' | null;
+  /** Whether a node is ready work (trust-base.ts proofFrontier), computed on first use */
+  ready(id: string): boolean;
 }
 
 const factsCache = new WeakMap<D3Graph, LayerFacts>();
@@ -243,7 +246,7 @@ function layerFacts(graph: D3Graph): LayerFacts {
     const surface = languages.has('verus') ? 'verus'
       : languages.has('rust') && languages.has('lean') ? 'aeneas'
       : null;
-    facts = { used, withContract, surface };
+    facts = { used, withContract, surface, ready: id => proofFrontier(graph).isReady(id) };
     factsCache.set(graph, facts);
   }
   return facts;
@@ -276,6 +279,7 @@ const IS_PREDICATES: Record<IsName, (node: D3Node, facts: LayerFacts) => boolean
       case null: return false;
     }
   },
+  frontier: (n, facts) => facts.ready(n.id),
 };
 
 /** Lowercase segments of a module path; `/`, `.` and `::` all separate. */
