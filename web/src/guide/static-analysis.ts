@@ -39,17 +39,18 @@ export function buildGraphSummary(graph: D3Graph, visibility: SummaryVisibility 
   const lang = detectProjectLanguage(graph);
   const nodes = graph.nodes;
   const links = graph.links;
+  const byId = new Map(nodes.map(n => [n.id, n]));
 
   const crates = computeCrates(nodes);
   const boundary = computeBoundary(graph, visibility);
   const files = computeFiles(nodes);
   const verification = computeVerification(nodes);
   const kinds = computeKinds(nodes);
-  const ranked = computeRankedLists(graph, lang, isCandidate);
+  const ranked = computeRankedLists(graph, byId, lang, isCandidate);
   const levels = computeLevels(graph);
   const hasStatuses = lang !== 'blueprint' && hasVerificationData(graph);
   const trustGroups = hasStatuses ? computeTrustGroups(graph, isCandidate) : null;
-  const frontier = hasStatuses ? computeFrontierList(graph, isCandidate) : null;
+  const frontier = hasStatuses ? computeFrontierList(graph, byId, isCandidate) : null;
   const failedNodes = nodes
     .filter(n => n.verification_status === 'failed')
     .map(nodeToRank)
@@ -181,6 +182,7 @@ function nodeToRank(n: D3Node): NodeRank {
  */
 function computeRankedLists(
   graph: D3Graph,
+  byId: Map<string, D3Node>,
   lang: ProjectLanguage,
   isCandidate: (node: D3Node) => boolean,
 ): Pick<GraphSummary, 'unfinished' | 'assumptions' | 'keystones' | 'keystonesAreLemmas' | 'rankingsSkipped'> {
@@ -194,7 +196,7 @@ function computeRankedLists(
     const select = (n: D3Node) => isCandidate(n) && pred(n);
     const rows: RankedAnswer[] = (rankByTransitiveDependents(graph, select, RANKED_LIST_LENGTH) ?? [])
       .map(({ node, count }) => ({ ...nodeToRank(node), transitiveDependentCount: count }));
-    addContext(rows, graph);
+    addContext(rows, byId);
     const query = [`top ${RANKED_LIST_LENGTH} by dependents`, words].filter(w => w !== '').join(' ');
     return { rows, total: graph.nodes.filter(select).length, query };
   };
@@ -247,13 +249,16 @@ function computeTrustGroups(graph: D3Graph, isCandidate: (node: D3Node) => boole
  * keeps the groups with at least one shown member; the counts use the whole
  * graph.
  */
-function computeFrontierList(graph: D3Graph, isCandidate: (node: D3Node) => boolean): FrontierList {
-  const byId = new Map(graph.nodes.map(n => [n.id, n]));
+function computeFrontierList(
+  graph: D3Graph,
+  byId: Map<string, D3Node>,
+  isCandidate: (node: D3Node) => boolean,
+): FrontierList {
   const all = proofFrontier(graph).rows();
   const shown = all.filter(r => r.members.some(id => isCandidate(byId.get(id)!)));
   const top = shown.slice(0, RANKED_LIST_LENGTH);
   const nameOf = (id: string) => byId.get(id)!.display_name ?? id;
-  const contexts = sharedNameContexts(top.map(r => ({ id: r.members[0], name: nameOf(r.members[0]) })), graph);
+  const contexts = sharedNameContexts(top.map(r => ({ id: r.members[0], name: nameOf(r.members[0]) })), byId);
   const rows = top.map((r, i): FrontierListRow => ({
     members: r.members,
     names: r.members.map(nameOf),
@@ -272,8 +277,8 @@ function computeFrontierList(graph: D3Graph, isCandidate: (node: D3Node) => bool
 }
 
 /** Rows that share a display name show their module or path. */
-function addContext(rows: RankedAnswer[], graph: D3Graph): void {
-  const contexts = sharedNameContexts(rows.map(r => ({ id: r.id, name: r.displayName })), graph);
+function addContext(rows: RankedAnswer[], byId: Map<string, D3Node>): void {
+  const contexts = sharedNameContexts(rows.map(r => ({ id: r.id, name: r.displayName })), byId);
   rows.forEach((r, i) => {
     if (contexts[i] !== undefined) r.context = contexts[i];
   });
@@ -281,27 +286,26 @@ function addContext(rows: RankedAnswer[], graph: D3Graph): void {
 
 /**
  * The module or path of each row whose display name another row shares.
- * Rows that share the path too show the part of their IDs that differs.
+ * When two rows of a name share the path too, every row of that name shows
+ * the part of its ID that differs.
  */
-function sharedNameContexts(rows: { id: string; name: string }[], graph: D3Graph): (string | undefined)[] {
-  const seen = new Map<string, number>();
-  for (const r of rows) seen.set(r.name, (seen.get(r.name) ?? 0) + 1);
-  const byId = new Map(graph.nodes.map(n => [n.id, n]));
-  const contexts = rows.map(r => {
-    if (seen.get(r.name)! < 2) return undefined;
-    const n = byId.get(r.id)!;
-    return n.relative_path || n.crate_name || r.id;
-  });
-  const clashes = new Map<string, number[]>();
+function sharedNameContexts(rows: { id: string; name: string }[], byId: Map<string, D3Node>): (string | undefined)[] {
+  const byName = new Map<string, number[]>();
   rows.forEach((r, i) => {
-    if (contexts[i] === undefined) return;
-    const key = `${r.name}\0${contexts[i]}`;
-    clashes.set(key, [...(clashes.get(key) ?? []), i]);
+    const group = byName.get(r.name);
+    if (group) group.push(i);
+    else byName.set(r.name, [i]);
   });
-  for (const rowsOf of clashes.values()) {
-    if (rowsOf.length < 2) continue;
-    const parts = idDifferences(rowsOf.map(i => rows[i].id));
-    rowsOf.forEach((i, k) => { contexts[i] = parts[k]; });
+  const contexts: (string | undefined)[] = rows.map(() => undefined);
+  for (const group of byName.values()) {
+    if (group.length < 2) continue;
+    const ids = group.map(i => rows[i].id);
+    const paths = ids.map(id => {
+      const n = byId.get(id)!;
+      return n.relative_path || n.crate_name || id;
+    });
+    const parts = new Set(paths).size === paths.length ? paths : idDifferences(ids);
+    group.forEach((i, k) => { contexts[i] = parts[k]; });
   }
   return contexts;
 }

@@ -480,4 +480,28 @@ describe('row context', () => {
       .toEqual(['HeaderSent', 'HeaderReceived', 'Keys']);
     expect(idDifferences(['crate/m/f()', 'crate/n/f()'])).toEqual(['m', 'n']);
   });
+
+  it('keeps rows of one name apart across files', () => {
+    const atom = (path: string): ProbeAtom => ({
+      "display-name": 'foo', dependencies: [], "code-text": null, "code-path": path,
+      "code-module": 'X', kind: 'theorem', language: 'lean', "verification-status": 'unverified',
+    });
+    const g = convertAtomDictToD3Graph({
+      'pkg.FileA.X.foo': atom('FileA.lean'), 'pkg.FileA.Y.foo': atom('FileA.lean'),
+      'pkg.FileB.X.foo': atom('FileB.lean'), 'pkg.FileB.Y.foo': atom('FileB.lean'),
+      'bar.foo': atom('Bar.lean'),
+    });
+    const rows = buildGraphSummary(g, { isCandidate: () => true, isLinkShown: () => true }).frontier!.rows;
+    expect(rows.map(r => r.context)).toEqual(['bar', 'pkg.FileA.X', 'pkg.FileA.Y', 'pkg.FileB.X', 'pkg.FileB.Y']);
+  });
+
+  it('shows the file when no two rows of a name share it', () => {
+    const atom = (path: string): ProbeAtom => ({
+      "display-name": 'foo', dependencies: [], "code-text": null, "code-path": path,
+      "code-module": 'X', kind: 'theorem', language: 'lean', "verification-status": 'unverified',
+    });
+    const g = convertAtomDictToD3Graph({ 'a.foo': atom('A.lean'), 'b.foo': atom('B.lean') });
+    const rows = buildGraphSummary(g, { isCandidate: () => true, isLinkShown: () => true }).frontier!.rows;
+    expect(rows.map(r => r.context)).toEqual(['A.lean', 'B.lean']);
+  });
 });
