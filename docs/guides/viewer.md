@@ -556,6 +556,17 @@ it if it was Shift+click hidden. Other filters (exclude patterns, status or
 source boxes) can still leave it out; a toast then names the targets not shown.
 Each is one browser-history step.
 
+### Ready work
+
+A declaration on the [Frontier](#frontier) shows one more line, for
+example "Ready work: would make 1 more ready, 1 unfinished depends on
+it". The first number is the left number of its Frontier row. The second
+counts the unfinished declarations that depend on it, directly or through
+others. A declaration in a ready cycle also names the others of its
+cycle, and the counts are for the whole cycle. Other declarations get no
+line. For a blocked declaration, the Unfinished and Untracked lists of its trust base
+shows what it waits on.
+
 ### Trust base
 
 A code declaration in a graph with verification data shows a **Trust
@@ -700,6 +711,10 @@ involved.
   Above 20,000 groups, or with too many links for that number of groups,
   the Guide does not compute them and says so. This limits the memory and
   the time the page is blocked. The Dependency levels strip still shows.
+- **Frontier** lists the unfinished declarations that can be worked on
+  now, ranked by what finishing them would make ready. It replaces the
+  old "Unverified hotspots" line of the summary. See
+  [Frontier](#frontier).
 - **Shared trust bases** groups the theorems (Lean theorems, Verus proof
   functions) that rest on exactly the same assumptions and unfinished
   declarations. See [Trust base](#trust-base) for what a declaration rests
@@ -739,6 +754,52 @@ involved.
   gives the number of nodes not shown, and when display filters (origin,
   status, language, files) removed nodes, it says how many. Browser back
   undoes it.
+
+### Frontier
+
+A declaration is ready when it is unfinished (`unverified` or `failed`)
+and all its dependencies are done. These are the same declarations that
+`is:frontier` finds in the search box, and
+[Query words](#query-words) gives the rule for done. Unfinished
+declarations that depend on each other (a cycle) are one row, and they are
+ready together.
+
+The title gives the number of ready declarations, for example
+"Frontier (57 ready, top 5)". Each row shows two numbers, for example
+`1 · 10`:
+
+- The left number counts the unfinished declarations that would become
+  ready once the row is done. The list ranks by this number.
+- The right number counts every declaration that depends on the row,
+  directly or through others, finished or not.
+
+Ties go by the number of unfinished declarations that depend on the row,
+then by the right number, then by ID. Hover the numbers to see all three
+counts. On many graphs the left number is 0 for almost every row, because
+each unfinished declaration waits on its own dependencies. The caption
+then says how many rows would make nothing else ready, for example "56 of
+57 would make nothing else ready yet". Rows with the same name show the
+file, or the part of their IDs that differs.
+
+Click a row to draw it with every declaration that depends on it, like a
+row of the other ranked lists. A row with one declaration sets it as the
+Sink. A cycle row draws its declarations and their callers, and the query
+bar shows the first name, for example `decode and 2 more`. The toast gives the
+result, for example "33 nodes: callers of collect_default_bridge". The
+click is one browser-history step.
+
+The **query** button puts `is:frontier` into the search box, which lists
+every ready declaration in ID order. `top 10 by dependents is:frontier`
+ranks them by the right number only.
+
+The list uses the whole graph. The Declaration Kind boxes decide which
+rows show: a row shows when at least one of its declarations is of a
+shown kind. If no row is ready, the list says why: nothing is unfinished,
+or each unfinished declaration waits on other unfinished work or on an
+untracked declaration. The counts take one walk over the dependents of
+each row. If that is more than 10 million steps, the rows come in ID
+order without numbers, and the caption says so. The section is left out
+on the blueprint layer and on graphs without verification data.
 
 ### Shared trust bases
 

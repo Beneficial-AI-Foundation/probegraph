@@ -2,7 +2,7 @@
 
 Status (2026-10-21): Phase 0 merged in #106. Phase 1 merged in three PRs
 (#110, #112, #115). Phase 2 is split into two PRs (see "Decisions
-(2026-10-21)" in Phase 2), and PR 1 is in review. Split out of the
+(2026-10-21)" in Phase 2). PR 1 merged in #117, and PR 2 is in review. Split out of the
 graph-insights brainstorm (`docs/archive/graph-insights.md`) after a Codex
 review on 2026-10-05. Depends on `viewer-filters-and-guide.md` Phase 4 for
 the SCC-condensed DAG and the reverse-reachability bitsets; that code
@@ -305,6 +305,23 @@ direction). This is the forward direction.
   it". Blocked nodes get no line: the Trust base section already lists
   the unfinished nodes below them. The line also explains why a node is
   an `is:frontier` result.
+
+### As built in PR 2
+
+- The Frontier section sits after the three ranked lists. Its title
+  counts the ready declarations of the rows that the kind boxes leave, for
+  example "Frontier (57 ready, top 5)". A row shows `unblocks · dependents`,
+  and its tooltip gives all three counts. The caption names the share of
+  rows that would make nothing else ready when that share is above half.
+- The **query** button fills `is:frontier`, which lists every ready
+  declaration. A `top` query would rank by dependents only, so it would
+  not match the list order.
+- Rows with the same name and the same file show the part of their IDs
+  that differs. On SPQR four of the top five rows are
+  `ProstMessageMessage` instances in one file. The ranked lists use the
+  same rule.
+- `computeUnverifiedHotspots` and `GraphSummary.unverifiedHotspots` are
+  removed; nothing else read them.
 
 ## Open questions
 
