@@ -269,9 +269,9 @@ direction). This is the forward direction.
 - Two PRs. PR 1: the frontier in `src/trust-base.ts` (`proofFrontier`,
   the counts, the size check `frontierCountsFit`), matched to the script
   on the fixtures, and `is:frontier` with its row in the `is:` table. PR
-  2: the Guide Frontier list that replaces the hotspots sentence, what a
-  row click draws, the toast, and the Guide section of
-  `docs/guides/viewer.md`.
+  2: the Guide Frontier list that replaces the hotspots sentence, the row
+  click, the toast, the "ready" line in node details, and the Guide
+  section and node details part of `docs/guides/viewer.md`.
 - The third tie-break (all transitive dependents) is new, because the
   ranking is flat (Phase 0). It changes rows 3 to 5 of the top five on
   SPQR and on Aeneas dalek: rows with 2 dependents replace rows with 0 or
@@ -290,8 +290,16 @@ direction). This is the forward direction.
   `rows x (components + links) = MAX_REACHABILITY_WORDS`, the rows have no
   counts and come in ID order. On the three extracts, the whole frontier
   takes under 10 ms, and the TypeScript output equals the script's.
-- Still open for PR 2: what a row click draws, and whether node details
-  get a "ready" line.
+- A click on a Frontier row draws the work group and every node that
+  depends on it, like a row of the other ranked Guide lists. A row with
+  one member sets it as the Sink. A group of several members (a cycle)
+  draws `exactIntent(members, 'callers', ...)`, the same drawing for a
+  set. The drawing matches the dependents count of the row.
+- Node details get one line on ready nodes only, with the two counts, for
+  example "Ready work: would make 1 more ready, 1 unfinished depends on
+  it". Blocked nodes get no line: the Trust base section already lists
+  the unfinished nodes below them. The line also explains why a node is
+  an `is:frontier` result.
 
 ## Open questions
 
