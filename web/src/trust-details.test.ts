@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { convertAtomDictToD3Graph } from './graph-loader';
-import { TRUST_LIST_CAP, trustDetailsHtml, trustSummary } from './trust-details';
+import { TRUST_LIST_CAP, readyWorkHtml, readyWorkText, trustDetailsHtml, trustSummary } from './trust-details';
 import type { D3Graph, ProbeAtom } from './types';
 
 const FIXTURES: { name: string; data: Record<string, ProbeAtom> }[] = JSON.parse(
@@ -118,5 +118,32 @@ describe('trustDetailsHtml', () => {
     expect(trustDetailsHtml(g, { ...g.nodes[0], language: 'blueprint' }, true)).toBe('');
     const plain = convertAtomDictToD3Graph({ a: atom({ dependencies: ['b'] }), b: atom({}) });
     expect(html(plain, 'a')).toBe('');
+  });
+});
+
+describe('readyWorkHtml', () => {
+  const ready = (g: D3Graph, id: string) => text(readyWorkHtml(g, g.nodes.find(n => n.id === id)!));
+
+  it('gives the two counts on a ready node only', () => {
+    const g = fixture('contaminated-intermediary');
+    expect(ready(g, 'low')).toBe('Ready work: would make 1 more ready, 1 unfinished depends on it');
+    expect(ready(g, 'top')).toBe('');
+    expect(ready(g, 'ax')).toBe('');
+  });
+
+  it('names the other members of a ready cycle', () => {
+    expect(ready(fixture('unfinished-scc'), 'u2'))
+      .toBe('Ready work: ready together with the 1 other in its cycle, would make 0 more ready, 0 unfinished depend on it');
+  });
+
+  it('says when the counts were not computed', () => {
+    expect(readyWorkText(1, null)).toBe('all its dependencies are done, counts not computed (the graph is too large)');
+    expect(readyWorkText(3, null))
+      .toBe('ready together with the 2 others in its cycle, counts not computed (the graph is too large)');
+  });
+
+  it('is left out without verification data', () => {
+    const g = convertAtomDictToD3Graph({ a: atom({ dependencies: ['b'] }), b: atom({}) });
+    expect(ready(g, 'a')).toBe('');
   });
 });
