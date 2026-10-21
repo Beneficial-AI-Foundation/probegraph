@@ -50,9 +50,8 @@ export function trustSummary(assumptions: number, unfinished: number, unknown: n
  */
 export function readyWorkHtml(graph: D3Graph, node: D3Node): string {
   if (node.language === BLUEPRINT_LANGUAGE || !hasStatuses(graph)) return '';
-  const frontier = proofFrontier(graph);
-  if (!frontier.isReady(node.id)) return '';
-  const row = frontier.rows().find(r => r.members.includes(node.id))!;
+  const row = proofFrontier(graph).rowOf(node.id);
+  if (!row) return '';
   return `<div class="node-detail ready-work"><strong>Ready work:</strong> ${escapeHtml(readyWorkText(row.members.length, row.counts))}</div>`;
 }
 

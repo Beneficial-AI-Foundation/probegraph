@@ -264,6 +264,8 @@ export interface Frontier {
   rows(): readonly FrontierRow[];
   /** Whether a node is a member of a row. */
   isReady(id: string): boolean;
+  /** The row of a member, or undefined for a node that is not ready. Calls rows() for a member. */
+  rowOf(id: string): FrontierRow | undefined;
 }
 
 /**
@@ -353,23 +355,30 @@ function computeFrontier(graph: D3Graph): Frontier {
   };
 
   let rows: FrontierRow[] | null = null;
+  let rowOfMember: Map<string, FrontierRow> | null = null;
+  const sortedRows = (): FrontierRow[] => {
+    if (rows) return rows;
+    const counted = frontierCountsFit(c, readyComponents.length);
+    rows = readyComponents.map(k => ({
+      members: unfinished[k],
+      counts: counted ? countsOf(k) : null,
+    }));
+    rows.sort((a, b) => {
+      const x = a.counts;
+      const y = b.counts;
+      return (x && y ? y.unblocks - x.unblocks || y.affected - x.affected || y.dependents - x.dependents : 0)
+        || compareIds(a.members[0], b.members[0]);
+    });
+    return rows;
+  };
   return {
-    rows() {
-      if (rows) return rows;
-      const counted = frontierCountsFit(c, readyComponents.length);
-      rows = readyComponents.map(k => ({
-        members: unfinished[k],
-        counts: counted ? countsOf(k) : null,
-      }));
-      rows.sort((a, b) => {
-        const x = a.counts;
-        const y = b.counts;
-        return (x && y ? y.unblocks - x.unblocks || y.affected - x.affected || y.dependents - x.dependents : 0)
-          || compareIds(a.members[0], b.members[0]);
-      });
-      return rows;
-    },
+    rows: sortedRows,
     isReady: id => members.has(id),
+    rowOf(id) {
+      if (!members.has(id)) return undefined;
+      rowOfMember ??= new Map(sortedRows().flatMap(r => r.members.map(m => [m, r] as const)));
+      return rowOfMember.get(id);
+    },
   };
 }
 

@@ -122,6 +122,15 @@ describe('proofFrontier', () => {
     for (const id of Object.keys(fixture.data)) expect(frontier.isReady(id), id).toBe(id === 'u1' || id === 'u2');
   });
 
+  it('finds the row of a member', () => {
+    const fixture = FIXTURES.find(f => f.name === 'unfinished-scc')!;
+    const frontier = proofFrontier(convertAtomDictToD3Graph(fixture.data));
+    expect(frontier.rowOf('u2')).toBe(frontier.rows()[0]);
+    for (const id of Object.keys(fixture.data).filter(id => id !== 'u1' && id !== 'u2')) {
+      expect(frontier.rowOf(id), id).toBeUndefined();
+    }
+  });
+
   it('matches the rules applied node by node for random graphs', () => {
     const statuses = [undefined, 'verified', 'transitively-verified', 'trusted', 'unverified', 'unverified', 'failed'];
     let seed = 11;
