@@ -159,6 +159,18 @@ describe('layerPositions', () => {
     expect(p.get('1.1')).toEqual({ x: 700, y: 100 + 800 / 3 });
   });
 
+  it('keeps the labels of a single band inside the view', () => {
+    // Two 50-character labels reach 110 past the margin; spread from 100 to
+    // 900 they needed 1140 wide (scale 0.88)
+    const layout = layoutOf([1, 1]);
+    for (const layer of layout.nodesByDepth.values()) layer[0].display_name = 'a'.repeat(50);
+    const fold = chooseFold([1, 1], 1000, 800, [110, 110]);
+    expect(fold.bands).toBe(1);
+    const p = layerPositions(layout, 1000, 800, fold);
+    const placed = [...layout.nodesByDepth.values()].map(([n]) => ({ ...p.get(n.id)!, display_name: n.display_name }));
+    expect(computeFitTransform(placed, 1000, 800)!.k).toBe(1);
+  });
+
   it('runs odd bands right to left, each as tall as its widest layer', () => {
     const p = layerPositions(layoutOf([1, 3, 1, 1, 1, 1]), 800, 600, { bands: 2, layersPerBand: 3 });
     const x = (id: string) => p.get(id)!.x;
@@ -203,6 +215,20 @@ describe('linkBends', () => {
     expect(bends.get(links[0])).toBe(-60);
     expect(bends.get(links[1])).toBe(60);
     expect(bends.has(links[2])).toBe(false);
+  });
+
+  it('bends a long link far enough to miss the next node in the column', () => {
+    const positions = new Map([['a', at(100, 100)], ['b', at(100, 160)], ['c', at(100, 10100)]]);
+    const link: D3Link = { source: 'a', target: 'c', type: 'inner' };
+    const bend = linkBends([link], positions).get(link)!;
+    // Closest point of the curve (both control points `bend` to the side) to b
+    let closest = Infinity;
+    for (let t = 0; t <= 1; t += 1e-4) {
+      const x = 100 + 3 * t * (1 - t) * bend;
+      const y = 100 + 10000 * (3 * t * t - 2 * t * t * t);
+      closest = Math.min(closest, Math.hypot(x - 100, y - 160));
+    }
+    expect(closest).toBeGreaterThan(25);
   });
 });
 

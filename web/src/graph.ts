@@ -225,7 +225,7 @@ const FIT_MARGIN = 60;
 const LABEL_CHAR_WIDTH = 6;
 /** Space kept between a label and the edge of the view. */
 const LABEL_PAD = 20;
-/** Sideways bend of a link whose two ends share a column. */
+/** Smallest sideways bend of a link whose two ends share a column. */
 const LINK_BEND = 60;
 
 /**
@@ -278,10 +278,21 @@ export function chooseFold(
   overhangs: number[] = [],
 ): LayerFold {
   const layerCount = Math.max(layerSizes.length, 1);
-  let best: LayerFold = { bands: 1, layersPerBand: layerCount };
-  let bestScale = -1;
+  // Scoring a fold reads every layer, so score the folds in order of an
+  // upper bound on their scale (no labels, no tall layers) and stop at the
+  // first bound below the best scale found
+  const candidates: Array<LayerFold & { bound: number }> = [];
   for (let layersPerBand = layerCount; layersPerBand >= 1; layersPerBand--) {
     const bands = Math.ceil(layerCount / layersPerBand);
+    const w = (layersPerBand - 1) * LAYER_SPACING + 2 * FIT_MARGIN;
+    const h = (bands - 1) * BAND_GAP + 2 * FIT_MARGIN;
+    candidates.push({ bands, layersPerBand, bound: Math.min(1, width / w, height / h) });
+  }
+  candidates.sort((a, b) => b.bound - a.bound);
+  let best: LayerFold = { bands: 1, layersPerBand: layerCount };
+  let bestScale = -1;
+  for (const { bands, layersPerBand, bound } of candidates) {
+    if (bound < bestScale - 1e-9) break;
     const heights = bandNodeHeights(layerSizes, layersPerBand);
     // Columns 0 and layersPerBand - 1 are always used; labels can reach past
     let left = 0;
@@ -294,7 +305,10 @@ export function chooseFold(
     const w = right - left + 2 * FIT_MARGIN;
     const h = heights.reduce((a, b) => a + b, 0) + (bands - 1) * BAND_GAP + 2 * FIT_MARGIN;
     const scale = Math.min(1, width / w, height / h);
-    if (scale > bestScale + 1e-9) {
+    // On a tie, fewer bands, then longer bands, as before the sort
+    const tie = Math.abs(scale - bestScale) <= 1e-9
+      && (bands < best.bands || (bands === best.bands && layersPerBand > best.layersPerBand));
+    if (scale > bestScale + 1e-9 || tie) {
       best = { bands, layersPerBand };
       bestScale = scale;
     }
@@ -336,17 +350,21 @@ export function layerPositions(
 ): Map<string, { x: number; y: number }> {
   const positions = new Map<string, { x: number; y: number }>();
   if (fold.bands === 1) {
-    // Spread over the view, or over a larger area when the view is too small
-    const layoutWidth = Math.max(width, layout.maxDepth * LAYER_SPACING + 2 * LAYOUT_PADDING);
+    // Spread over the view, or over a larger area when the view is too small.
+    // Leave room at each side for the labels of the first and last layer
+    const overhangs = layerOverhangs(layout);
+    const left = Math.max(LAYOUT_PADDING, FIT_MARGIN + overhangs[0]);
+    const right = Math.max(LAYOUT_PADDING, FIT_MARGIN + overhangs[layout.maxDepth]);
+    const layoutWidth = Math.max(width, layout.maxDepth * LAYER_SPACING + left + right);
     const layoutHeight = Math.max(height, layout.maxLayerWidth * ROW_SPACING + 2 * LAYOUT_PADDING);
-    const usableWidth = layoutWidth - 2 * LAYOUT_PADDING;
+    const usableWidth = layoutWidth - left - right;
     const usableHeight = layoutHeight - 2 * LAYOUT_PADDING;
     const xSpacing = layout.maxDepth > 0 ? usableWidth / layout.maxDepth : usableWidth / 2;
     for (const [depth, layer] of layout.nodesByDepth) {
       const ySpacing = usableHeight / (layer.length + 1);
       layer.forEach((node, index) => {
         positions.set(node.id, {
-          x: LAYOUT_PADDING + depth * xSpacing,
+          x: left + depth * xSpacing,
           y: LAYOUT_PADDING + (index + 1) * ySpacing,
         });
       });
@@ -379,7 +397,10 @@ export function layerPositions(
  * Sideways bend of each link whose two ends have the same target x, such as
  * the link from one band to the next. Drawn straight, such a link would run
  * through the other nodes of that column. The bend points away from the
- * middle of the layout. Links not in the map are not bent.
+ * middle of the layout. It grows with the square root of the link length:
+ * a curve leaves its node close to the column, and the larger bend keeps
+ * about 30 px from the nearest node in the column at any length. Links not
+ * in the map are not bent.
  *
  * Exported for testing.
  */
@@ -394,7 +415,8 @@ export function linkBends(
     const source = positions.get(typeof link.source === 'string' ? link.source : link.source.id);
     const target = positions.get(typeof link.target === 'string' ? link.target : link.target.id);
     if (source && target && source.x === target.x) {
-      bends.set(link, source.x >= middle ? LINK_BEND : -LINK_BEND);
+      const bend = Math.max(LINK_BEND, 2.5 * Math.sqrt(Math.abs(target.y - source.y)));
+      bends.set(link, source.x >= middle ? bend : -bend);
     }
   }
   return bends;
