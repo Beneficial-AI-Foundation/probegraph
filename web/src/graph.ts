@@ -176,8 +176,8 @@ export interface LayoutInfo {
 }
 
 /**
- * Assign initial positions based on topological or traversal-provided depth.
- * Uses barycenter heuristic to minimize edge crossings within each layer.
+ * Group the nodes into layers by topological or traversal-provided depth,
+ * and order each layer with the barycenter heuristic to reduce crossings.
  */
 function groupIntoLayers(
   nodes: D3Node[],
@@ -221,6 +221,20 @@ const LAYOUT_PADDING = 100;
 const BAND_GAP = 100;
 /** The margin computeFitTransform adds around the nodes. */
 const FIT_MARGIN = 60;
+/** Average width of one character of a 10px sans-serif label. */
+const LABEL_CHAR_WIDTH = 6;
+/** Space kept between a label and the edge of the view. */
+const LABEL_PAD = 20;
+/** Sideways bend of a link whose two ends share a column. */
+const LINK_BEND = 60;
+
+/**
+ * How far a label (plus a small pad) reaches past the fit margin on each
+ * side of its node. The label is centered on the node.
+ */
+function labelOverhang(name: string | undefined, margin: number = FIT_MARGIN): number {
+  return Math.max(0, (name?.length ?? 0) * LABEL_CHAR_WIDTH / 2 + LABEL_PAD - margin);
+}
 
 /**
  * How the layers are folded: `bands` rows of at most `layersPerBand` layers.
@@ -241,24 +255,43 @@ function bandNodeHeights(layerSizes: number[], layersPerBand: number): number[] 
   return heights;
 }
 
+/** Column of layer `depth` in a fold: odd bands run right to left. */
+function foldColumn(depth: number, layersPerBand: number): number {
+  const band = Math.floor(depth / layersPerBand);
+  const step = depth % layersPerBand;
+  return band % 2 === 0 ? step : layersPerBand - 1 - step;
+}
+
 /**
- * Pick the number of bands that gives the largest fit scale (capped at 1, as
- * in computeFitTransform), so a long chain does not shrink to a line.
- * `layerSizes[d]` is the number of nodes at depth `d`. Ties go to fewer
- * bands.
+ * Pick the fold that gives the largest fit scale (capped at 1, as in
+ * computeFitTransform), so a long chain does not shrink to a line. Tries
+ * every band length. `layerSizes[d]` is the number of nodes at depth `d`,
+ * and `overhangs[d]` how far the widest label at depth `d` reaches past the
+ * fit margin (see labelOverhang). Ties go to fewer bands.
  *
  * Exported for testing.
  */
-export function chooseFold(layerSizes: number[], width: number, height: number): LayerFold {
+export function chooseFold(
+  layerSizes: number[],
+  width: number,
+  height: number,
+  overhangs: number[] = [],
+): LayerFold {
   const layerCount = Math.max(layerSizes.length, 1);
   let best: LayerFold = { bands: 1, layersPerBand: layerCount };
   let bestScale = -1;
-  for (let bands = 1; bands <= layerCount; bands++) {
-    const layersPerBand = Math.ceil(layerCount / bands);
-    // Fewer bands with the same band length draw the same layout
-    if (Math.ceil(layerCount / layersPerBand) < bands) continue;
+  for (let layersPerBand = layerCount; layersPerBand >= 1; layersPerBand--) {
+    const bands = Math.ceil(layerCount / layersPerBand);
     const heights = bandNodeHeights(layerSizes, layersPerBand);
-    const w = (layersPerBand - 1) * LAYER_SPACING + 2 * FIT_MARGIN;
+    // Columns 0 and layersPerBand - 1 are always used; labels can reach past
+    let left = 0;
+    let right = (layersPerBand - 1) * LAYER_SPACING;
+    overhangs.forEach((overhang, depth) => {
+      const x = foldColumn(depth, layersPerBand) * LAYER_SPACING;
+      left = Math.min(left, x - overhang);
+      right = Math.max(right, x + overhang);
+    });
+    const w = right - left + 2 * FIT_MARGIN;
     const h = heights.reduce((a, b) => a + b, 0) + (bands - 1) * BAND_GAP + 2 * FIT_MARGIN;
     const scale = Math.min(1, width / w, height / h);
     if (scale > bestScale + 1e-9) {
@@ -274,6 +307,17 @@ export function layerSizes(layout: LayoutInfo): number[] {
   const sizes = new Array<number>(layout.maxDepth + 1).fill(0);
   for (const [depth, layer] of layout.nodesByDepth) sizes[depth] = layer.length;
   return sizes;
+}
+
+/** Label overhang of the widest label at each depth, 0 to maxDepth. */
+function layerOverhangs(layout: LayoutInfo): number[] {
+  const overhangs = new Array<number>(layout.maxDepth + 1).fill(0);
+  for (const [depth, layer] of layout.nodesByDepth) {
+    for (const node of layer) {
+      overhangs[depth] = Math.max(overhangs[depth], labelOverhang(node.display_name));
+    }
+  }
+  return overhangs;
 }
 
 /**
@@ -318,8 +362,7 @@ export function layerPositions(
   }
   for (const [depth, layer] of layout.nodesByDepth) {
     const band = Math.floor(depth / fold.layersPerBand);
-    const step = depth % fold.layersPerBand;
-    const column = band % 2 === 0 ? step : fold.layersPerBand - 1 - step;
+    const column = foldColumn(depth, fold.layersPerBand);
     // Center the layer in its band
     const first = tops[band] + (heights[band] - (layer.length - 1) * ROW_SPACING) / 2;
     layer.forEach((node, index) => {
@@ -332,10 +375,41 @@ export function layerPositions(
   return positions;
 }
 
-/** Average width of one character of a 10px sans-serif label. */
-const LABEL_CHAR_WIDTH = 6;
-/** Space kept between a label and the edge of the view. */
-const LABEL_PAD = 20;
+/**
+ * Sideways bend of each link whose two ends have the same target x, such as
+ * the link from one band to the next. Drawn straight, such a link would run
+ * through the other nodes of that column. The bend points away from the
+ * middle of the layout. Links not in the map are not bent.
+ *
+ * Exported for testing.
+ */
+export function linkBends(
+  links: D3Link[],
+  positions: Map<string, { x: number; y: number }>,
+): Map<D3Link, number> {
+  const xs = [...positions.values()].map(p => p.x);
+  const middle = (Math.min(...xs) + Math.max(...xs)) / 2;
+  const bends = new Map<D3Link, number>();
+  for (const link of links) {
+    const source = positions.get(typeof link.source === 'string' ? link.source : link.source.id);
+    const target = positions.get(typeof link.target === 'string' ? link.target : link.target.id);
+    if (source && target && source.x === target.x) {
+      bends.set(link, source.x >= middle ? LINK_BEND : -LINK_BEND);
+    }
+  }
+  return bends;
+}
+
+/**
+ * SVG path of a link: a curve that leaves and enters its nodes
+ * horizontally, pushed `bend` to the side.
+ *
+ * Exported for testing.
+ */
+export function linkPath(sx: number, sy: number, tx: number, ty: number, bend: number = 0): string {
+  const dx = tx - sx;
+  return `M${sx},${sy} C${sx + dx * 0.4 + bend},${sy} ${tx - dx * 0.4 + bend},${ty} ${tx},${ty}`;
+}
 
 /** Camera transform produced by the fit-to-view computation. */
 export interface FitTransform {
@@ -363,15 +437,14 @@ export function computeFitTransform(
   focus?: { x?: number; y?: number } | null,
   minScale: number = 0.4,
   maxScale: number = 1,
-  margin: number = 60
+  margin: number = FIT_MARGIN
 ): FitTransform | null {
   const positioned = nodes.filter(n => n.x !== undefined && n.y !== undefined);
   if (positioned.length === 0 || width <= 0 || height <= 0) return null;
 
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   for (const n of positioned) {
-    // How far the label (plus a small pad) reaches past the margin
-    const half = Math.max(0, (n.display_name?.length ?? 0) * LABEL_CHAR_WIDTH / 2 + LABEL_PAD - margin);
+    const half = labelOverhang(n.display_name, margin);
     if (n.x! - half < minX) minX = n.x! - half;
     if (n.x! + half > maxX) maxX = n.x! + half;
     if (n.y! < minY) minY = n.y!;
@@ -537,7 +610,7 @@ export class CallGraphVisualization {
 
     // Group into layers with barycenter crossing minimization, then place
     const layout = groupIntoLayers(nodes, links, precomputedDepths);
-    const fold = chooseFold(layerSizes(layout), this.width, this.height);
+    const fold = chooseFold(layerSizes(layout), this.width, this.height, layerOverhangs(layout));
     const positions = layerPositions(layout, this.width, this.height, fold);
     for (const node of nodes) {
       const p = positions.get(node.id)!;
@@ -572,6 +645,7 @@ export class CallGraphVisualization {
       .force('x', d3.forceX<D3Node>(d => positions.get(d.id)!.x).strength(0.8))
       .force('y', d3.forceY<D3Node>(d => positions.get(d.id)!.y).strength(yStrength))
       .force('collision', d3.forceCollide().radius(collisionRadius));
+    const bends = linkBends(links, positions);
 
     // Update links (curved <path> elements instead of straight <line>)
     this.linkElements = this.g
@@ -653,12 +727,9 @@ export class CallGraphVisualization {
     // Update positions on each tick
     this.simulation.on('tick', () => {
       this.linkElements?.attr('d', (d) => {
-        const sx = (d.source as D3Node).x!;
-        const sy = (d.source as D3Node).y!;
-        const tx = (d.target as D3Node).x!;
-        const ty = (d.target as D3Node).y!;
-        const dx = tx - sx;
-        return `M${sx},${sy} C${sx + dx * 0.4},${sy} ${tx - dx * 0.4},${ty} ${tx},${ty}`;
+        const source = d.source as D3Node;
+        const target = d.target as D3Node;
+        return linkPath(source.x!, source.y!, target.x!, target.y!, bends.get(d));
       });
 
       this.nodeElements

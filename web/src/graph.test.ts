@@ -2,12 +2,15 @@
  * Unit tests for the fit-to-view camera computation (graph.ts):
  * fitting small graphs, the minimum-scale floor on large graphs, and the
  * focus-node fallback when the whole graph cannot fit at a readable scale.
- * Also the layer layout: folding long layouts into bands.
+ * Also the layer layout: folding long layouts into bands, and bending the
+ * links whose two ends share a column.
  */
 
 import { describe, it, expect } from 'vitest';
-import { chooseFold, computeCenterTransform, computeFitTransform, layerPositions, LayoutInfo } from './graph';
-import { D3Node } from './types';
+import {
+  chooseFold, computeCenterTransform, computeFitTransform, layerPositions, linkBends, linkPath, LayoutInfo,
+} from './graph';
+import { D3Link, D3Node } from './types';
 
 const WIDTH = 1000;
 const HEIGHT = 800;
@@ -133,12 +136,18 @@ describe('chooseFold', () => {
     expect(chooseFold(new Array(15).fill(1), 800, 618)).toEqual({ bands: 4, layersPerBand: 4 });
   });
 
-  it('does not count bands that would stay empty', () => {
-    // 5 layers, 3 bands of 2 would draw the same as 3 bands; 4 bands of 2 never
-    for (let bands = 1; bands <= 5; bands++) {
-      const fold = chooseFold(new Array(5).fill(1), 400 * bands, 2000);
-      expect(Math.ceil(5 / fold.layersPerBand)).toBe(fold.bands);
-    }
+  it('tries band lengths that no band count gives directly', () => {
+    // Bands of 6 put the two tall layers in one band and fit at full scale.
+    // Bands of 4 or 5 split them (scale 0.88); ceil(15 / bands) never gives 6
+    const sizes = [1, 1, 1, 1, 8, 8, 1, 1, 1, 1, 1, 1, 1, 1, 1];
+    expect(chooseFold(sizes, 1120, 740)).toEqual({ bands: 3, layersPerBand: 6 });
+  });
+
+  it('counts the labels that reach past the margin', () => {
+    // 30-character labels reach 50 past the margin on each side: bands of
+    // four need 820 wide, so five bands of three fit in 800 instead
+    const chain = new Array(15).fill(1);
+    expect(chooseFold(chain, 800, 618, new Array(15).fill(50))).toEqual({ bands: 5, layersPerBand: 3 });
   });
 });
 
@@ -175,5 +184,31 @@ describe('computeCenterTransform', () => {
   it('returns null for a node without a position or an empty viewport', () => {
     expect(computeCenterTransform({}, WIDTH, HEIGHT)).toBeNull();
     expect(computeCenterTransform({ x: 0, y: 0 }, WIDTH, 0)).toBeNull();
+  });
+});
+
+describe('linkBends', () => {
+  const at = (x: number, y: number) => ({ x, y });
+
+  it('bends links in one column away from the middle, and no others', () => {
+    const positions = new Map([
+      ['a', at(100, 100)], ['b', at(100, 200)], ['c', at(500, 100)], ['d', at(500, 200)],
+    ]);
+    const links: D3Link[] = [
+      { source: 'a', target: 'b', type: 'inner' },
+      { source: 'c', target: 'd', type: 'inner' },
+      { source: 'a', target: 'c', type: 'inner' },
+    ];
+    const bends = linkBends(links, positions);
+    expect(bends.get(links[0])).toBe(-60);
+    expect(bends.get(links[1])).toBe(60);
+    expect(bends.has(links[2])).toBe(false);
+  });
+});
+
+describe('linkPath', () => {
+  it('pushes both control points sideways by the bend', () => {
+    expect(linkPath(0, 0, 100, 50)).toBe('M0,0 C40,0 60,50 100,50');
+    expect(linkPath(700, 100, 700, 320, 60)).toBe('M700,100 C760,100 760,320 700,320');
   });
 });
