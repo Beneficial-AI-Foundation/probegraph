@@ -6,8 +6,8 @@
  */
 
 import type { D3Graph, D3Link, D3Node, ProjectLanguage } from '../types';
-import { isTrustAssumption, isTrustUnfinished, isTrustUnknown, trustAnalysis } from '../trust-base';
-import { crateNoun, detectProjectLanguage, getKindSetsForLanguage, isVerifiedStatus } from '../types';
+import { isTrustAssumption, isTrustUnfinished, isTrustUnknown, proofFrontier, trustAnalysis } from '../trust-base';
+import { crateNoun, detectProjectLanguage, getKindSetsForLanguage } from '../types';
 import { getLinkId } from '../query';
 import {
   condensedSize, dependencyLevels, graphCondensation, rankByTransitiveDependents, reachabilityFits,
@@ -18,6 +18,7 @@ import {
 import type {
   GraphSummary, CrateSummary, GroupBoundary, VerificationBreakdown,
   KindBreakdown, NodeRank, SuggestedQuery, RankedAnswer, RankedList, LevelStat, TrustGroupList, TrustGroupRow,
+  FrontierList, FrontierListRow,
 } from './types';
 
 /** Rows per ranked list. */
@@ -38,17 +39,18 @@ export function buildGraphSummary(graph: D3Graph, visibility: SummaryVisibility 
   const lang = detectProjectLanguage(graph);
   const nodes = graph.nodes;
   const links = graph.links;
-  const candidates = nodes.filter(isCandidate);
+  const byId = new Map(nodes.map(n => [n.id, n]));
 
   const crates = computeCrates(nodes);
   const boundary = computeBoundary(graph, visibility);
   const files = computeFiles(nodes);
   const verification = computeVerification(nodes);
   const kinds = computeKinds(nodes);
-  const ranked = computeRankedLists(graph, lang, isCandidate);
+  const ranked = computeRankedLists(graph, byId, lang, isCandidate);
   const levels = computeLevels(graph);
-  const trustGroups = lang === 'blueprint' ? null : computeTrustGroups(graph, isCandidate);
-  const unverifiedHotspots = computeUnverifiedHotspots(candidates, nodes, 5);
+  const hasStatuses = lang !== 'blueprint' && hasVerificationData(graph);
+  const trustGroups = hasStatuses ? computeTrustGroups(graph, isCandidate) : null;
+  const frontier = hasStatuses ? computeFrontierList(graph, byId, isCandidate) : null;
   const failedNodes = nodes
     .filter(n => n.verification_status === 'failed')
     .map(nodeToRank)
@@ -70,8 +72,8 @@ export function buildGraphSummary(graph: D3Graph, visibility: SummaryVisibility 
     kinds,
     ...ranked,
     trustGroups,
+    frontier,
     levels,
-    unverifiedHotspots,
     failedNodes,
     suggestedQueries,
     roleFilterActive: visibility.roleFilterActive ?? false,
@@ -180,6 +182,7 @@ function nodeToRank(n: D3Node): NodeRank {
  */
 function computeRankedLists(
   graph: D3Graph,
+  byId: Map<string, D3Node>,
   lang: ProjectLanguage,
   isCandidate: (node: D3Node) => boolean,
 ): Pick<GraphSummary, 'unfinished' | 'assumptions' | 'keystones' | 'keystonesAreLemmas' | 'rankingsSkipped'> {
@@ -193,7 +196,7 @@ function computeRankedLists(
     const select = (n: D3Node) => isCandidate(n) && pred(n);
     const rows: RankedAnswer[] = (rankByTransitiveDependents(graph, select, RANKED_LIST_LENGTH) ?? [])
       .map(({ node, count }) => ({ ...nodeToRank(node), transitiveDependentCount: count }));
-    addContext(rows, graph);
+    addContext(rows, byId);
     const query = [`top ${RANKED_LIST_LENGTH} by dependents`, words].filter(w => w !== '').join(' ');
     return { rows, total: graph.nodes.filter(select).length, query };
   };
@@ -210,13 +213,16 @@ function computeRankedLists(
   };
 }
 
+function hasVerificationData(graph: D3Graph): boolean {
+  return graph.nodes.some(n => n.verification_status !== undefined || n.untracked === true);
+}
+
 /**
  * The largest theorem groups by shared trust base. `isCandidate` keeps the
  * groups with at least one shown theorem; the counts use the whole group.
- * Null without verification data or when the trust bases do not fit.
+ * Null when the trust bases do not fit.
  */
 function computeTrustGroups(graph: D3Graph, isCandidate: (node: D3Node) => boolean): TrustGroupList | null {
-  if (!graph.nodes.some(n => n.verification_status !== undefined || n.untracked === true)) return null;
   const analysis = trustAnalysis(graph);
   if (!analysis) return null;
   const byId = new Map(graph.nodes.map(n => [n.id, n]));
@@ -238,16 +244,88 @@ function computeTrustGroups(graph: D3Graph, isCandidate: (node: D3Node) => boole
   return { rows, total: shown.length, all: groups.length };
 }
 
+/**
+ * The top ready work groups (trust-base.ts proofFrontier). `isCandidate`
+ * keeps the groups with at least one shown member; the counts use the whole
+ * graph.
+ */
+function computeFrontierList(
+  graph: D3Graph,
+  byId: Map<string, D3Node>,
+  isCandidate: (node: D3Node) => boolean,
+): FrontierList {
+  const all = proofFrontier(graph).rows();
+  const shown = all.filter(r => r.members.some(id => isCandidate(byId.get(id)!)));
+  const top = shown.slice(0, RANKED_LIST_LENGTH);
+  const nameOf = (id: string) => byId.get(id)!.display_name ?? id;
+  const contexts = sharedNameContexts(top.map(r => ({ id: r.members[0], name: nameOf(r.members[0]) })), byId);
+  const rows = top.map((r, i): FrontierListRow => ({
+    members: r.members,
+    names: r.members.map(nameOf),
+    ...(contexts[i] !== undefined ? { context: contexts[i] } : {}),
+    counts: r.counts,
+  }));
+  return {
+    rows,
+    ready: shown.reduce((sum, r) => sum + r.members.length, 0),
+    groups: shown.length,
+    unblockNothing: shown.filter(r => r.counts?.unblocks === 0).length,
+    unfinished: graph.nodes.filter(isTrustUnfinished).length,
+    all: all.length,
+    counted: all.every(r => r.counts !== null),
+  };
+}
+
 /** Rows that share a display name show their module or path. */
-function addContext(rows: RankedAnswer[], graph: D3Graph): void {
-  const seen = new Map<string, number>();
-  for (const r of rows) seen.set(r.displayName, (seen.get(r.displayName) ?? 0) + 1);
-  const byId = new Map(graph.nodes.map(n => [n.id, n]));
-  for (const r of rows) {
-    if (seen.get(r.displayName)! < 2) continue;
-    const n = byId.get(r.id)!;
-    r.context = n.relative_path || n.crate_name || r.id;
+function addContext(rows: RankedAnswer[], byId: Map<string, D3Node>): void {
+  const contexts = sharedNameContexts(rows.map(r => ({ id: r.id, name: r.displayName })), byId);
+  rows.forEach((r, i) => {
+    if (contexts[i] !== undefined) r.context = contexts[i];
+  });
+}
+
+/**
+ * The module or path of each row whose display name another row shares.
+ * When two rows of a name share the path too, every row of that name shows
+ * the part of its ID that differs.
+ */
+function sharedNameContexts(rows: { id: string; name: string }[], byId: Map<string, D3Node>): (string | undefined)[] {
+  const byName = new Map<string, number[]>();
+  rows.forEach((r, i) => {
+    const group = byName.get(r.name);
+    if (group) group.push(i);
+    else byName.set(r.name, [i]);
+  });
+  const contexts: (string | undefined)[] = rows.map(() => undefined);
+  for (const group of byName.values()) {
+    if (group.length < 2) continue;
+    const ids = group.map(i => rows[i].id);
+    const paths = ids.map(id => {
+      const n = byId.get(id)!;
+      return n.relative_path || n.crate_name || id;
+    });
+    const parts = new Set(paths).size === paths.length ? paths : idDifferences(ids);
+    group.forEach((i, k) => { contexts[i] = parts[k]; });
   }
+  return contexts;
+}
+
+/**
+ * Each ID without the prefix and suffix that all share, cut at separators,
+ * e.g. `a.HeaderSent.Insts.M` and `a.HeaderReceived.Insts.M` give
+ * `HeaderSent` and `HeaderReceived`.
+ */
+export function idDifferences(ids: string[]): string[] {
+  const isWordChar = (c: string) => /[A-Za-z0-9_]/.test(c);
+  const shortest = Math.min(...ids.map(id => id.length));
+  let prefix = 0;
+  while (prefix < shortest && ids.every(id => id[prefix] === ids[0][prefix])) prefix++;
+  while (prefix > 0 && isWordChar(ids[0][prefix - 1])) prefix--;
+  let suffix = 0;
+  const at = (id: string, k: number) => id[id.length - 1 - k];
+  while (suffix < shortest - prefix && ids.every(id => at(id, suffix) === at(ids[0], suffix))) suffix++;
+  while (suffix > 0 && isWordChar(at(ids[0], suffix - 1))) suffix--;
+  return ids.map(id => id.slice(prefix, id.length - suffix) || id);
 }
 
 /** Node and status counts per topological level of the condensed graph. */
@@ -272,35 +350,6 @@ function computeLevels(graph: D3Graph): LevelStat[] {
     }
   }
   return stats;
-}
-
-/**
- * Find unverified candidates that have the most verified callers (callers
- * counted over all nodes). These are high-priority verification targets.
- */
-function computeUnverifiedHotspots(
-  candidates: D3Node[],
-  nodes: D3Node[],
-  limit: number,
-): NodeRank[] {
-  const nodeMap = new Map(nodes.map(n => [n.id, n]));
-
-  const hotspots: Array<NodeRank & { verifiedCallerCount: number }> = [];
-  for (const n of candidates) {
-    if (isVerifiedStatus(n.verification_status) || n.verification_status === 'failed') continue;
-    let verifiedCallers = 0;
-    for (const depId of n.dependents || []) {
-      const caller = nodeMap.get(depId);
-      if (isVerifiedStatus(caller?.verification_status)) verifiedCallers++;
-    }
-    if (verifiedCallers > 0) {
-      hotspots.push({ ...nodeToRank(n), verifiedCallerCount: verifiedCallers });
-    }
-  }
-
-  return hotspots
-    .sort((a, b) => b.verifiedCallerCount - a.verifiedCallerCount || a.id.localeCompare(b.id))
-    .slice(0, limit);
 }
 
 /**
@@ -430,11 +479,6 @@ export function formatSummaryText(summary: GraphSummary): string {
   // Failed
   if (summary.failedNodes.length > 0) {
     lines.push(`Failed verifications: ${summary.failedNodes.map(n => n.displayName).join(', ')}.`);
-  }
-
-  // Hotspots
-  if (summary.unverifiedHotspots.length > 0) {
-    lines.push(`Unverified hotspots (called by verified code): ${summary.unverifiedHotspots.map(n => n.displayName).join(', ')}.`);
   }
 
   return lines.join('\n');

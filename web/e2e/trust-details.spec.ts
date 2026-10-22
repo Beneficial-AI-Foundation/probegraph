@@ -75,3 +75,17 @@ test('node details list what a declaration rests on', async ({ page }) => {
   await expect(trust).toHaveAttribute('open', '');
   await expect(trust).toContainText('low (this declaration)');
 });
+
+test('node details give the ready line on ready work only', async ({ page }) => {
+  await page.route('**/trust.json', (route: Route) =>
+    route.fulfill({ contentType: 'application/json', body: JSON.stringify(atoms) }));
+  await page.goto('/probegraph/?json=trust.json');
+  await expect(page.locator('#stats')).toContainText('Total Nodes', { timeout: 15000 });
+
+  // low rests only on the axiom; its callers are verified, so none is unfinished
+  await select(page, 'low');
+  await expect(page.locator('#node-info .ready-work'))
+    .toHaveText('Ready work: would make 0 more ready, 0 unfinished depend on it');
+  await select(page, 'top');
+  await expect(page.locator('#node-info .ready-work')).toHaveCount(0);
+});

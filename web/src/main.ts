@@ -1,6 +1,6 @@
 import { D3Graph, D3Node, GraphState, FilterOptions, ProjectLanguage, BLUEPRINT_LANGUAGE, compileKindFlag, crateMapLabel, crateNoun, detectProjectLanguage, getKindSetsForLanguage, extractCrateName, isSchema2Envelope } from './types';
 import { blueprintBackrefHtml, blueprintNodeDetailsHtml } from './blueprint-details';
-import { trustDetailsHtml } from './trust-details';
+import { readyWorkHtml, trustDetailsHtml } from './trust-details';
 import { groupDrawing, witness } from './trust-base';
 import { applyFilters, getCallers, getCallees } from './filters';
 import {
@@ -2969,6 +2969,7 @@ function updateNodeInfo(): void {
     ${mappingHtml}
     ${specsHtml}
     ${rustSourceHtml}
+    ${state.fullGraph ? readyWorkHtml(state.fullGraph, node) : ''}
     ${state.fullGraph ? trustDetailsHtml(state.fullGraph, node, trustDetailsOpen) : ''}
     <div class="node-detail">
       <strong>${callersLabel} (${allCallers.length}):</strong>

@@ -2,7 +2,8 @@
  * Node-details section for the trust base (docs/plans/trust-and-frontier.md,
  * Phase 1): what the node rests on, as a summary line that expands into the
  * assumptions, unfinished and unknown declarations, each with its witness
- * path, and the missing dependency targets.
+ * path, and the missing dependency targets. Phase 2 adds the "Ready work"
+ * line on the nodes of the proof frontier.
  *
  * The graph must be the full code layer (`state.fullGraph`), so a display
  * filter cannot remove an entry. Links use `.navigate-to-node`, and the
@@ -10,7 +11,7 @@
  * main.ts handles both. Every value from the extract is escaped.
  */
 import { escapeHtml } from './html';
-import { trustAnalysis, witnesses } from './trust-base';
+import { proofFrontier, trustAnalysis, witnesses, type FrontierCounts } from './trust-base';
 import { BLUEPRINT_LANGUAGE, type D3Graph, type D3Node } from './types';
 
 /** Entries shown per list; the rest is a count. */
@@ -41,6 +42,25 @@ export function trustSummary(assumptions: number, unfinished: number, unknown: n
   ];
   if (unknown > 0) parts.push(plural(unknown, 'untracked declaration', 'untracked declarations'));
   return `Rests on ${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
+}
+
+/**
+ * "Ready work" line for a node of the proof frontier, or '' for any other
+ * node (the same cases as trustDetailsHtml, plus every node that is not ready).
+ */
+export function readyWorkHtml(graph: D3Graph, node: D3Node): string {
+  if (node.language === BLUEPRINT_LANGUAGE || !hasStatuses(graph)) return '';
+  const row = proofFrontier(graph).rowOf(node.id);
+  if (!row) return '';
+  return `<div class="node-detail ready-work"><strong>Ready work:</strong> ${escapeHtml(readyWorkText(row.members.length, row.counts))}</div>`;
+}
+
+/** "would make 1 more ready, 1 unfinished depends on it", with the cycle and size cases. */
+export function readyWorkText(members: number, counts: FrontierCounts | null): string {
+  const cycle = members > 1 ? `ready together with the ${plural(members - 1, 'other', 'others')} in its cycle, ` : '';
+  if (!counts) return `${cycle || 'all its dependencies are done, '}counts not computed (the graph is too large)`;
+  const depend = counts.affected === 1 ? 'depends' : 'depend';
+  return `${cycle}would make ${counts.unblocks} more ready, ${counts.affected} unfinished ${depend} on it`;
 }
 
 /**
