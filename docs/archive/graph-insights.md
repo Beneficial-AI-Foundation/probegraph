@@ -2,7 +2,8 @@
 
 > **Status: superseded** on 2026-10-05, after a Codex review, by three
 > plans: `docs/archive/graph-search.md` (Phase 6 and a shared reveal path;
-> done and archived), `docs/plans/trust-and-frontier.md` (Phases 0 to 2)
+> done and archived), `docs/archive/trust-and-frontier.md` (Phases 0 to 2;
+> done and archived)
 > and `concept-discovery.md` (Phases 3 to 5 and 7 as an experiment; Phases
 > 8 and 9 and the rest of Phase 7 under its "Later"; not yet in the repo). Phase 5b's declared vs.
 > found edges went to `viewer-filters-and-guide.md`. Kept as the brainstorm

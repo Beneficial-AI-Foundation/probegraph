@@ -1,6 +1,6 @@
 /**
  * E2E test for the trust base in node details
- * (docs/plans/trust-and-frontier.md, Phase 1): the summary line, the lists
+ * (docs/archive/trust-and-frontier.md, Phase 1): the summary line, the lists
  * with witnesses, the links, the "show path" button and the kept expanded
  * state.
  */

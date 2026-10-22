@@ -281,7 +281,7 @@ export interface D3Node {
   // so no link; search indexes them as statement names
   statement_externals?: string[];
   // `dependencies` targets with no atom in the graph, so no link; the
-  // trust base lists them for information (docs/plans/trust-and-frontier.md)
+  // trust base lists them for information (docs/archive/trust-and-frontier.md)
   missing_dependencies?: string[];
   // Derived statuses computed by DAG walk (used by File Map view)
   border_status?: BorderStatus;

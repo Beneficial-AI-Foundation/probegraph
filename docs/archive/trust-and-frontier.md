@@ -1,8 +1,10 @@
 # Viewer: trust base and proof frontier
 
-Status (2026-10-21): Phase 0 merged in #106. Phase 1 merged in three PRs
-(#110, #112, #115). Phase 2 is split into two PRs (see "Decisions
-(2026-10-21)" in Phase 2). PR 1 merged in #117, and PR 2 is in review. Split out of the
+Status (2026-10-22): done, archived. Phase 0 merged in #106. Phase 1
+merged in three PRs (#110, #112, #115). Phase 2 merged in two PRs (see
+"Decisions (2026-10-21)" in Phase 2): #117 and #121. The layout of long
+chains is issue #113. The user docs are "Trust base", "Ready work",
+"Frontier" and "Shared trust bases" in `docs/guides/viewer.md`. Split out of the
 graph-insights brainstorm (`docs/archive/graph-insights.md`) after a Codex
 review on 2026-10-05. Depends on `viewer-filters-and-guide.md` Phase 4 for
 the SCC-condensed DAG and the reverse-reachability bitsets; that code

@@ -1,6 +1,6 @@
 /**
  * Trust base: for each node, the assumptions, unfinished declarations and
- * unknown closures it rests on (docs/plans/trust-and-frontier.md, Phase 1).
+ * unknown closures it rests on (docs/archive/trust-and-frontier.md, Phase 1).
  * Proof frontier: the unfinished work that can be done now, and what it
  * would unblock (Phase 2).
  *
