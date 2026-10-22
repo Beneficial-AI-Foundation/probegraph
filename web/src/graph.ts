@@ -168,7 +168,7 @@ function minimizeCrossings(
   }
 }
 
-interface LayoutInfo {
+export interface LayoutInfo {
   depths: Map<string, number>;
   maxDepth: number;
   maxLayerWidth: number;
@@ -179,11 +179,9 @@ interface LayoutInfo {
  * Assign initial positions based on topological or traversal-provided depth.
  * Uses barycenter heuristic to minimize edge crossings within each layer.
  */
-function assignTopologicalPositions(
+function groupIntoLayers(
   nodes: D3Node[],
   links: D3Link[],
-  width: number,
-  height: number,
   precomputedDepths?: Map<string, number>
 ): LayoutInfo {
   const depths = precomputedDepths ?? computeTopologicalDepth(nodes, links);
@@ -211,23 +209,133 @@ function assignTopologicalPositions(
     maxLayerWidth = Math.max(maxLayerWidth, layer.length);
   }
 
-  const padding = 100;
-  const usableWidth = width - 2 * padding;
-  const usableHeight = height - 2 * padding;
-  const xSpacing = maxDepth > 0 ? usableWidth / maxDepth : usableWidth / 2;
-
-  for (const [depth, nodesAtDepth] of nodesByDepth) {
-    const x = padding + depth * xSpacing;
-    const ySpacing = usableHeight / (nodesAtDepth.length + 1);
-
-    nodesAtDepth.forEach((node, index) => {
-      node.x = x;
-      node.y = padding + (index + 1) * ySpacing;
-    });
-  }
-
   return { depths, maxDepth, maxLayerWidth, nodesByDepth };
 }
+
+/** Space between layers and between nodes in one layer, before the fit. */
+const LAYER_SPACING = 200;
+const ROW_SPACING = 60;
+/** Space from the drawing to the edge of the layout area. */
+const LAYOUT_PADDING = 100;
+/** Extra space between two bands of a folded layout, for the labels. */
+const BAND_GAP = 100;
+/** The margin computeFitTransform adds around the nodes. */
+const FIT_MARGIN = 60;
+
+/**
+ * How the layers are folded: `bands` rows of at most `layersPerBand` layers.
+ * One band is the plain left-to-right layout.
+ */
+export interface LayerFold {
+  bands: number;
+  layersPerBand: number;
+}
+
+/** Height of each band's nodes: (its widest layer - 1) rows. */
+function bandNodeHeights(layerSizes: number[], layersPerBand: number): number[] {
+  const heights: number[] = [];
+  for (let first = 0; first < layerSizes.length; first += layersPerBand) {
+    const widest = Math.max(1, ...layerSizes.slice(first, first + layersPerBand));
+    heights.push((widest - 1) * ROW_SPACING);
+  }
+  return heights;
+}
+
+/**
+ * Pick the number of bands that gives the largest fit scale (capped at 1, as
+ * in computeFitTransform), so a long chain does not shrink to a line.
+ * `layerSizes[d]` is the number of nodes at depth `d`. Ties go to fewer
+ * bands.
+ *
+ * Exported for testing.
+ */
+export function chooseFold(layerSizes: number[], width: number, height: number): LayerFold {
+  const layerCount = Math.max(layerSizes.length, 1);
+  let best: LayerFold = { bands: 1, layersPerBand: layerCount };
+  let bestScale = -1;
+  for (let bands = 1; bands <= layerCount; bands++) {
+    const layersPerBand = Math.ceil(layerCount / bands);
+    // Fewer bands with the same band length draw the same layout
+    if (Math.ceil(layerCount / layersPerBand) < bands) continue;
+    const heights = bandNodeHeights(layerSizes, layersPerBand);
+    const w = (layersPerBand - 1) * LAYER_SPACING + 2 * FIT_MARGIN;
+    const h = heights.reduce((a, b) => a + b, 0) + (bands - 1) * BAND_GAP + 2 * FIT_MARGIN;
+    const scale = Math.min(1, width / w, height / h);
+    if (scale > bestScale + 1e-9) {
+      best = { bands, layersPerBand };
+      bestScale = scale;
+    }
+  }
+  return best;
+}
+
+/** Number of nodes at each depth, 0 to maxDepth. */
+export function layerSizes(layout: LayoutInfo): number[] {
+  const sizes = new Array<number>(layout.maxDepth + 1).fill(0);
+  for (const [depth, layer] of layout.nodesByDepth) sizes[depth] = layer.length;
+  return sizes;
+}
+
+/**
+ * Target position of every node: layer `d` at column `d` from the left, the
+ * nodes of a layer spread down. A folded layout puts the layers in bands
+ * from top to bottom, each as tall as its widest layer. Odd bands run right
+ * to left (a snake), so the link from one band to the next stays short.
+ *
+ * Exported for testing.
+ */
+export function layerPositions(
+  layout: LayoutInfo,
+  width: number,
+  height: number,
+  fold: LayerFold = chooseFold(layerSizes(layout), width, height),
+): Map<string, { x: number; y: number }> {
+  const positions = new Map<string, { x: number; y: number }>();
+  if (fold.bands === 1) {
+    // Spread over the view, or over a larger area when the view is too small
+    const layoutWidth = Math.max(width, layout.maxDepth * LAYER_SPACING + 2 * LAYOUT_PADDING);
+    const layoutHeight = Math.max(height, layout.maxLayerWidth * ROW_SPACING + 2 * LAYOUT_PADDING);
+    const usableWidth = layoutWidth - 2 * LAYOUT_PADDING;
+    const usableHeight = layoutHeight - 2 * LAYOUT_PADDING;
+    const xSpacing = layout.maxDepth > 0 ? usableWidth / layout.maxDepth : usableWidth / 2;
+    for (const [depth, layer] of layout.nodesByDepth) {
+      const ySpacing = usableHeight / (layer.length + 1);
+      layer.forEach((node, index) => {
+        positions.set(node.id, {
+          x: LAYOUT_PADDING + depth * xSpacing,
+          y: LAYOUT_PADDING + (index + 1) * ySpacing,
+        });
+      });
+    }
+    return positions;
+  }
+  const heights = bandNodeHeights(layerSizes(layout), fold.layersPerBand);
+  const tops: number[] = [];
+  let top = LAYOUT_PADDING;
+  for (const h of heights) {
+    tops.push(top);
+    top += h + BAND_GAP;
+  }
+  for (const [depth, layer] of layout.nodesByDepth) {
+    const band = Math.floor(depth / fold.layersPerBand);
+    const step = depth % fold.layersPerBand;
+    const column = band % 2 === 0 ? step : fold.layersPerBand - 1 - step;
+    // Center the layer in its band
+    const first = tops[band] + (heights[band] - (layer.length - 1) * ROW_SPACING) / 2;
+    layer.forEach((node, index) => {
+      positions.set(node.id, {
+        x: LAYOUT_PADDING + column * LAYER_SPACING,
+        y: first + index * ROW_SPACING,
+      });
+    });
+  }
+  return positions;
+}
+
+/** Average width of one character of a 10px sans-serif label. */
+const LABEL_CHAR_WIDTH = 6;
+/** Space kept between a label and the edge of the view. */
+const LABEL_PAD = 20;
 
 /** Camera transform produced by the fit-to-view computation. */
 export interface FitTransform {
@@ -242,12 +350,14 @@ export interface FitTransform {
  * instead of shrinking to dots. When the true fit scale falls below
  * minScale, the transform centers on `focus` (if given) at minScale so the
  * relevant node is in view even though the whole graph is not.
+ * The box includes an estimate of each `display_name` label, which is
+ * centered on its node and can be wider than the margin.
  * Returns null when there are no positioned nodes or the viewport is empty.
  *
  * Exported for testing (the renderer applies the result via d3.zoom).
  */
 export function computeFitTransform(
-  nodes: Array<{ x?: number; y?: number }>,
+  nodes: Array<{ x?: number; y?: number; display_name?: string }>,
   width: number,
   height: number,
   focus?: { x?: number; y?: number } | null,
@@ -260,8 +370,10 @@ export function computeFitTransform(
 
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   for (const n of positioned) {
-    if (n.x! < minX) minX = n.x!;
-    if (n.x! > maxX) maxX = n.x!;
+    // How far the label (plus a small pad) reaches past the margin
+    const half = Math.max(0, (n.display_name?.length ?? 0) * LABEL_CHAR_WIDTH / 2 + LABEL_PAD - margin);
+    if (n.x! - half < minX) minX = n.x! - half;
+    if (n.x! + half > maxX) maxX = n.x! + half;
     if (n.y! < minY) minY = n.y!;
     if (n.y! > maxY) maxY = n.y!;
   }
@@ -423,44 +535,14 @@ export class CallGraphVisualization {
     // source/sink queries), otherwise fall back to topological BFS.
     const precomputedDepths = filteredGraph.nodeDepths;
 
-    // Assign initial positions with barycenter crossing minimization
-    const layout = assignTopologicalPositions(
-      nodes, links, this.width, this.height, precomputedDepths
-    );
-
-    // Adaptive canvas: expand the effective layout area for large graphs
-    const effectiveWidth = Math.max(this.width, layout.maxDepth * 200 + 200);
-    const effectiveHeight = Math.max(this.height, layout.maxLayerWidth * 60 + 200);
-
-    // Recompute positions if the effective area changed
-    if (effectiveWidth !== this.width || effectiveHeight !== this.height) {
-      const padding = 100;
-      const usableW = effectiveWidth - 2 * padding;
-      const usableH = effectiveHeight - 2 * padding;
-      const xSp = layout.maxDepth > 0 ? usableW / layout.maxDepth : usableW / 2;
-
-      for (const [depth, layer] of layout.nodesByDepth) {
-        const x = padding + depth * xSp;
-        const ySp = usableH / (layer.length + 1);
-        layer.forEach((node, i) => {
-          node.x = x;
-          node.y = padding + (i + 1) * ySp;
-        });
-      }
-    }
-
-    // Compute target X positions for the x-force
-    const padding = 100;
-    const layoutWidth = Math.max(effectiveWidth, this.width);
-    const usableWidth = layoutWidth - 2 * padding;
-    const xSpacing = layout.maxDepth > 0 ? usableWidth / layout.maxDepth : usableWidth / 2;
-
-    const targetX = new Map<string, number>();
-    const targetY = new Map<string, number>();
+    // Group into layers with barycenter crossing minimization, then place
+    const layout = groupIntoLayers(nodes, links, precomputedDepths);
+    const fold = chooseFold(layerSizes(layout), this.width, this.height);
+    const positions = layerPositions(layout, this.width, this.height, fold);
     for (const node of nodes) {
-      const depth = layout.depths.get(node.id) ?? 0;
-      targetX.set(node.id, padding + depth * xSpacing);
-      targetY.set(node.id, node.y!);
+      const p = positions.get(node.id)!;
+      node.x = p.x;
+      node.y = p.y;
     }
 
     // Adaptive force parameters based on graph size
@@ -468,9 +550,11 @@ export class CallGraphVisualization {
     const charge = Math.max(-600, Math.min(-150, -150 - nodeCount * 3));
     const linkDist = Math.max(60, Math.min(200, 60 + layout.maxLayerWidth * 8));
     const collisionRadius = 25 + Math.min(nodeCount * 0.3, 20);
-    const yStrength = layout.maxLayerWidth > 0
-      ? 0.03 + 0.02 * (layout.maxLayerWidth / Math.max(nodeCount, 1))
-      : 0.05;
+    // Bands of a folded layout must keep apart, so pull harder to the row
+    const yStrength = fold.bands > 1 ? 0.8
+      : layout.maxLayerWidth > 0
+        ? 0.03 + 0.02 * (layout.maxLayerWidth / Math.max(nodeCount, 1))
+        : 0.05;
 
     // Create force simulation with layered layout
     this.simulation = d3
@@ -480,11 +564,13 @@ export class CallGraphVisualization {
         d3.forceLink<D3Node, D3Link>(links)
           .id(d => d.id)
           .distance(linkDist)
-          .strength(0.5)
+          // In a folded layout the link force would pull the layers of a band
+          // together until their labels overlap
+          .strength(fold.bands > 1 ? 0.05 : 0.5)
       )
       .force('charge', d3.forceManyBody().strength(charge))
-      .force('x', d3.forceX<D3Node>(d => targetX.get(d.id) || layoutWidth / 2).strength(0.8))
-      .force('y', d3.forceY<D3Node>(d => targetY.get(d.id) || effectiveHeight / 2).strength(yStrength))
+      .force('x', d3.forceX<D3Node>(d => positions.get(d.id)!.x).strength(0.8))
+      .force('y', d3.forceY<D3Node>(d => positions.get(d.id)!.y).strength(yStrength))
       .force('collision', d3.forceCollide().radius(collisionRadius));
 
     // Update links (curved <path> elements instead of straight <line>)
@@ -836,15 +922,9 @@ export class CallGraphVisualization {
   public resize(width: number, height: number): void {
     this.width = width;
     this.height = height;
+    // The layout keeps its per-node targets: a pull to the middle would
+    // merge the layers and the bands of a folded layout
     this.svg.attr('viewBox', `0 0 ${width} ${height}`);
-    
-    if (this.simulation) {
-      // Update the y-centering force for new height
-      this.simulation
-        .force('y', d3.forceY(height / 2).strength(0.05))
-        .alpha(0.3)
-        .restart();
-    }
   }
 }
 

@@ -2,10 +2,12 @@
  * Unit tests for the fit-to-view camera computation (graph.ts):
  * fitting small graphs, the minimum-scale floor on large graphs, and the
  * focus-node fallback when the whole graph cannot fit at a readable scale.
+ * Also the layer layout: folding long layouts into bands.
  */
 
 import { describe, it, expect } from 'vitest';
-import { computeCenterTransform, computeFitTransform } from './graph';
+import { chooseFold, computeCenterTransform, computeFitTransform, layerPositions, LayoutInfo } from './graph';
+import { D3Node } from './types';
 
 const WIDTH = 1000;
 const HEIGHT = 800;
@@ -93,6 +95,72 @@ describe('computeFitTransform', () => {
     const t = computeFitTransform(nodes, WIDTH, HEIGHT)!;
     expect(t.x + t.k * 150).toBeCloseTo(WIDTH / 2);
     expect(t.y + t.k * 150).toBeCloseTo(HEIGHT / 2);
+  });
+
+  it('keeps long labels at the edge inside the view', () => {
+    const nodes = [{ x: 0, y: 0 }, { x: 800, y: 0 }];
+    const named = nodes.map(n => ({ ...n, display_name: 'a'.repeat(40) }));
+    const plain = computeFitTransform(nodes, WIDTH, HEIGHT)!;
+    const t = computeFitTransform(named, WIDTH, HEIGHT)!;
+    expect(t.k).toBeLessThan(plain.k);
+    // Half of a 40-character label is 120, so the labels run from -120 to 920
+    expect(t.x + t.k * -120).toBeCloseTo(t.k * 20);
+    expect(t.x + t.k * 920).toBeCloseTo(WIDTH - t.k * 20);
+  });
+});
+
+/** A layout with `sizes[d]` nodes at depth d, named `d.i`. */
+function layoutOf(sizes: number[]): LayoutInfo {
+  const nodesByDepth = new Map<number, D3Node[]>();
+  const depths = new Map<string, number>();
+  sizes.forEach((size, depth) => {
+    const layer = Array.from({ length: size }, (_, i) => ({ id: `${depth}.${i}` }) as D3Node);
+    layer.forEach(n => depths.set(n.id, depth));
+    nodesByDepth.set(depth, layer);
+  });
+  return { depths, maxDepth: sizes.length - 1, maxLayerWidth: Math.max(...sizes), nodesByDepth };
+}
+
+describe('chooseFold', () => {
+  it('keeps a layout that fits in one band', () => {
+    expect(chooseFold([1, 1, 1], 800, 600).bands).toBe(1);
+    // Two tall layers: folding would only make it taller
+    expect(chooseFold([3, 21], 800, 600).bands).toBe(1);
+  });
+
+  it('folds a long chain until it fits at full scale', () => {
+    // 15 layers at 200 apart need 2920 wide; four bands of four fit in 800
+    expect(chooseFold(new Array(15).fill(1), 800, 618)).toEqual({ bands: 4, layersPerBand: 4 });
+  });
+
+  it('does not count bands that would stay empty', () => {
+    // 5 layers, 3 bands of 2 would draw the same as 3 bands; 4 bands of 2 never
+    for (let bands = 1; bands <= 5; bands++) {
+      const fold = chooseFold(new Array(5).fill(1), 400 * bands, 2000);
+      expect(Math.ceil(5 / fold.layersPerBand)).toBe(fold.bands);
+    }
+  });
+});
+
+describe('layerPositions', () => {
+  it('spreads one band over the view as before', () => {
+    const p = layerPositions(layoutOf([1, 2]), 800, 600, { bands: 1, layersPerBand: 2 });
+    expect(p.get('0.0')).toEqual({ x: 100, y: 300 });
+    expect(p.get('1.0')).toEqual({ x: 700, y: 100 + 400 / 3 });
+    expect(p.get('1.1')).toEqual({ x: 700, y: 100 + 800 / 3 });
+  });
+
+  it('runs odd bands right to left, each as tall as its widest layer', () => {
+    const p = layerPositions(layoutOf([1, 3, 1, 1, 1, 1]), 800, 600, { bands: 2, layersPerBand: 3 });
+    const x = (id: string) => p.get(id)!.x;
+    const y = (id: string) => p.get(id)!.y;
+    expect([x('0.0'), x('1.0'), x('2.0')]).toEqual([100, 300, 500]);
+    expect([x('3.0'), x('4.0'), x('5.0')]).toEqual([500, 300, 100]);
+    // Band 0 has three rows; its one-node layers sit on the middle row
+    expect([y('1.0'), y('1.1'), y('1.2')]).toEqual([100, 160, 220]);
+    expect(y('0.0')).toBe(160);
+    // Band 1 starts one gap below band 0's last row
+    expect(y('3.0')).toBe(220 + 100);
   });
 });
 
