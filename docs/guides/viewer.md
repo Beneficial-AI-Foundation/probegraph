@@ -36,8 +36,8 @@ see [web/ARCHITECTURE.md](../../web/ARCHITECTURE.md#input-formats).
   as a long path, folds into bands from top to bottom. The first band runs
   left to right, the next right to left, and so on, so the link from one band
   to the next stays short. That link curves out to the side, so it does not
-  run through the other nodes of its column. Follow the arrows to read the
-  order.
+  run through the other nodes of its column. Layers with long names move
+  apart, so the labels do not overlap. Follow the arrows to read the order.
 - **File Map** — nodes grouped by file, laid out with dagre after transitive
   reduction. Shapes encode kind (rounded rectangle = definition/exec,
   ellipse = theorem/proof, diamond = spec/axiom); the border color encodes the

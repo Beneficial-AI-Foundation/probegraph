@@ -225,15 +225,22 @@ const FIT_MARGIN = 60;
 const LABEL_CHAR_WIDTH = 6;
 /** Space kept between a label and the edge of the view. */
 const LABEL_PAD = 20;
+/** Space kept between the labels of two neighboring layers. */
+const LABEL_GAP = 10;
 /** Smallest sideways bend of a link whose two ends share a column. */
 const LINK_BEND = 60;
 
+/** Estimated half width of a label, which is centered on its node. */
+function labelHalfWidth(name: string | undefined): number {
+  return (name?.length ?? 0) * LABEL_CHAR_WIDTH / 2;
+}
+
 /**
- * How far a label (plus a small pad) reaches past the fit margin on each
- * side of its node. The label is centered on the node.
+ * How far a label of half width `half` (plus a small pad) reaches past the
+ * fit margin on each side of its node.
  */
-function labelOverhang(name: string | undefined, margin: number = FIT_MARGIN): number {
-  return Math.max(0, (name?.length ?? 0) * LABEL_CHAR_WIDTH / 2 + LABEL_PAD - margin);
+function labelOverhang(half: number, margin: number = FIT_MARGIN): number {
+  return Math.max(0, half + LABEL_PAD - margin);
 }
 
 /**
@@ -263,39 +270,55 @@ function foldColumn(depth: number, layersPerBand: number): number {
 }
 
 /**
- * Space between the layers of a single band. The band spreads over the view
- * as far as the labels allow (`overhangs[d]` as in chooseFold), but the
- * layers stay at least LAYER_SPACING apart, so a band that cannot fit keeps
- * that spacing. The box is the one computeFitTransform measures: for every
- * pair of layers d > e, layer d's right label edge minus layer e's left one,
- * (d - e) * spacing + overhangs[d] + overhangs[e], must fit in the view.
+ * Space between the columns of a fold: LAYER_SPACING, or more where the
+ * labels of two neighboring layers in one band (`halves[d]`, the half width
+ * of the widest label at depth `d`) would overlap.
  */
-function singleBandSpacing(overhangs: number[], width: number): number {
-  const maxDepth = overhangs.length - 1;
-  if (maxDepth < 1) return LAYER_SPACING;
+function foldSpacing(halves: number[], layersPerBand: number): number {
+  let spacing = LAYER_SPACING;
+  for (let d = 0; d + 1 < halves.length; d++) {
+    if ((d + 1) % layersPerBand === 0) continue; // d ends its band
+    spacing = Math.max(spacing, halves[d] + halves[d + 1] + LABEL_GAP);
+  }
+  return spacing;
+}
+
+/**
+ * Space between the layers of a single band. The band spreads over the view
+ * as far as the labels allow, but no closer than foldSpacing, so labels do
+ * not overlap and a band that cannot fit keeps that spacing. The box is the
+ * one computeFitTransform measures: for every pair of layers d > e, layer
+ * d's right label edge minus layer e's left one, (d - e) * spacing +
+ * overhang[d] + overhang[e], must fit in the view.
+ */
+function singleBandSpacing(halves: number[], width: number): number {
+  const maxDepth = halves.length - 1;
+  const least = foldSpacing(halves, halves.length);
+  if (maxDepth < 1) return least;
   let spacing = (width - 2 * LAYOUT_PADDING) / maxDepth;
   // Many layers: the band is too wide for the view anyway, and the loop
   // below stays short (a band that fits has few layers)
-  if (!(spacing > LAYER_SPACING)) return LAYER_SPACING;
+  if (!(spacing > least)) return least;
+  const overhangs = halves.map(half => labelOverhang(half));
   const room = width - 2 * FIT_MARGIN;
   for (let d = 0; d <= maxDepth; d++) {
     for (let e = 0; e <= maxDepth; e++) {
       const rest = room - overhangs[d] - overhangs[e];
       if (d > e) spacing = Math.min(spacing, rest / (d - e));
       // A label wider than the layers it spans: no spacing fits
-      else if ((d - e) * LAYER_SPACING > rest) return LAYER_SPACING;
+      else if ((d - e) * least > rest) return least;
     }
   }
-  return Math.max(LAYER_SPACING, spacing);
+  return Math.max(least, spacing);
 }
 
 /**
  * Pick the fold that gives the largest fit scale (capped at 1, as in
  * computeFitTransform), so a long chain does not shrink to a line. Tries
  * every band length. `layerSizes[d]` is the number of nodes at depth `d`,
- * and `overhangs[d]` how far the widest label at depth `d` reaches past the
- * fit margin (see labelOverhang). A single band is scored with the spacing
- * layerPositions gives it (see singleBandSpacing). Ties go to fewer bands.
+ * and `halves[d]` the half width of the widest label at depth `d`. Each
+ * fold is scored with the spacing layerPositions gives it (see foldSpacing
+ * and singleBandSpacing). Ties go to fewer bands.
  *
  * Exported for testing.
  */
@@ -303,11 +326,12 @@ export function chooseFold(
   layerSizes: number[],
   width: number,
   height: number,
-  overhangs: number[] = [],
+  halves: number[] = [],
 ): LayerFold {
   const layerCount = Math.max(layerSizes.length, 1);
-  const oneBandSpacing = singleBandSpacing(
-    Array.from({ length: layerCount }, (_, depth) => overhangs[depth] ?? 0), width);
+  const half = Array.from({ length: layerCount }, (_, depth) => halves[depth] ?? 0);
+  const overhangs = half.map(h => labelOverhang(h));
+  const oneBandSpacing = singleBandSpacing(half, width);
   // Scoring a fold reads every layer, so score the folds in order of an
   // upper bound on their scale (no labels, no tall layers) and stop at the
   // first bound below the best scale found
@@ -324,7 +348,7 @@ export function chooseFold(
   for (const { bands, layersPerBand, bound } of candidates) {
     if (bound < bestScale - 1e-9) break;
     const heights = bandNodeHeights(layerSizes, layersPerBand);
-    const spacing = bands === 1 ? oneBandSpacing : LAYER_SPACING;
+    const spacing = bands === 1 ? oneBandSpacing : foldSpacing(half, layersPerBand);
     // Columns 0 and layersPerBand - 1 are always used; labels can reach past
     let left = 0;
     let right = (layersPerBand - 1) * spacing;
@@ -354,15 +378,15 @@ export function layerSizes(layout: LayoutInfo): number[] {
   return sizes;
 }
 
-/** Label overhang of the widest label at each depth, 0 to maxDepth. */
-function layerOverhangs(layout: LayoutInfo): number[] {
-  const overhangs = new Array<number>(layout.maxDepth + 1).fill(0);
+/** Half width of the widest label at each depth, 0 to maxDepth. */
+export function layerLabelHalves(layout: LayoutInfo): number[] {
+  const halves = new Array<number>(layout.maxDepth + 1).fill(0);
   for (const [depth, layer] of layout.nodesByDepth) {
     for (const node of layer) {
-      overhangs[depth] = Math.max(overhangs[depth], labelOverhang(node.display_name));
+      halves[depth] = Math.max(halves[depth], labelHalfWidth(node.display_name));
     }
   }
-  return overhangs;
+  return halves;
 }
 
 /**
@@ -377,13 +401,13 @@ export function layerPositions(
   layout: LayoutInfo,
   width: number,
   height: number,
-  fold: LayerFold = chooseFold(layerSizes(layout), width, height),
+  fold: LayerFold = chooseFold(layerSizes(layout), width, height, layerLabelHalves(layout)),
 ): Map<string, { x: number; y: number }> {
   const positions = new Map<string, { x: number; y: number }>();
   if (fold.bands === 1) {
     // Spread over the view as far as the labels allow, and down over the
     // view or over a larger area when the view is too short
-    const xSpacing = layout.maxDepth > 0 ? singleBandSpacing(layerOverhangs(layout), width) : 0;
+    const xSpacing = singleBandSpacing(layerLabelHalves(layout), width);
     const layoutHeight = Math.max(height, layout.maxLayerWidth * ROW_SPACING + 2 * LAYOUT_PADDING);
     const usableHeight = layoutHeight - 2 * LAYOUT_PADDING;
     for (const [depth, layer] of layout.nodesByDepth) {
@@ -398,6 +422,7 @@ export function layerPositions(
     return positions;
   }
   const heights = bandNodeHeights(layerSizes(layout), fold.layersPerBand);
+  const spacing = foldSpacing(layerLabelHalves(layout), fold.layersPerBand);
   const tops: number[] = [];
   let top = LAYOUT_PADDING;
   for (const h of heights) {
@@ -411,7 +436,7 @@ export function layerPositions(
     const first = tops[band] + (heights[band] - (layer.length - 1) * ROW_SPACING) / 2;
     layer.forEach((node, index) => {
       positions.set(node.id, {
-        x: LAYOUT_PADDING + column * LAYER_SPACING,
+        x: LAYOUT_PADDING + column * spacing,
         y: first + index * ROW_SPACING,
       });
     });
@@ -492,7 +517,7 @@ export function computeFitTransform(
 
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   for (const n of positioned) {
-    const half = labelOverhang(n.display_name, margin);
+    const half = labelOverhang(labelHalfWidth(n.display_name), margin);
     if (n.x! - half < minX) minX = n.x! - half;
     if (n.x! + half > maxX) maxX = n.x! + half;
     if (n.y! < minY) minY = n.y!;
@@ -658,7 +683,7 @@ export class CallGraphVisualization {
 
     // Group into layers with barycenter crossing minimization, then place
     const layout = groupIntoLayers(nodes, links, precomputedDepths);
-    const fold = chooseFold(layerSizes(layout), this.width, this.height, layerOverhangs(layout));
+    const fold = chooseFold(layerSizes(layout), this.width, this.height, layerLabelHalves(layout));
     const positions = layerPositions(layout, this.width, this.height, fold);
     for (const node of nodes) {
       const p = positions.get(node.id)!;

@@ -8,7 +8,8 @@
 
 import { describe, it, expect } from 'vitest';
 import {
-  chooseFold, computeCenterTransform, computeFitTransform, layerPositions, linkBends, linkPath, LayoutInfo,
+  chooseFold, computeCenterTransform, computeFitTransform, layerLabelHalves, layerPositions, linkBends, linkPath,
+  LayerFold, LayoutInfo,
 } from './graph';
 import { D3Link, D3Node } from './types';
 
@@ -124,6 +125,26 @@ function layoutOf(sizes: number[]): LayoutInfo {
   return { depths, maxDepth: sizes.length - 1, maxLayerWidth: Math.max(...sizes), nodesByDepth };
 }
 
+/** layoutOf with a label of `length(depth)` characters on every node. */
+function labeled(sizes: number[], length: (depth: number) => number): LayoutInfo {
+  const layout = layoutOf(sizes);
+  for (const [depth, layer] of layout.nodesByDepth) {
+    for (const n of layer) n.display_name = 'a'.repeat(length(depth));
+  }
+  return layout;
+}
+
+/** Fold chosen for `layout` in a width x height view, with its positions. */
+function place(layout: LayoutInfo, width: number, height: number, fold?: LayerFold) {
+  const chosen = fold ?? chooseFold(
+    [...layout.nodesByDepth.values()].map(l => l.length), width, height, layerLabelHalves(layout));
+  const p = layerPositions(layout, width, height, chosen);
+  const nodes = [...layout.nodesByDepth.values()].flat();
+  const x = nodes.map(n => p.get(n.id)!.x);
+  const scale = computeFitTransform(nodes.map(n => ({ ...p.get(n.id)!, display_name: n.display_name })), width, height)!.k;
+  return { fold: chosen, x, scale };
+}
+
 describe('chooseFold', () => {
   it('keeps a layout that fits in one band', () => {
     expect(chooseFold([1, 1, 1], 800, 600).bands).toBe(1);
@@ -144,10 +165,10 @@ describe('chooseFold', () => {
   });
 
   it('counts the labels that reach past the margin', () => {
-    // 30-character labels reach 50 past the margin on each side: bands of
-    // four need 820 wide, so five bands of three fit in 800 instead
+    // 30-character labels (half width 90) reach 50 past the margin on each
+    // side: bands of four need 820 wide, so five bands of three fit in 800
     const chain = new Array(15).fill(1);
-    expect(chooseFold(chain, 800, 618, new Array(15).fill(50))).toEqual({ bands: 5, layersPerBand: 3 });
+    expect(chooseFold(chain, 800, 618, new Array(15).fill(90))).toEqual({ bands: 5, layersPerBand: 3 });
   });
 });
 
@@ -161,27 +182,35 @@ describe('layerPositions', () => {
 
   it('keeps the labels of a single band inside the view', () => {
     // Two 50-character labels reach 110 past the margin; spread from 100 to
-    // 900 they needed 1140 wide (scale 0.88)
-    const layout = layoutOf([1, 1]);
-    for (const layer of layout.nodesByDepth.values()) layer[0].display_name = 'a'.repeat(50);
-    const fold = chooseFold([1, 1], 1000, 800, [110, 110]);
-    expect(fold.bands).toBe(1);
-    const p = layerPositions(layout, 1000, 800, fold);
-    const placed = [...layout.nodesByDepth.values()].map(([n]) => ({ ...p.get(n.id)!, display_name: n.display_name }));
-    expect(computeFitTransform(placed, 1000, 800)!.k).toBe(1);
+    // 900 they needed 1140 wide (scale 0.88). 660 apart they fit
+    expect(place(labeled([1, 1], () => 50), 1000, 800)).toEqual({
+      fold: { bands: 1, layersPerBand: 2 }, x: [100, 760], scale: 1,
+    });
   });
 
-  it('narrows a single band for a long label inside it', () => {
-    // A 160-character label at depth 1 reaches 440 past the margin. Spread
-    // over 1000 the band needed 1093 wide (scale 0.915); 220 apart it fits
-    const layout = layoutOf([1, 1, 1, 1]);
-    for (const [depth, [n]] of layout.nodesByDepth) n.display_name = depth === 1 ? 'a'.repeat(160) : 'n';
-    const fold = chooseFold([1, 1, 1, 1], 1000, 800, [0, 440, 0, 0]);
-    expect(fold.bands).toBe(1);
-    const p = layerPositions(layout, 1000, 800, fold);
-    expect([...layout.nodesByDepth.values()].map(([n]) => p.get(n.id)!.x)).toEqual([100, 320, 540, 760]);
-    const placed = [...layout.nodesByDepth.values()].map(([n]) => ({ ...p.get(n.id)!, display_name: n.display_name }));
-    expect(computeFitTransform(placed, 1000, 800)!.k).toBe(1);
+  it('narrows a single band only until the labels would overlap', () => {
+    // Two 100-character labels (600 wide) need 610 between their nodes;
+    // one band that far apart does not fit, so they stack
+    const { fold, scale } = place(labeled([1, 1], () => 100), 1000, 800);
+    expect(fold).toEqual({ bands: 2, layersPerBand: 1 });
+    expect(scale).toBe(1);
+    expect(place(labeled([1, 1], () => 100), 1000, 800, { bands: 1, layersPerBand: 2 }).x).toEqual([100, 710]);
+  });
+
+  it('stacks the layers when a long label leaves no room beside it', () => {
+    // A 160-character label is 960 wide: next to any other layer it needs
+    // more than the 1000 view, alone in its column it fits
+    const { fold, scale } = place(labeled([1, 1, 1, 1], depth => (depth === 1 ? 160 : 1)), 1000, 800);
+    expect(fold).toEqual({ bands: 4, layersPerBand: 1 });
+    expect(scale).toBe(1);
+  });
+
+  it('moves the columns of a fold apart for long labels', () => {
+    // 40-character labels are 240 wide, so the columns are 250 apart
+    const { fold, x, scale } = place(labeled(new Array(15).fill(1), () => 40), 800, 618);
+    expect(fold).toEqual({ bands: 5, layersPerBand: 3 });
+    expect(x.slice(0, 6)).toEqual([100, 350, 600, 600, 350, 100]);
+    expect(scale).toBe(1);
   });
 
   it('places a single layer', () => {
