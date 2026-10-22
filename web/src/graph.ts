@@ -263,11 +263,39 @@ function foldColumn(depth: number, layersPerBand: number): number {
 }
 
 /**
+ * Space between the layers of a single band. The band spreads over the view
+ * as far as the labels allow (`overhangs[d]` as in chooseFold), but the
+ * layers stay at least LAYER_SPACING apart, so a band that cannot fit keeps
+ * that spacing. The box is the one computeFitTransform measures: for every
+ * pair of layers d > e, layer d's right label edge minus layer e's left one,
+ * (d - e) * spacing + overhangs[d] + overhangs[e], must fit in the view.
+ */
+function singleBandSpacing(overhangs: number[], width: number): number {
+  const maxDepth = overhangs.length - 1;
+  if (maxDepth < 1) return LAYER_SPACING;
+  let spacing = (width - 2 * LAYOUT_PADDING) / maxDepth;
+  // Many layers: the band is too wide for the view anyway, and the loop
+  // below stays short (a band that fits has few layers)
+  if (!(spacing > LAYER_SPACING)) return LAYER_SPACING;
+  const room = width - 2 * FIT_MARGIN;
+  for (let d = 0; d <= maxDepth; d++) {
+    for (let e = 0; e <= maxDepth; e++) {
+      const rest = room - overhangs[d] - overhangs[e];
+      if (d > e) spacing = Math.min(spacing, rest / (d - e));
+      // A label wider than the layers it spans: no spacing fits
+      else if ((d - e) * LAYER_SPACING > rest) return LAYER_SPACING;
+    }
+  }
+  return Math.max(LAYER_SPACING, spacing);
+}
+
+/**
  * Pick the fold that gives the largest fit scale (capped at 1, as in
  * computeFitTransform), so a long chain does not shrink to a line. Tries
  * every band length. `layerSizes[d]` is the number of nodes at depth `d`,
  * and `overhangs[d]` how far the widest label at depth `d` reaches past the
- * fit margin (see labelOverhang). Ties go to fewer bands.
+ * fit margin (see labelOverhang). A single band is scored with the spacing
+ * layerPositions gives it (see singleBandSpacing). Ties go to fewer bands.
  *
  * Exported for testing.
  */
@@ -278,6 +306,8 @@ export function chooseFold(
   overhangs: number[] = [],
 ): LayerFold {
   const layerCount = Math.max(layerSizes.length, 1);
+  const oneBandSpacing = singleBandSpacing(
+    Array.from({ length: layerCount }, (_, depth) => overhangs[depth] ?? 0), width);
   // Scoring a fold reads every layer, so score the folds in order of an
   // upper bound on their scale (no labels, no tall layers) and stop at the
   // first bound below the best scale found
@@ -294,11 +324,12 @@ export function chooseFold(
   for (const { bands, layersPerBand, bound } of candidates) {
     if (bound < bestScale - 1e-9) break;
     const heights = bandNodeHeights(layerSizes, layersPerBand);
+    const spacing = bands === 1 ? oneBandSpacing : LAYER_SPACING;
     // Columns 0 and layersPerBand - 1 are always used; labels can reach past
     let left = 0;
-    let right = (layersPerBand - 1) * LAYER_SPACING;
+    let right = (layersPerBand - 1) * spacing;
     overhangs.forEach((overhang, depth) => {
-      const x = foldColumn(depth, layersPerBand) * LAYER_SPACING;
+      const x = foldColumn(depth, layersPerBand) * spacing;
       left = Math.min(left, x - overhang);
       right = Math.max(right, x + overhang);
     });
@@ -350,21 +381,16 @@ export function layerPositions(
 ): Map<string, { x: number; y: number }> {
   const positions = new Map<string, { x: number; y: number }>();
   if (fold.bands === 1) {
-    // Spread over the view, or over a larger area when the view is too small.
-    // Leave room at each side for the labels of the first and last layer
-    const overhangs = layerOverhangs(layout);
-    const left = Math.max(LAYOUT_PADDING, FIT_MARGIN + overhangs[0]);
-    const right = Math.max(LAYOUT_PADDING, FIT_MARGIN + overhangs[layout.maxDepth]);
-    const layoutWidth = Math.max(width, layout.maxDepth * LAYER_SPACING + left + right);
+    // Spread over the view as far as the labels allow, and down over the
+    // view or over a larger area when the view is too short
+    const xSpacing = layout.maxDepth > 0 ? singleBandSpacing(layerOverhangs(layout), width) : 0;
     const layoutHeight = Math.max(height, layout.maxLayerWidth * ROW_SPACING + 2 * LAYOUT_PADDING);
-    const usableWidth = layoutWidth - left - right;
     const usableHeight = layoutHeight - 2 * LAYOUT_PADDING;
-    const xSpacing = layout.maxDepth > 0 ? usableWidth / layout.maxDepth : usableWidth / 2;
     for (const [depth, layer] of layout.nodesByDepth) {
       const ySpacing = usableHeight / (layer.length + 1);
       layer.forEach((node, index) => {
         positions.set(node.id, {
-          x: left + depth * xSpacing,
+          x: LAYOUT_PADDING + depth * xSpacing,
           y: LAYOUT_PADDING + (index + 1) * ySpacing,
         });
       });

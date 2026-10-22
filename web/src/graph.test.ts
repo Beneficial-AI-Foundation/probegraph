@@ -171,6 +171,25 @@ describe('layerPositions', () => {
     expect(computeFitTransform(placed, 1000, 800)!.k).toBe(1);
   });
 
+  it('narrows a single band for a long label inside it', () => {
+    // A 160-character label at depth 1 reaches 440 past the margin. Spread
+    // over 1000 the band needed 1093 wide (scale 0.915); 220 apart it fits
+    const layout = layoutOf([1, 1, 1, 1]);
+    for (const [depth, [n]] of layout.nodesByDepth) n.display_name = depth === 1 ? 'a'.repeat(160) : 'n';
+    const fold = chooseFold([1, 1, 1, 1], 1000, 800, [0, 440, 0, 0]);
+    expect(fold.bands).toBe(1);
+    const p = layerPositions(layout, 1000, 800, fold);
+    expect([...layout.nodesByDepth.values()].map(([n]) => p.get(n.id)!.x)).toEqual([100, 320, 540, 760]);
+    const placed = [...layout.nodesByDepth.values()].map(([n]) => ({ ...p.get(n.id)!, display_name: n.display_name }));
+    expect(computeFitTransform(placed, 1000, 800)!.k).toBe(1);
+  });
+
+  it('places a single layer', () => {
+    expect(chooseFold([2], 800, 600)).toEqual({ bands: 1, layersPerBand: 1 });
+    const p = layerPositions(layoutOf([2]), 800, 600, { bands: 1, layersPerBand: 1 });
+    expect(p.get('0.0')!.x).toBe(100);
+  });
+
   it('runs odd bands right to left, each as tall as its widest layer', () => {
     const p = layerPositions(layoutOf([1, 3, 1, 1, 1, 1]), 800, 600, { bands: 2, layersPerBand: 3 });
     const x = (id: string) => p.get(id)!.x;
