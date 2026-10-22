@@ -1,5 +1,5 @@
 import { D3Graph, D3Node, FilterOptions, ProjectLanguage } from './types';
-import { compileQuery, executeQuery } from './query';
+import { compileQuery, executeQuery, getLinkId } from './query';
 
 /**
  * Convert a glob pattern to a regex
@@ -137,39 +137,34 @@ export function applyFilters(
 }
 
 /**
+ * Distinct nodes at the other end of links on one side of `nodeId`, in link
+ * order. A pair can have several links (inner and spec), so dedupe by id.
+ */
+function neighbors(graph: D3Graph, nodeId: string, side: 'source' | 'target'): D3Node[] {
+  const nodeMap = new Map(graph.nodes.map(node => [node.id, node]));
+  const seen = new Map<string, D3Node>();
+
+  for (const link of graph.links) {
+    const { sourceId, targetId } = getLinkId(link);
+    const [self, id] = side === 'source' ? [sourceId, targetId] : [targetId, sourceId];
+    if (self !== nodeId) continue;
+    const node = nodeMap.get(id);
+    if (node && !seen.has(id)) seen.set(id, node);
+  }
+
+  return [...seen.values()];
+}
+
+/**
  * Get immediate callers of a node
  */
 export function getCallers(graph: D3Graph, nodeId: string): D3Node[] {
-  const callers: D3Node[] = [];
-  const nodeMap = new Map(graph.nodes.map(node => [node.id, node]));
-
-  for (const link of graph.links) {
-    const targetId = typeof link.target === 'string' ? link.target : link.target.id;
-    if (targetId === nodeId) {
-      const sourceId = typeof link.source === 'string' ? link.source : link.source.id;
-      const caller = nodeMap.get(sourceId);
-      if (caller) callers.push(caller);
-    }
-  }
-
-  return callers;
+  return neighbors(graph, nodeId, 'target');
 }
 
 /**
  * Get immediate callees of a node
  */
 export function getCallees(graph: D3Graph, nodeId: string): D3Node[] {
-  const callees: D3Node[] = [];
-  const nodeMap = new Map(graph.nodes.map(node => [node.id, node]));
-
-  for (const link of graph.links) {
-    const sourceId = typeof link.source === 'string' ? link.source : link.source.id;
-    if (sourceId === nodeId) {
-      const targetId = typeof link.target === 'string' ? link.target : link.target.id;
-      const callee = nodeMap.get(targetId);
-      if (callee) callees.push(callee);
-    }
-  }
-
-  return callees;
+  return neighbors(graph, nodeId, 'source');
 }

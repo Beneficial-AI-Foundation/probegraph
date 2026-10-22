@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { globToRegex, asSubstringGlob, matchesQuery, applyFilters, pathPatternToRegex } from './filters';
+import { globToRegex, asSubstringGlob, matchesQuery, applyFilters, pathPatternToRegex, getCallers, getCallees } from './filters';
 import { D3Graph, D3Node, D3Link, FilterOptions, LinkRole } from './types';
 import { getLinkId, roleFilteredGraph } from './query';
 import { computeSeedTiers, expandFromSeeds } from './graph-utils';
@@ -1178,5 +1178,17 @@ describe('Statement / body-or-proof edge filter', () => {
       { maxNodes: 100, maxLinks: 100 },
     );
     expect(seeded.ok && [...seeded.nodeIds]).toEqual(['a']);
+  });
+});
+
+describe('getCallers / getCallees', () => {
+  it('lists a neighbor once when inner and spec links join the same pair', () => {
+    const g: D3Graph = {
+      nodes: ['thm', 'def', 'other'].map(id => createNode({ id, display_name: id })),
+      links: [createLink('thm', 'def'), createLink('thm', 'def', 'spec'), createLink('other', 'def')],
+      metadata: { total_nodes: 3, total_edges: 3, project_root: '/test', generated_at: '2024-01-01' },
+    };
+    expect(getCallers(g, 'def').map(n => n.id)).toEqual(['thm', 'other']);
+    expect(getCallees(g, 'thm').map(n => n.id)).toEqual(['def']);
   });
 });

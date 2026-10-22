@@ -532,7 +532,9 @@ and Hierarchy draw their own legends. The exact colours are the
 Click a node (or hover) to see its kind, verification status, location,
 callers and callees (clickable), and similar lemmas with scores when the graph
 was enriched with them. If a source link can be built, the panel shows
-**View on GitHub** (or **Open in Editor** inside VS Code).
+**View on GitHub** (or **Open in Editor** inside VS Code). Each caller or
+callee shows once, even when two links join the pair, for example the inner
+and the spec link from a theorem to the definition it specifies.
 
 A blueprint entry shows its title, chapter and group, statement and proof
 status (marked "declared" when the blueprint asserts them rather than
