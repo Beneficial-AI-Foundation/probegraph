@@ -10,7 +10,7 @@
  * Used by the Guide (dependent counts, layers) and the `top N by
  * dependents` query (docs/archive/graph-search.md, Phase 2), and meant to
  * be reused by the trust-base and frontier work
- * (docs/plans/trust-and-frontier.md).
+ * (docs/archive/trust-and-frontier.md).
  *
  * Pure module (no DOM), unit-tested in the node environment.
  */

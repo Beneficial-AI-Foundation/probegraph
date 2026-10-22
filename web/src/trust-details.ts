@@ -1,5 +1,5 @@
 /**
- * Node-details section for the trust base (docs/plans/trust-and-frontier.md,
+ * Node-details section for the trust base (docs/archive/trust-and-frontier.md,
  * Phase 1): what the node rests on, as a summary line that expands into the
  * assumptions, unfinished and unknown declarations, each with its witness
  * path, and the missing dependency targets. Phase 2 adds the "Ready work"

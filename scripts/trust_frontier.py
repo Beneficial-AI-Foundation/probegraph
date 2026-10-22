@@ -2,7 +2,7 @@
 """
 Reference implementation of the trust base and the proof frontier.
 
-This is the executable specification of docs/plans/trust-and-frontier.md,
+This is the executable specification of docs/archive/trust-and-frontier.md,
 Phases 1 and 2. The TypeScript code must give the same answers on the
 fixtures in web/src/test-data/trust-frontier.json.
 
