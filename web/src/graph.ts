@@ -709,7 +709,15 @@ export class CallGraphVisualization {
         'link',
         d3.forceLink<D3Node, D3Link>(links)
           .id(d => d.id)
-          .distance(linkDist)
+          // A link pulls its ends together, but not until their labels
+          // overlap (and never closer than their layers)
+          .distance(l => {
+            const source = l.source as D3Node;
+            const target = l.target as D3Node;
+            const apart = Math.abs(positions.get(source.id)!.x - positions.get(target.id)!.x);
+            const labels = labelHalfWidth(source.display_name) + labelHalfWidth(target.display_name) + LABEL_GAP;
+            return Math.max(linkDist, Math.min(apart, labels));
+          })
           // In a folded layout the link force would pull the layers of a band
           // together until their labels overlap
           .strength(fold.bands > 1 ? 0.05 : 0.5)
