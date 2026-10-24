@@ -15,7 +15,9 @@ const atoms = Object.fromEntries(names.map((name, i) => [`probe:${name}`, {
 }]));
 
 test('the labels of two linked nodes stay apart after the layout settles', async ({ page }) => {
-  await page.setViewportSize({ width: 800, height: 600 });
+  // The sidebars take 640 px: this leaves 800 px for the graph, enough to
+  // draw both labels side by side in one band
+  await page.setViewportSize({ width: 1440, height: 900 });
   await page.route('**/labels.json', (route: Route) =>
     route.fulfill({ contentType: 'application/json', body: JSON.stringify(atoms) }));
   await page.goto('/probegraph/?json=labels.json');
