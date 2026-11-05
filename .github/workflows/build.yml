@@ -37,7 +37,8 @@ jobs:
   # Web viewer e2e tests (Playwright, pinned fixtures)
   web-e2e:
     name: Web Viewer E2E
-    runs-on: ubuntu-latest
+    # Playwright 1.58 cannot install Chromium on Ubuntu 26.04 (ubuntu-latest).
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
