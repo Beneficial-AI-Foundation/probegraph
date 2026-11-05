@@ -5,7 +5,11 @@ import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import type { CallGraphApi } from '../../extension';
-import { runPipeline } from '../../pipelineRunner';
+// The bundled extension has its own instance of this module; a run started
+// here can only be cancelled here
+import { cancelGenerator, getGeneratorStatus, probeVerusCommand, runGenerator } from '../../generator';
+import { cargoPackageRoot } from '../../cargoRoot';
+import { readIndex, resolveProjectRoot } from '../../indexLoader';
 import {
     EXTENSION_ID, Protocol, activated, closeAll, explorerTab, folderAt, openFile, placeCursor, sleep, waitFor,
 } from '../helpers';
@@ -155,9 +159,10 @@ suite('Extension in a Rust workspace', () => {
         const loads = protocol.loads;
         assert.strictEqual(loads.length, 2, 'the rewritten index was not sent');
         assert.ok(loads[1].revision > first.revision);
-        const last = protocol.selections[protocol.selections.length - 1];
-        assert.strictEqual(last.type, 'selectNode');
-        assert.strictEqual(last.revision, loads[1].revision);
+        // The selection waits for the webview to confirm the new revision
+        const last = await waitFor('the selection on the new revision', () =>
+            protocol.selections.find(m => m.type === 'selectNode' && m.revision === loads[1].revision));
+        assert.strictEqual(protocol.selections[protocol.selections.length - 1], last);
         assert.match(last.selection!.nodeId, /quicksort/);
         const result = await protocol.result(last.requestId!);
         assert.strictEqual(result.status, 'shown');
@@ -301,39 +306,288 @@ suite('Extension in a Rust workspace', () => {
         }
     });
 
-    test('Regenerate finds the binary under CARGO_TARGET_DIR, writes beside the index and renames over it', async () => {
-        const probegraph = fs.mkdtempSync(path.join(os.tmpdir(), 'fake probegraph; '));
-        const targetDir = path.join(probegraph, 'custom-target');
-        const binary = path.join(targetDir, 'release', 'pipeline');
-        const argsFile = path.join(probegraph, 'args.txt');
-        fs.mkdirSync(path.dirname(binary), { recursive: true });
-        // Records its arguments and writes the current index to the -o path
-        fs.writeFileSync(binary,
-            `#!/bin/sh\nprintf '%s\\n' "$@" > '${argsFile}'\ncat '${indexPath()}' > "$3"\n`,
-            { mode: 0o755 });
+    /**
+     * A probe-verus stand-in at a path with a space and a `;`: records its
+     * arguments, and on `extract` does what `mode` says:
+     * - `copy`: copies the current index to the `-o` path (so the test can
+     *   see the rename) and exits 0
+     * - `fail`: exits 3 without writing
+     * - `partial`: writes `{` to the `-o` path and exits 0, as probe-verus
+     *   does when its own write fails (it only warns)
+     * - `hang`: writes `{`, then starts a `sleep` (standing in for `cargo
+     *   verus`), records its pid in `childPid` and waits for it
+     * - `stubborn`: `hang`, ignoring SIGTERM (the sleep inherits that)
+     */
+    function fakeProbeVerus(mode: 'copy' | 'fail' | 'partial' | 'hang' | 'stubborn' = 'copy'): {
+        dir: string; binary: string; childPid: string; args: () => string[];
+    } {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'fake probe-verus; '));
+        const binary = path.join(dir, 'probe-verus');
+        const argsFile = path.join(dir, 'args.txt');
+        const childPid = path.join(dir, 'child.pid');
+        const hang = `printf '{' > "$4"; sleep 60 & echo $! > '${childPid}'; wait`;
+        const extract = {
+            copy: `cat '${indexPath()}' > "$4"`,
+            fail: 'exit 3',
+            partial: `printf '{' > "$4"`,
+            hang,
+            stubborn: `trap '' TERM; ${hang}`,
+        }[mode];
+        fs.writeFileSync(binary, [
+            '#!/bin/sh',
+            `printf '%s\\n' "$@" >> '${argsFile}'`,
+            'case "$1" in',
+            '  --version) echo "probe-verus 0.0.0-fake" ;;',
+            '  setup) printf "Tool  Status  Location\\nverus-analyzer  PATH  /x\\nscip  PATH  /x\\nverus  managed  /x\\n" ;;',
+            `  extract) ${extract} ;;`,
+            'esac',
+            '',
+        ].join('\n'), { mode: 0o755 });
+        return {
+            dir, binary, childPid,
+            args: () => fs.readFileSync(argsFile, 'utf8').split('\n'),
+        };
+    }
 
-        const config = vscode.workspace.getConfiguration('callGraph');
-        await config.update('defaultScipCallgraphPath', probegraph, vscode.ConfigurationTarget.Workspace);
-        const previousTargetDir = process.env.CARGO_TARGET_DIR;
-        process.env.CARGO_TARGET_DIR = targetDir;
-        const before = fs.readFileSync(indexPath(), 'utf8');
+    /** The pid the hanging fake recorded, once it has. */
+    async function grandchildPid(fake: { childPid: string }): Promise<number> {
+        await waitFor('the fake to start its child', () => fs.existsSync(fake.childPid) || undefined);
+        const pid = Number(fs.readFileSync(fake.childPid, 'utf8').trim());
+        assert.ok(pid > 0);
+        return pid;
+    }
+
+    /** Resolves once the pid is gone (reaped, or a zombie: `kill -0` says ESRCH either way). */
+    function waitForExit(pid: number): Promise<true> {
+        return waitFor('the grandchild to be gone', () => {
+            try {
+                process.kill(pid, 0);
+                return undefined;
+            } catch (error: any) {
+                if (error.code === 'ESRCH') {
+                    return true;
+                }
+                throw error;
+            }
+        });
+    }
+
+    /** Kill the recorded grandchild if the test left it running. */
+    function reap(pid: number | undefined): void {
+        if (pid === undefined) {
+            return;
+        }
         try {
-            await runPipeline(folder());
-            const root = folder().uri.fsPath;
-            const args = fs.readFileSync(argsFile, 'utf8').split('\n');
-            assert.deepStrictEqual(args.slice(0, 2), [root, '-o']);
-            assert.strictEqual(path.dirname(args[2]), path.dirname(indexPath()));
-            assert.notStrictEqual(args[2], indexPath(), 'the pipeline wrote straight to the index');
-            assert.ok(!fs.existsSync(args[2]), 'the temporary file was left behind');
+            process.kill(pid, 'SIGKILL');
+        } catch (error: any) {
+            if (error.code !== 'ESRCH') {
+                throw error;
+            }
+        }
+    }
+
+    test('Cancel Regenerate stops probe-verus and what it spawned', async function () {
+        if (process.platform === 'win32') {
+            this.skip();
+        }
+        const fake = fakeProbeVerus('hang');
+        const config = vscode.workspace.getConfiguration('callGraph');
+        await config.update('probeVerusPath', fake.binary, vscode.ConfigurationTarget.Workspace);
+        const before = fs.readFileSync(indexPath(), 'utf8');
+        let pid: number | undefined;
+        try {
+            const run = runGenerator(folder());
+            pid = await grandchildPid(fake);
+            cancelGenerator();
+            await run;
+            await waitForExit(pid);
+            assert.ok(!fs.existsSync(fake.args()[3]), 'the temporary file was left behind');
             assert.strictEqual(fs.readFileSync(indexPath(), 'utf8'), before);
         } finally {
-            if (previousTargetDir === undefined) {
-                delete process.env.CARGO_TARGET_DIR;
-            } else {
-                process.env.CARGO_TARGET_DIR = previousTargetDir;
+            await config.update('probeVerusPath', undefined, vscode.ConfigurationTarget.Workspace);
+            reap(pid);
+            fs.rmSync(fake.dir, { recursive: true, force: true });
+        }
+    });
+
+    test('a second Cancel Regenerate kills a probe-verus that ignored the first', async function () {
+        if (process.platform === 'win32') {
+            this.skip();
+        }
+        const fake = fakeProbeVerus('stubborn');
+        const config = vscode.workspace.getConfiguration('callGraph');
+        await config.update('probeVerusPath', fake.binary, vscode.ConfigurationTarget.Workspace);
+        const before = fs.readFileSync(indexPath(), 'utf8');
+        let pid: number | undefined;
+        try {
+            const run = runGenerator(folder());
+            pid = await grandchildPid(fake);
+            cancelGenerator();
+            await sleep(500);
+            assert.strictEqual(getGeneratorStatus(), 'running', 'SIGTERM was not ignored by the fake');
+            cancelGenerator();
+            await run;
+            await waitForExit(pid);
+            assert.strictEqual(getGeneratorStatus(), 'idle');
+            assert.ok(!fs.existsSync(fake.args()[3]), 'the temporary file was left behind');
+            assert.strictEqual(fs.readFileSync(indexPath(), 'utf8'), before);
+        } finally {
+            await config.update('probeVerusPath', undefined, vscode.ConfigurationTarget.Workspace);
+            reap(pid);
+            fs.rmSync(fake.dir, { recursive: true, force: true });
+        }
+    });
+
+    test('callGraph.probeVerusPath: a leading ~ is the home directory, with either separator', async () => {
+        const config = vscode.workspace.getConfiguration('callGraph');
+        try {
+            for (const configured of ['~/bin/probe-verus', '~\\bin\\probe-verus.exe']) {
+                await config.update('probeVerusPath', configured, vscode.ConfigurationTarget.Workspace);
+                assert.strictEqual(probeVerusCommand(folder()), path.join(os.homedir(), configured.slice(2)));
             }
-            await config.update('defaultScipCallgraphPath', undefined, vscode.ConfigurationTarget.Workspace);
-            fs.rmSync(probegraph, { recursive: true, force: true });
+            await config.update('probeVerusPath', ' probe-verus ', vscode.ConfigurationTarget.Workspace);
+            assert.strictEqual(probeVerusCommand(folder()), 'probe-verus', 'a bare name is left to PATH');
+        } finally {
+            await config.update('probeVerusPath', undefined, vscode.ConfigurationTarget.Workspace);
+        }
+    });
+
+    test('Regenerate runs probe-verus extract, writes beside the index and renames over it', async () => {
+        const fake = fakeProbeVerus();
+        const config = vscode.workspace.getConfiguration('callGraph');
+        await config.update('probeVerusPath', fake.binary, vscode.ConfigurationTarget.Workspace);
+        await config.update('skipVerification', true, vscode.ConfigurationTarget.Workspace);
+        const before = fs.readFileSync(indexPath(), 'utf8');
+        try {
+            await runGenerator(folder());
+            const root = folder().uri.fsPath;
+            const args = fake.args();
+            assert.deepStrictEqual(args.slice(0, 3), ['extract', root, '-o']);
+            assert.strictEqual(path.dirname(args[3]), path.dirname(indexPath()));
+            assert.notStrictEqual(args[3], indexPath(), 'probe-verus wrote straight to the index');
+            assert.ok(!fs.existsSync(args[3]), 'the temporary file was left behind');
+            assert.deepStrictEqual(args.slice(4, 5), ['--skip-verify']);
+            assert.strictEqual(fs.readFileSync(indexPath(), 'utf8'), before);
+        } finally {
+            await config.update('probeVerusPath', undefined, vscode.ConfigurationTarget.Workspace);
+            await config.update('skipVerification', undefined, vscode.ConfigurationTarget.Workspace);
+            fs.rmSync(fake.dir, { recursive: true, force: true });
+        }
+    });
+
+    for (const mode of ['fail', 'partial'] as const) {
+        const what = mode === 'fail' ? 'a failed probe-verus run' : 'an exit 0 with a truncated output';
+        test(`${what} leaves the index and no temporary file behind`, async () => {
+            const fake = fakeProbeVerus(mode);
+            const config = vscode.workspace.getConfiguration('callGraph');
+            await config.update('probeVerusPath', fake.binary, vscode.ConfigurationTarget.Workspace);
+            const before = fs.readFileSync(indexPath(), 'utf8');
+            try {
+                await runGenerator(folder());
+                assert.strictEqual(getGeneratorStatus(), 'error');
+                const temp = fake.args()[3];
+                assert.ok(!fs.existsSync(temp), 'the temporary file was left behind');
+                assert.strictEqual(fs.readFileSync(indexPath(), 'utf8'), before);
+            } finally {
+                await config.update('probeVerusPath', undefined, vscode.ConfigurationTarget.Workspace);
+                fs.rmSync(fake.dir, { recursive: true, force: true });
+            }
+        });
+    }
+
+    /**
+     * A second crate `sub/` in the workspace folder, and a probe-verus
+     * extract of it at `extractRel` (relative to the folder) whose paths are
+     * relative to `sub/`, as probe-verus writes them. Returns the cleanup.
+     */
+    function writeSubCrate(extractRel: string): () => void {
+        const root = folder().uri.fsPath;
+        const sub = path.join(root, 'sub');
+        const extract = path.join(root, extractRel);
+        fs.mkdirSync(path.join(sub, 'src'), { recursive: true });
+        fs.mkdirSync(path.dirname(extract), { recursive: true });
+        fs.writeFileSync(path.join(sub, 'Cargo.toml'), '[package]\nname = "sub"\nversion = "0.1.0"\n');
+        fs.writeFileSync(path.join(sub, 'src', 'lib.rs'), 'pub fn alpha() -> u32 {\n    1\n}\n');
+        fs.writeFileSync(extract, JSON.stringify({
+            schema: 'probe-verus/extract', 'schema-version': '2.0', timestamp: '2026-01-01T00:00:00Z',
+            source: { repo: 'https://example.invalid/sub.git', commit: 'abc1234', language: 'rust', package: 'sub' },
+            data: {
+                'probe:alpha': {
+                    'display-name': 'alpha', dependencies: [], 'code-module': '', 'code-path': 'src/lib.rs',
+                    'code-text': { 'lines-start': 1, 'lines-end': 3 }, kind: 'exec', language: 'verus',
+                },
+            },
+        }));
+        return () => {
+            fs.rmSync(sub, { recursive: true, force: true });
+            fs.rmSync(extract, { force: true });
+        };
+    }
+
+    async function expectAlphaInSub(): Promise<void> {
+        const editor = await openFile(folder(), 'sub', 'src', 'lib.rs');
+        placeCursor(editor, 2);
+        await vscode.commands.executeCommand('callGraph.showAtCursor');
+        const load = await waitFor('the graph', () => protocol.loads[0]);
+        assert.strictEqual(load.selection!.nodeId, 'probe:alpha');
+    }
+
+    test('a probe-verus extract inside a Cargo project under the folder resolves paths against that project', async () => {
+        // The extract where probe-verus puts it; the folder's own Cargo.toml
+        // must not win, since the extract's paths are relative to `sub/`
+        const cleanup = writeSubCrate('sub/.verilib/probes/verus_sub_0.1.0.json');
+        const config = vscode.workspace.getConfiguration('callGraph');
+        await config.update('indexPath', 'sub/.verilib/probes/verus_sub_0.1.0.json', vscode.ConfigurationTarget.Workspace);
+        try {
+            await expectAlphaInSub();
+        } finally {
+            await config.update('indexPath', undefined, vscode.ConfigurationTarget.Workspace);
+            cleanup();
+        }
+    });
+
+    test('an extract under a one-member workspace root resolves paths against the member, as probe-verus ran on it', async () => {
+        // "Regenerate Index" on a workspace folder that is a Cargo workspace
+        // writes the extract under the folder, but probe-verus ran on the
+        // member and the paths are relative to it
+        const cleanup = writeSubCrate('.vscode/sub-extract.json');
+        const manifest = path.join(folder().uri.fsPath, 'Cargo.toml');
+        const original = fs.readFileSync(manifest, 'utf8');
+        fs.writeFileSync(manifest, '[workspace]\nmembers = [\n    "sub",\n]\n');
+        const config = vscode.workspace.getConfiguration('callGraph');
+        await config.update('indexPath', '.vscode/sub-extract.json', vscode.ConfigurationTarget.Workspace);
+        try {
+            await expectAlphaInSub();
+        } finally {
+            await config.update('indexPath', undefined, vscode.ConfigurationTarget.Workspace);
+            fs.writeFileSync(manifest, original);
+            cleanup();
+        }
+    });
+
+    test('a workspace member outside the folder is not a project root the folder can choose', async () => {
+        // A Cargo.toml under the folder can name `../outside`; probe-verus
+        // would run there, but "Open in Editor" opens files under the project
+        // root only, so files the folder controls must not move the root out
+        // of it. The extract's paths then do not resolve; that layout needs
+        // `callGraph.projectRoot`, which Restricted Mode takes from user settings.
+        const root = folder().uri.fsPath;
+        const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'outside-member-'));
+        const cleanup = writeSubCrate('.vscode/outside-extract.json');
+        const extract = path.join(root, '.vscode', 'outside-extract.json');
+        const manifest = path.join(root, 'Cargo.toml');
+        const original = fs.readFileSync(manifest, 'utf8');
+        try {
+            fs.writeFileSync(path.join(outside, 'Cargo.toml'), '[package]\nname = "sub"\nversion = "0.1.0"\n');
+            const member = path.relative(root, outside).split(path.sep).join('/');
+            fs.writeFileSync(manifest, `[workspace]\nmembers = ["${member}"]\n`);
+            assert.strictEqual(cargoPackageRoot(root, 'sub'), outside, 'the Cargo rule alone would pick the member');
+            const { graph } = await readIndex(extract);
+            assert.strictEqual(resolveProjectRoot(folder(), extract, graph), root);
+        } finally {
+            fs.writeFileSync(manifest, original);
+            cleanup();
+            fs.rmSync(outside, { recursive: true, force: true });
         }
     });
 });

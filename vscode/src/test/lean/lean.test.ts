@@ -81,30 +81,30 @@ suite('Extension in a Lean workspace', () => {
         }
     });
 
-    test('Regenerate Index does not run the Rust pipeline on a Lean graph', async () => {
+    test('Regenerate Index does not run probe-verus on a Lean graph', async () => {
         await showAt(IN_SUCC_POS);
         await waitFor('the graph', () => protocol.loads[0]);
 
-        // A pipeline that leaves a trace if it is ever started
-        const probegraph = fs.mkdtempSync(path.join(os.tmpdir(), 'fake probegraph; '));
-        const ranFile = path.join(probegraph, 'ran.txt');
-        const binary = path.join(probegraph, 'target', 'release', 'pipeline');
-        fs.mkdirSync(path.dirname(binary), { recursive: true });
+        // A probe-verus that leaves a trace if it is ever started
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'fake probe-verus; '));
+        const ranFile = path.join(dir, 'ran.txt');
+        const binary = path.join(dir, 'probe-verus');
         fs.writeFileSync(binary, `#!/bin/sh\ntouch '${ranFile}'\n`, { mode: 0o755 });
         const config = vscode.workspace.getConfiguration('callGraph');
-        await config.update('defaultScipCallgraphPath', probegraph, vscode.ConfigurationTarget.Workspace);
+        await config.update('probeVerusPath', binary, vscode.ConfigurationTarget.Workspace);
         try {
-            // On the pipeline path the command waits at the prerequisites prompt
-            // or runs the binary; on the Lean path it returns at once
+            // On the Rust path the command checks prerequisites (which would
+            // start the binary) or waits at a prompt; on the Lean path it
+            // returns at once
             const outcome = await Promise.race([
                 vscode.commands.executeCommand('callGraph.regenerateIndex').then(() => 'returned'),
                 sleep(5000).then(() => 'still running'),
             ]);
             assert.strictEqual(outcome, 'returned');
-            assert.ok(!fs.existsSync(ranFile), 'the pipeline was started');
+            assert.ok(!fs.existsSync(ranFile), 'probe-verus was started');
         } finally {
-            await config.update('defaultScipCallgraphPath', undefined, vscode.ConfigurationTarget.Workspace);
-            fs.rmSync(probegraph, { recursive: true, force: true });
+            await config.update('probeVerusPath', undefined, vscode.ConfigurationTarget.Workspace);
+            fs.rmSync(dir, { recursive: true, force: true });
         }
     });
 });
