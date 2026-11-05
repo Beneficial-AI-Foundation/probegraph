@@ -147,6 +147,8 @@ jobs:
         uses: astral-sh/setup-uv@v4
         with:
           version: "latest"
+          # PyO3 0.22 in verus_lemma_finder does not build on Python 3.14.
+          python-version: "3.13"
 
       - name: Cache cargo registry
         uses: actions/cache@v4
