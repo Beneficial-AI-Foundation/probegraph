@@ -52,9 +52,28 @@ see [web/ARCHITECTURE.md](../../web/ARCHITECTURE.md#input-formats).
   everything. Click a function for its details. Group boxes show rollup
   counts and a verified-fraction bar, and edges are aggregated between the
   visible boxes. The expanded groups are kept in `?expanded=`.
+- **Packed Map (testing)** — a bird's-eye view of the Rust code. Crates,
+  directories and files are nested circles, and the smallest circles are
+  functions. Only `exec` functions are drawn: proofs and specs are left
+  out, and the stats count the drawn functions only. If the graph has no
+  `exec` functions (a Lean graph, or the blueprint layer), the button is
+  hidden. The size of a function circle is 1 plus its number of distinct
+  callers and callees among the drawn functions. A group circle encloses
+  its functions, so it grows with their summed size. The fill of a
+  function circle is its verification status. The green arc on a group
+  circle is the share of its functions that are verified, transitively
+  verified or trusted.
+  Click a function for its details, and use the wheel and drag to zoom
+  and pan. If a filter change draws other functions, the zoom resets to
+  the whole map. To use the keyboard, press Tab to move the focus to the map.
+  The arrow keys then move a dashed ring from function to function, crate
+  by crate and file by file. Home and End go to the first and the last
+  function. Enter or Space opens the details of the function in the ring.
+  If the filters leave no Rust function, the view says so.
 
-Crate Map and Hierarchy aggregate the whole graph, so the large-graph limits
-below don't apply to them. The algorithms are specified in
+Crate Map and Hierarchy aggregate the whole graph into groups. The Packed
+Map draws every function of the graph. The large-graph limits below don't
+apply to these three views. The algorithms are specified in
 [web/docs/technical/](../../web/docs/technical/README.md).
 
 Below the filters, **Reset Filters** restores the defaults, **Clear

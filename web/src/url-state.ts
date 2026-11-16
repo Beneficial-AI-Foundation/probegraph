@@ -13,7 +13,7 @@ import {
 } from './intent';
 import { exactStatusFilter, isVerificationStatus } from './status-filter';
 
-export type ActiveView = 'callgraph' | 'file-map' | 'crate-map' | 'hierarchy';
+export type ActiveView = 'callgraph' | 'file-map' | 'crate-map' | 'hierarchy' | 'packed-map';
 
 /** Which graph is shown when the input has a probe-leanblueprint layer. */
 export type Layer = 'code' | 'blueprint';
@@ -294,7 +294,7 @@ export function readURLState(
   const viewParam = params.get('view');
   // `view=blueprint` is the File Map's id before the blueprint layer
   const view: ActiveView = viewParam === 'file-map' || viewParam === 'blueprint' ? 'file-map'
-    : viewParam === 'crate-map' || viewParam === 'hierarchy' ? viewParam
+    : viewParam === 'crate-map' || viewParam === 'hierarchy' || viewParam === 'packed-map' ? viewParam
     : 'callgraph';
 
   const layerParam = params.get('layer');
