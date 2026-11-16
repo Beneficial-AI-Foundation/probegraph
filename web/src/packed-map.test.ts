@@ -1,14 +1,14 @@
 /**
- * Unit tests for the Packed Map data model (packed-map.ts): the `exec`
- * rule, the graph restriction, connectivity, the pack input tree and the
- * keyboard order.
+ * Unit tests for the Packed Map pure helpers (packed-map.ts): the `exec`
+ * rule, the graph restriction, connectivity, the pack input tree, the
+ * camera fit, the label rules, the edges and the keyboard order.
  */
 
 import { describe, it, expect } from 'vitest';
 import * as d3 from 'd3';
 import {
-  isPackedMapNode, hasPackedMapNodes, restrictToPackedNodes, connectivity, buildPackData, nextFocusIndex, functionOrder,
-  PackDatum,
+  isPackedMapNode, hasPackedMapNodes, restrictToPackedNodes, connectivity, buildPackData, PackDatum,
+  fitCamera, visibleGroupLabels, fitLabel, edgesOf, nextFocusIndex, edgeCurve, edgeBends, functionOrder, zoomInTarget, minZoomScale,
 } from './packed-map';
 import { D3Graph, D3Node, D3Link } from './types';
 
@@ -157,6 +157,87 @@ describe('buildPackData', () => {
   });
 });
 
+describe('fitCamera', () => {
+  it('centers the circle and fits its diameter to the short side, less the margin', () => {
+    const c = fitCamera(100, 50, 20, 800, 400, 0.05);
+    expect(c.k).toBeCloseTo(360 / 40);
+    expect(100 * c.k + c.x).toBeCloseTo(400);
+    expect(50 * c.k + c.y).toBeCloseTo(200);
+  });
+
+  it('a zero radius gives scale 1', () => {
+    expect(fitCamera(10, 10, 0, 100, 100).k).toBe(1);
+  });
+});
+
+describe('visibleGroupLabels', () => {
+  const groups = [
+    { id: 'crate', r: 100, childIds: ['dir', 'small'] },
+    { id: 'dir', r: 40, childIds: ['file'] },
+    { id: 'file', r: 10, childIds: [] },
+    { id: 'small', r: 5, childIds: [] },
+  ];
+
+  it('labels a large group with no large child group', () => {
+    expect([...visibleGroupLabels(groups, 0.5, 30)]).toEqual(['crate']);
+  });
+
+  it('hides the parent label when a child label shows', () => {
+    expect([...visibleGroupLabels(groups, 1, 30)]).toEqual(['dir']);
+    expect([...visibleGroupLabels(groups, 4, 30)].sort()).toEqual(['file']);
+  });
+
+  it('a small sibling does not hide the parent', () => {
+    expect(visibleGroupLabels([groups[0], groups[3]], 1, 30)).toEqual(new Set(['crate']));
+  });
+
+  it('no label below the threshold', () => {
+    expect(visibleGroupLabels(groups, 0.1, 30).size).toBe(0);
+  });
+});
+
+describe('fitLabel', () => {
+  it('keeps a name that fits', () => {
+    expect(fitLabel('abc', 100, 10)).toBe('abc');
+  });
+
+  it('cuts a long name and ends it with an ellipsis', () => {
+    // 10 px font: 6 px per character, 30 px holds 5
+    expect(fitLabel('abcdefgh', 30, 10)).toBe('abcd…');
+  });
+
+  it('gives nothing when one character and the ellipsis do not fit', () => {
+    expect(fitLabel('abcdefgh', 8, 10)).toBe('');
+  });
+});
+
+describe('edgesOf', () => {
+  const links = [
+    { source: 'a', target: 'b', type: 'inner' },
+    { source: 'a', target: 'b', type: 'inner' },
+    { source: 'a', target: 'b', type: 'precondition' },
+    { source: 'c', target: 'a', type: 'inner' },
+    { source: 'a', target: 'a', type: 'inner' },
+    { source: 'a', target: 'gone', type: 'inner' },
+    { source: 'b', target: 'c', type: 'inner' },
+  ];
+
+  it('keeps the calls to and from the function, one per type, among drawn functions', () => {
+    expect(edgesOf(links, 'a', new Set(['a', 'b', 'c']))).toEqual([
+      { source: 'a', target: 'b', type: 'inner' },
+      { source: 'a', target: 'b', type: 'precondition' },
+      { source: 'c', target: 'a', type: 'inner' },
+    ]);
+  });
+
+  it('accepts resolved node endpoints', () => {
+    const a = node('a', 'k', 'k/src/x.rs');
+    const b = node('b', 'k', 'k/src/x.rs');
+    expect(edgesOf([{ source: a, target: b, type: 'inner' }], 'b', new Set(['a', 'b'])))
+      .toEqual([{ source: 'a', target: 'b', type: 'inner' }]);
+  });
+});
+
 describe('nextFocusIndex', () => {
   it('moves one step with the arrow keys and stops at both ends', () => {
     expect(nextFocusIndex(1, 'ArrowRight', 3)).toBe(2);
@@ -178,6 +259,51 @@ describe('nextFocusIndex', () => {
   });
 });
 
+describe('edgeCurve', () => {
+  const at = (c: NonNullable<ReturnType<typeof edgeCurve>>, t: number) => {
+    const u = 1 - t;
+    return [u * u * c.sx + 2 * u * t * c.cx + t * t * c.tx, u * u * c.sy + 2 * u * t * c.cy + t * t * c.ty];
+  };
+
+  it('starts and ends on the circle boundaries, also for close circles', () => {
+    // Copilot's example: radius 40, centers 85 px apart
+    const a = { x: 0, y: 0, r: 40 };
+    const b = { x: 85, y: 0, r: 40 };
+    const c = edgeCurve(a, b, 0.2)!;
+    expect(Math.hypot(c.sx - a.x, c.sy - a.y)).toBeCloseTo(40, 3);
+    expect(Math.hypot(c.tx - b.x, c.ty - b.y)).toBeCloseTo(40, 3);
+    // No point of the cut curve is inside either circle
+    for (let t = 0.05; t < 1; t += 0.05) {
+      const [x, y] = at(c, t);
+      expect(Math.hypot(x - a.x, y - a.y)).toBeGreaterThan(40 - 1e-6);
+      expect(Math.hypot(x - b.x, y - b.y)).toBeGreaterThan(40 - 1e-6);
+    }
+  });
+
+  it('a larger bend gives a different curve', () => {
+    const a = { x: 0, y: 0, r: 5 };
+    const b = { x: 100, y: 0, r: 5 };
+    const c1 = edgeCurve(a, b, 0.2)!;
+    const c2 = edgeCurve(a, b, 0.35)!;
+    expect(Math.abs(at(c1, 0.5)[1] - at(c2, 0.5)[1])).toBeGreaterThan(5);
+  });
+
+  it('null when the circles touch along the whole curve', () => {
+    expect(edgeCurve({ x: 0, y: 0, r: 10 }, { x: 5, y: 0, r: 10 }, 0.2)).toBeNull();
+  });
+});
+
+describe('edgeBends', () => {
+  it('gives each call type between the same two functions its own bend', () => {
+    expect(edgeBends([
+      { source: 'a', target: 'b', type: 'inner' },
+      { source: 'a', target: 'b', type: 'precondition' },
+      { source: 'b', target: 'a', type: 'inner' },
+      { source: 'c', target: 'a', type: 'inner' },
+    ], 0.2, 0.15)).toEqual([0.2, 0.35, 0.2, 0.2]);
+  });
+});
+
 describe('functionOrder', () => {
   it('lists the functions of one crate together, at any directory depth', () => {
     // A breadth-first order would put b1 (depth 2) between a1 and a2 (depth 3 and more)
@@ -192,5 +318,46 @@ describe('functionOrder', () => {
     expect(order[0]).toBe(order[1]);
     expect(order[2]).toBe(order[3]);
     expect(order[0]).not.toBe(order[2]);
+  });
+});
+
+describe('zoomInTarget', () => {
+  const fn = ['core', 'core/src', 'core/src/a.rs'];
+
+  it('from the whole project, the crate', () => {
+    expect(zoomInTarget(fn, [])).toBe('core');
+  });
+
+  it('one level below the zoomed group, toward the function', () => {
+    expect(zoomInTarget(fn, ['core'])).toBe('core/src');
+    expect(zoomInTarget(fn, ['core', 'core/src'])).toBe('core/src/a.rs');
+  });
+
+  it('null at the function\'s own group', () => {
+    expect(zoomInTarget(fn, fn)).toBeNull();
+  });
+
+  it('a zoomed group beside the function: the first group that contains the function', () => {
+    expect(zoomInTarget(fn, ['core', 'core/tests'])).toBe('core/src');
+    expect(zoomInTarget(fn, ['other'])).toBe('core');
+  });
+
+  it('a zoomed group below a function that sits on its crate: the crate', () => {
+    expect(zoomInTarget(['core'], ['core', 'core/src'])).toBe('core');
+  });
+});
+
+describe('minZoomScale', () => {
+  it('0.5 before a layout', () => {
+    expect(minZoomScale(800, 600, null)).toBe(0.5);
+  });
+
+  it('half the whole-pack fit, below any group fit after a shrink', () => {
+    const layout = { width: 800, height: 600 };
+    // 800 x 600 shrunk to 400 x 300: the whole pack fits at 0.5
+    const min = minZoomScale(400, 300, layout);
+    expect(min).toBeCloseTo(0.25);
+    // Copilot's example: a radius-290 group fitted into 400 x 300
+    expect(fitCamera(400, 300, 290, 400, 300).k).toBeGreaterThan(min);
   });
 });

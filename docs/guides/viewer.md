@@ -52,7 +52,8 @@ see [web/ARCHITECTURE.md](../../web/ARCHITECTURE.md#input-formats).
   everything. Click a function for its details. Group boxes show rollup
   counts and a verified-fraction bar, and edges are aggregated between the
   visible boxes. The expanded groups are kept in `?expanded=`.
-- **Packed Map (testing)** — a bird's-eye view of the Rust code. Crates,
+- **Packed Map (testing)** — a bird's-eye view of the Rust code, drawn as
+  a circle packing (the nested-circle layout of `d3.pack`). Crates,
   directories and files are nested circles, and the smallest circles are
   functions. Only `exec` functions are drawn: proofs and specs are left
   out, and the stats count the drawn functions only. If the graph has no
@@ -63,13 +64,24 @@ see [web/ARCHITECTURE.md](../../web/ARCHITECTURE.md#input-formats).
   function circle is its verification status. The green arc on a group
   circle is the share of its functions that are verified, transitively
   verified or trusted.
-  Click a function for its details, and use the wheel and drag to zoom
-  and pan. If a filter change draws other functions, the zoom resets to
-  the whole map. To use the keyboard, press Tab to move the focus to the map.
-  The arrow keys then move a dashed ring from function to function, crate
-  by crate and file by file. Home and End go to the first and the last
-  function. Enter or Space opens the details of the function in the ring.
-  If the filters leave no Rust function, the view says so.
+  Click a function for its details. Click a group circle to zoom to it.
+  Press Esc or click the background to zoom out one level. The wheel and
+  drag zoom and pan from where a click zoom stops. The zoomed group is
+  kept in `?packed=`. If a filter change draws other functions, the zoom
+  goes back to that group. If that group is gone after a reload or a
+  filter change, the view shows the whole project. A group gets a label when its
+  circle is about 60 px wide or more on screen, and a function when its
+  circle is about 40 px wide or more. If a child group has a label, the
+  parent label is hidden. A long name is cut and ends with "…". Hover a
+  function, or select it, to draw its calls to the other drawn functions:
+  gray for a body call, orange for a requires call, pink for an ensures
+  call. The legend shows these colors. To use the keyboard, press Tab to
+  move the focus to the map. The arrow keys then move a dashed ring from
+  function to function, crate by crate and file by file. Home and End go
+  to the first and the last function. Enter or Space opens the details of
+  the function in the ring. Plus zooms in one level toward the function
+  in the ring, or else the selected one. Minus or Esc zooms out one level. If the filters leave no Rust function, the
+  view says so.
 
 Crate Map and Hierarchy aggregate the whole graph into groups. The Packed
 Map draws every function of the graph. The large-graph limits below don't
@@ -683,7 +695,7 @@ non-default values are included. All parameters:
 | `github` | GitHub base URL for source links |
 | `prefix` / `github_prefix` | path prefix for source links |
 | `layer` | `code` or `blueprint`; default is the blueprint layer when the graph has one |
-| `view` | `file-map`, `crate-map` or `hierarchy`; default is Call Graph. The old `view=blueprint` opens the File Map |
+| `view` | `file-map`, `crate-map`, `hierarchy` or `packed-map`; default is Call Graph. The old `view=blueprint` opens the File Map |
 | `source`, `sink` | the Source → Sink query |
 | `id` (repeated), `dir`, `label` | an exact node set from a Guide suggestion, drill-down or cross-layer link; `dir` is `none`, `callers`, `callees` or `both`, `label` the text shown in the inputs |
 | `source-id`, `sink-id` (both repeated), `source-label`, `sink-label` | the paths from a source set to a sink set, from the search box |
@@ -697,6 +709,7 @@ non-default values are included. All parameters:
 | `entrypoints` | URL of a probe-leanblueprint JSON whose blueprint atoms seed the initial view |
 | `source-crate`, `target-crate` | crate dropdown selection |
 | `expanded` | expanded groups in the Hierarchy view, comma-separated |
+| `packed` | the zoomed group in the Packed Map: a crate, or a crate followed by a path such as `core/src/a.rs` |
 | `exec`, `proof`, `spec`, `axioms`, `types`, `proj`, `inst` | kind toggles (`1`/`0`) |
 | `inner`, `pre`, `post`, `mapping`, `speclinks` | edge-type toggles (`1`/`0`) |
 | `statement`, `body` | Statement deps and Body/proof deps toggles (`1`/`0`) |
