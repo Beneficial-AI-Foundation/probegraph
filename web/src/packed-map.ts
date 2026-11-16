@@ -268,6 +268,23 @@ export function functionOrder<T extends d3.HierarchyNode<PackDatum>>(root: T): T
 }
 
 /**
+ * The group to zoom in to with the `+` key, by hierarchy group id.
+ * `fnPath` is the chain of groups from the crate down to the function's
+ * own group, `focusPath` the same chain for the zoomed group (empty: the
+ * whole project). The answer is one level below the deepest group the two
+ * chains share, so each press goes one level closer to the function. If
+ * the zoomed group is already the function's own group, the answer is
+ * null. If the zoomed group is not around the function, the answer is
+ * their shared group or the function's own group, which shows the function.
+ */
+export function zoomInTarget(fnPath: readonly string[], focusPath: readonly string[]): string | null {
+  let k = 0;
+  while (k < fnPath.length && k < focusPath.length && fnPath[k] === focusPath[k]) k++;
+  if (k === focusPath.length) return fnPath[k] ?? null;
+  return fnPath[k] ?? fnPath[k - 1] ?? null;
+}
+
+/**
  * Keyboard navigation over the function circles, in pack order (crate by
  * crate, file by file): the index `key` moves the focus to, or null for a
  * key that does not move it. The focus stops at both ends.
@@ -382,7 +399,7 @@ export class PackedMapVisualization {
       // One tab stop for the whole map; arrow keys move between functions
       .attr('tabindex', 0)
       .attr('role', 'listbox')
-      .attr('aria-label', 'Packed Map functions. Arrow keys move between functions, Enter or Space opens the details.')
+      .attr('aria-label', 'Packed Map functions. Arrow keys move between functions, Enter or Space opens the details. Plus zooms in one level toward the function, Minus or Escape zooms out one level.')
       .on('keydown', (event: KeyboardEvent) => this.handleMapKeyDown(event))
       .on('focus', () => this.renderFocus())
       .on('blur', () => this.renderFocus());
@@ -422,6 +439,12 @@ export class PackedMapVisualization {
     this.overlay.append('g').attr('class', 'pm-labels');
     document.addEventListener('keydown', this.handleKeyDown);
     this.renderLegend();
+
+    // Announces keyboard and mouse zooms to screen readers
+    const live = document.createElement('div');
+    live.className = 'visually-hidden pm-live';
+    live.setAttribute('aria-live', 'polite');
+    container.appendChild(live);
   }
 
   // ----- Public interface -----
@@ -464,6 +487,7 @@ export class PackedMapVisualization {
     document.removeEventListener('keydown', this.handleKeyDown);
     this.svg.remove();
     this.container.querySelector('.pm-legend')?.remove();
+    this.container.querySelector('.pm-live')?.remove();
     this.hideEmpty();
   }
 
@@ -508,7 +532,8 @@ export class PackedMapVisualization {
     this.svg.interrupt();
     const known = !groupId || this.groupById.has(groupId);
     this.svg.attr('data-packed-focus', known ? groupId ?? '' : '');
-    this.svg.call(this.zoom.transform, known ? this.focusTransform() : d3.zoomIdentity);
+    // focusTransform() fits the whole pack for an unknown id, also after a resize
+    this.svg.call(this.zoom.transform, this.focusTransform());
   }
 
   public getFocus(): string | null {
@@ -539,7 +564,30 @@ export class PackedMapVisualization {
     this.svg.interrupt();
     this.svg.transition().duration(ZOOM_MS).call(this.zoom.transform, this.focusTransform());
     this.svg.attr('data-packed-focus', id ?? '');
-    if (changed) this.notifyFocusChanged();
+    if (changed) {
+      this.notifyFocusChanged();
+      this.announce(node
+        ? `Zoomed to ${node.data.kind} ${node.data.label}, ${node.data.group!.fnCount} functions`
+        : 'Zoomed out to the whole project');
+    }
+  }
+
+  private announce(text: string): void {
+    const live = this.container.querySelector('.pm-live');
+    if (live) live.textContent = text;
+  }
+
+  /** Group ids from the crate down to `d` itself (a group) or its own group (a function). */
+  private groupPath(d: PackNode): string[] {
+    return d.ancestors().reverse().filter(a => a.depth > 0 && a.data.kind !== 'fn').map(a => a.data.group!.id);
+  }
+
+  /** `+`: zoom in one level toward `fn` (the keyboard ring or the selection). */
+  private zoomInToward(fn: PackNode): void {
+    const focus = this.focusId ? this.groupById.get(this.focusId) : undefined;
+    const target = zoomInTarget(this.groupPath(fn), focus ? this.groupPath(focus) : []);
+    if (target === null) return;
+    this.zoomToGroup(this.groupById.get(target) ?? null);
   }
 
   /**
@@ -813,6 +861,18 @@ export class PackedMapVisualization {
     const count = this.fnNodes.length;
     if (count === 0) return;
     let index = this.focusIndex;
+    if (event.key === '+' || event.key === '=') {
+      event.preventDefault();
+      const selectedId = this.state.selectedNode?.id;
+      const fn = index >= 0 ? this.fnNodes[index] : (selectedId ? this.fnById.get(selectedId) : undefined);
+      if (fn) this.zoomInToward(fn);
+      return;
+    }
+    if (event.key === '-' || event.key === '_') {
+      event.preventDefault();
+      this.zoomOut();
+      return;
+    }
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
       if (index >= 0) this.select(this.fnNodes[index]);
@@ -934,6 +994,8 @@ export class PackedMapVisualization {
         ${hint('Wheel and drag: zoom and pan')}
         ${hint('Tab, then arrow keys: move between functions')}
         ${hint('Enter or Space: details panel')}
+        ${hint('Plus: zoom in toward the function in the ring')}
+        ${hint('Minus or Esc: zoom out one level')}
       </div>
     `;
     this.container.appendChild(legend);

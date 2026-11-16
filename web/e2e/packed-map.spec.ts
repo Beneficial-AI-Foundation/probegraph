@@ -204,6 +204,75 @@ test.describe('Packed Map view', () => {
     await expect.poll(() => new URL(page.url()).searchParams.has('packed')).toBe(false);
   });
 
+  test('after a resize, Back to a stale ?packed= fits the whole project', async ({ page }) => {
+    await page.goto(VIEW_URL);
+    await expect(page.locator('.pm-group').first()).toBeAttached({ timeout: 30000 });
+    const size = page.viewportSize()!;
+    await page.setViewportSize({ width: Math.round(size.width * 0.6), height: Math.round(size.height * 0.8) });
+    await page.waitForTimeout(300);
+
+    await page.evaluate(() => {
+      const stale = new URL(location.href);
+      stale.searchParams.set('packed', 'no-such-group/x');
+      const here = location.href;
+      history.pushState({ pushed: true }, '', stale);
+      history.pushState({ pushed: true }, '', here);
+      history.back();
+    });
+    await expect.poll(() => new URL(page.url()).searchParams.has('packed')).toBe(false);
+    await settle(page);
+
+    // Every crate circle is inside the view
+    const outside = await page.evaluate(() => {
+      const view = document.querySelector('.packed-map-svg')!.getBoundingClientRect();
+      return [...document.querySelectorAll('.pm-group')]
+        .filter(g => !g.getAttribute('data-group-id')!.includes('/'))
+        .map(g => g.querySelector('circle')!.getBoundingClientRect())
+        .filter(r => r.left < view.left - 2 || r.right > view.right + 2 || r.top < view.top - 2 || r.bottom > view.bottom + 2)
+        .length;
+    });
+    expect(outside).toBe(0);
+  });
+
+  test('keyboard: Plus zooms in toward the function in the ring, Minus zooms out', async ({ page }) => {
+    await page.goto(VIEW_URL);
+    await expect(page.locator('.pm-fn').first()).toBeAttached({ timeout: 30000 });
+    const map = page.locator('.packed-map-svg');
+    await expect(map).toHaveAttribute('aria-label', /Plus zooms in/);
+    await map.focus();
+    await page.keyboard.press('ArrowRight');
+    await expect(map).toHaveAttribute('aria-activedescendant', /pm-fn-/);
+
+    // Each Plus goes one level down a chain of nested group ids
+    const chain: string[] = [];
+    for (let i = 0; i < 8; i++) {
+      await page.keyboard.press('+');
+      await settle(page);
+      const focus = (await map.getAttribute('data-packed-focus')) ?? '';
+      if (chain.length > 0 && focus === chain[chain.length - 1]) break;
+      if (chain.length > 0) expect(focus.startsWith(chain[chain.length - 1] + '/')).toBe(true);
+      chain.push(focus);
+    }
+    expect(chain.length).toBeGreaterThan(0);
+    expect(chain[0]).not.toContain('/');
+    await expect(page.locator('.pm-live')).toContainText('Zoomed to');
+    expect(new URL(page.url()).searchParams.get('packed')).toBe(chain[chain.length - 1]);
+
+    // The function in the ring is inside the zoomed group
+    const ring = await map.getAttribute('aria-activedescendant');
+    const inView = await page.evaluate((id) => {
+      const r = document.getElementById(id!)!.getBoundingClientRect();
+      const v = document.querySelector('.packed-map-svg')!.getBoundingClientRect();
+      return r.left >= v.left && r.right <= v.right && r.top >= v.top && r.bottom <= v.bottom;
+    }, ring);
+    expect(inView).toBe(true);
+
+    await page.keyboard.press('-');
+    await settle(page);
+    const parent = (await map.getAttribute('data-packed-focus')) ?? '';
+    expect(parent).toBe(chain.length > 1 ? chain[chain.length - 2] : '');
+  });
+
   test('labels: group labels at the start, function labels after zooming in', async ({ page }) => {
     await page.goto(VIEW_URL);
     await expect(page.locator('.pm-group').first()).toBeAttached({ timeout: 30000 });

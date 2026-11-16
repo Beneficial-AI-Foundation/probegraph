@@ -8,7 +8,7 @@ import { describe, it, expect } from 'vitest';
 import * as d3 from 'd3';
 import {
   isPackedMapNode, hasPackedMapNodes, restrictToPackedNodes, connectivity, buildPackData, PackDatum,
-  fitCamera, visibleGroupLabels, fitLabel, edgesOf, nextFocusIndex, edgeCurve, edgeBends, functionOrder,
+  fitCamera, visibleGroupLabels, fitLabel, edgesOf, nextFocusIndex, edgeCurve, edgeBends, functionOrder, zoomInTarget,
 } from './packed-map';
 import { D3Graph, D3Node, D3Link } from './types';
 
@@ -318,5 +318,31 @@ describe('functionOrder', () => {
     expect(order[0]).toBe(order[1]);
     expect(order[2]).toBe(order[3]);
     expect(order[0]).not.toBe(order[2]);
+  });
+});
+
+describe('zoomInTarget', () => {
+  const fn = ['core', 'core/src', 'core/src/a.rs'];
+
+  it('from the whole project, the crate', () => {
+    expect(zoomInTarget(fn, [])).toBe('core');
+  });
+
+  it('one level below the zoomed group, toward the function', () => {
+    expect(zoomInTarget(fn, ['core'])).toBe('core/src');
+    expect(zoomInTarget(fn, ['core', 'core/src'])).toBe('core/src/a.rs');
+  });
+
+  it('null at the function\'s own group', () => {
+    expect(zoomInTarget(fn, fn)).toBeNull();
+  });
+
+  it('a zoomed group beside the function: the first group that contains the function', () => {
+    expect(zoomInTarget(fn, ['core', 'core/tests'])).toBe('core/src');
+    expect(zoomInTarget(fn, ['other'])).toBe('core');
+  });
+
+  it('a zoomed group below a function that sits on its crate: the crate', () => {
+    expect(zoomInTarget(['core'], ['core', 'core/src'])).toBe('core');
   });
 });

@@ -78,7 +78,8 @@ see [web/ARCHITECTURE.md](../../web/ARCHITECTURE.md#input-formats).
   move the focus to the map. The arrow keys then move a dashed ring from
   function to function, crate by crate and file by file. Home and End go
   to the first and the last function. Enter or Space opens the details of
-  the function in the ring. If the filters leave no Rust function, the
+  the function in the ring. Plus zooms in one level toward the function
+  in the ring, or else the selected one. Minus or Esc zooms out one level. If the filters leave no Rust function, the
   view says so.
 
 Crate Map and Hierarchy aggregate the whole graph into groups. The Packed

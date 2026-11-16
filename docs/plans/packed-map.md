@@ -156,6 +156,10 @@ Notes from the implementation (#130):
 - A click zooms to the clicked group, as the Design says, not one level
   below the focused group. A click deep inside a crate can therefore skip
   levels. Esc still goes up one level at a time.
+- Keyboard zoom: the map stays one tab stop (a listbox of functions), so
+  group circles do not take the keyboard focus. Plus zooms in one level
+  toward the function in the ring (`zoomInTarget`), and Minus or Esc
+  zooms out one level. A hidden live region says which group is zoomed.
 - Edges and labels are drawn in screen coordinates and redrawn on every
   zoom event, so their stroke, arrowheads and font keep one size. Edges
   have an arrowhead at the callee, because color alone does not show the
