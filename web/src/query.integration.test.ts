@@ -314,8 +314,7 @@ describe.skipIf(!existsSync(KATYDID_PATH))('Golden: katydid-proofs atoms.json (L
 });
 
 // ============================================================================
-// graph.json  (the current public graph; mixed-language filtering is covered
-// by the merged_rust_lean_atoms.json golden suite below)
+// graph.json  (the current public graph: probe-aeneas, Rust + Lean)
 // ============================================================================
 
 const GRAPH_JSON_PATH = resolve(__dirname, '../public/graph.json');
@@ -329,18 +328,22 @@ describe.skipIf(!existsSync(GRAPH_JSON_PATH))('Language filter: graph.json', () 
     backfillCrateNames(graph);
   });
 
-  it('detects as lean (not mixed, not verus)', () => {
-    expect(detectProjectLanguage(graph)).toBe('lean');
+  it('detects as mixed (Rust and Lean)', () => {
+    expect(detectProjectLanguage(graph)).toBe('mixed');
   });
 
-  it('showRustNodes=false keeps Lean nodes', () => {
+  it('showRustNodes=false keeps only Lean nodes', () => {
     const filters = createFilters({ showRustNodes: false, showLeanNodes: true });
-    const result = applyFilters(graph, filters, 'lean');
-    expect(result.nodes.length).toBeGreaterThan(0);
-    const rustInResult = result.nodes.filter(n => n.language === 'rust');
-    expect(rustInResult.length).toBe(0);
-    const leanInResult = result.nodes.filter(n => n.language === 'lean');
-    expect(leanInResult.length).toBeGreaterThan(5);
+    const result = applyFilters(graph, filters, 'mixed');
+    expect(result.nodes.filter(n => n.language === 'rust').length).toBe(0);
+    expect(result.nodes.filter(n => n.language === 'lean').length).toBeGreaterThan(5);
+  });
+
+  it('showLeanNodes=false keeps only Rust nodes', () => {
+    const filters = createFilters({ showRustNodes: true, showLeanNodes: false });
+    const result = applyFilters(graph, filters, 'mixed');
+    expect(result.nodes.filter(n => n.language === 'lean').length).toBe(0);
+    expect(result.nodes.filter(n => n.language === 'rust').length).toBeGreaterThan(5);
   });
 });
 

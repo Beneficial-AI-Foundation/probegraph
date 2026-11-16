@@ -1,6 +1,6 @@
 /**
- * E2E tests for the Guide ranked lists and chips on the default Lean graph
- * (public/graph.json, probe-lean). Expectations are read from the rendered
+ * E2E tests for the Guide ranked lists and chips on the default graph
+ * (public/graph.json, probe-aeneas). Expectations are read from the rendered
  * nodes and the URL, not from counts pinned to the dataset.
  */
 
