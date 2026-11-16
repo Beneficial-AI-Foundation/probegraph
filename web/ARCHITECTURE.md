@@ -35,7 +35,8 @@ second graph, the blueprint layer (below).
                          ▼
               ┌─────────────────────┐
               │      View Layer     │  Call Graph / File Map / Hierarchy /
-              └──────────┬──────────┘  Crate Map (Lean: Namespace Map)
+              └──────────┬──────────┘  Crate Map (Lean: Namespace Map) /
+                         │             Packed Map
                          ▼
                     SVG canvas         + Guide panel, VS Code webview
 ```
@@ -121,7 +122,7 @@ fields (`convertSimplifiedToD3Graph`).
 `crate_name` is backfilled by `main.ts` when a layer becomes active, using
 `extractCrateName()` (`types.ts`): first segment of the ID for Rust, first
 two segments of `relative_path` for Lean, `blueprint/<chapter>` for blueprint
-entries. The Crate Map and Hierarchy group on this value.
+entries. The Crate Map, Hierarchy and Packed Map group on this value.
 
 ## Blueprint layer
 
@@ -157,6 +158,7 @@ target on the other layer. User-facing behaviour is in
 | `src/file-map.ts` | File Map view (dagre compound layout, border/fill colouring) |
 | `src/crate-map.ts` | Crate / Namespace / Chapter Map (quotient graph, drill-down and boundary modes) |
 | `src/hierarchy.ts`, `src/hierarchy-map.ts` | Hierarchy view: tree, cut computation, rendering |
+| `src/packed-map.ts` | Packed Map view: `exec` restriction, circle packing of the hierarchy tree, camera, labels, edges |
 | `src/graph-utils.ts` | Seed tiers and budgeted expansion for the seeded view, transitive reduction |
 | `src/blueprint-details.ts` | Node-details section for blueprint entries and cross-layer links |
 | `src/theme.ts` | Colour tokens read from CSS, group palette |
@@ -190,7 +192,8 @@ All constants are in `main.ts` unless noted.
   `LARGE_GRAPH_LINK_THRESHOLD` links get a seeded Call Graph view
   (`computeSeedTiers` / `expandFromSeeds` in `graph-utils.ts`) with those
   thresholds as the render budget, or the "use filters" view if no tier fits.
-  Aggregated views (`isAggregatedView`: Crate Map, Hierarchy) are exempt.
+  Aggregated views (`isAggregatedView`: Crate Map, Hierarchy, Packed Map)
+  are exempt.
 - **Result limiting**: query results are truncated to `MAX_RENDERED_NODES`,
   keeping the anchors and then the nearest nodes by traversal depth
   (`truncate.ts`), or the best-connected nodes when the query has no
@@ -252,8 +255,9 @@ workflows that generate graphs follow
 
 ### Adding a view
 
-The four view classes share `update(graph)`, `resize(width, height)` and
-`clear()`. File Map, Crate Map and Hierarchy also have `destroy()`;
+The five view classes share `update(graph)`, `resize(width, height)` and
+`clear()`. File Map, Crate Map, Hierarchy and Packed Map also have
+`destroy()`;
 `createVisualization()` in `main.ts` calls it when present and otherwise
 clears the Call Graph and removes its SVG. Only the Call Graph has
 `resetView()`. To add a view: write the class, add a button in `index.html`
