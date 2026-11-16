@@ -64,7 +64,8 @@ see [web/ARCHITECTURE.md](../../web/ARCHITECTURE.md#input-formats).
   circle is the share of its functions that are verified, transitively
   verified or trusted.
   Click a function for its details, and use the wheel and drag to zoom
-  and pan. To use the keyboard, press Tab to move the focus to the map.
+  and pan. If a filter change draws other functions, the zoom resets to
+  the whole map. To use the keyboard, press Tab to move the focus to the map.
   The arrow keys then move a dashed ring from function to function, crate
   by crate and file by file. Home and End go to the first and the last
   function. Enter or Space opens the details of the function in the ring.

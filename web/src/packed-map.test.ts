@@ -5,8 +5,9 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import * as d3 from 'd3';
 import {
-  isPackedMapNode, hasPackedMapNodes, restrictToPackedNodes, connectivity, buildPackData, nextFocusIndex,
+  isPackedMapNode, hasPackedMapNodes, restrictToPackedNodes, connectivity, buildPackData, nextFocusIndex, functionOrder,
   PackDatum,
 } from './packed-map';
 import { D3Graph, D3Node, D3Link } from './types';
@@ -174,5 +175,22 @@ describe('nextFocusIndex', () => {
   it('ignores other keys and an empty map', () => {
     expect(nextFocusIndex(1, 'a', 3)).toBeNull();
     expect(nextFocusIndex(0, 'ArrowRight', 0)).toBeNull();
+  });
+});
+
+describe('functionOrder', () => {
+  it('lists the functions of one crate together, at any directory depth', () => {
+    // A breadth-first order would put b1 (depth 2) between a1 and a2 (depth 3 and more)
+    const g = graph([
+      node('a1', 'a', 'src/x/y/deep.rs'),
+      node('a2', 'a', 'src/top.rs'),
+      node('b1', 'b', ''),
+      node('b2', 'b', 'src/z/w/deep.rs'),
+    ], []);
+    const order = functionOrder(d3.hierarchy(buildPackData(g))).map(d => d.data.node!.crate_name);
+    expect(order).toHaveLength(4);
+    expect(order[0]).toBe(order[1]);
+    expect(order[2]).toBe(order[3]);
+    expect(order[0]).not.toBe(order[2]);
   });
 });
