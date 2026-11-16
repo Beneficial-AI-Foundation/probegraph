@@ -7,7 +7,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   isPackedMapNode, hasPackedMapNodes, restrictToPackedNodes, connectivity, buildPackData, PackDatum,
-  fitCamera, visibleGroupLabels, fitLabel, edgesOf, nextFocusIndex,
+  fitCamera, visibleGroupLabels, fitLabel, edgesOf, nextFocusIndex, edgeCurve, edgeBends,
 } from './packed-map';
 import { D3Graph, D3Node, D3Link } from './types';
 
@@ -255,5 +255,50 @@ describe('nextFocusIndex', () => {
   it('ignores other keys and an empty map', () => {
     expect(nextFocusIndex(1, 'a', 3)).toBeNull();
     expect(nextFocusIndex(0, 'ArrowRight', 0)).toBeNull();
+  });
+});
+
+describe('edgeCurve', () => {
+  const at = (c: NonNullable<ReturnType<typeof edgeCurve>>, t: number) => {
+    const u = 1 - t;
+    return [u * u * c.sx + 2 * u * t * c.cx + t * t * c.tx, u * u * c.sy + 2 * u * t * c.cy + t * t * c.ty];
+  };
+
+  it('starts and ends on the circle boundaries, also for close circles', () => {
+    // Copilot's example: radius 40, centers 85 px apart
+    const a = { x: 0, y: 0, r: 40 };
+    const b = { x: 85, y: 0, r: 40 };
+    const c = edgeCurve(a, b, 0.2)!;
+    expect(Math.hypot(c.sx - a.x, c.sy - a.y)).toBeCloseTo(40, 3);
+    expect(Math.hypot(c.tx - b.x, c.ty - b.y)).toBeCloseTo(40, 3);
+    // No point of the cut curve is inside either circle
+    for (let t = 0.05; t < 1; t += 0.05) {
+      const [x, y] = at(c, t);
+      expect(Math.hypot(x - a.x, y - a.y)).toBeGreaterThan(40 - 1e-6);
+      expect(Math.hypot(x - b.x, y - b.y)).toBeGreaterThan(40 - 1e-6);
+    }
+  });
+
+  it('a larger bend gives a different curve', () => {
+    const a = { x: 0, y: 0, r: 5 };
+    const b = { x: 100, y: 0, r: 5 };
+    const c1 = edgeCurve(a, b, 0.2)!;
+    const c2 = edgeCurve(a, b, 0.35)!;
+    expect(Math.abs(at(c1, 0.5)[1] - at(c2, 0.5)[1])).toBeGreaterThan(5);
+  });
+
+  it('null when the circles touch along the whole curve', () => {
+    expect(edgeCurve({ x: 0, y: 0, r: 10 }, { x: 5, y: 0, r: 10 }, 0.2)).toBeNull();
+  });
+});
+
+describe('edgeBends', () => {
+  it('gives each call type between the same two functions its own bend', () => {
+    expect(edgeBends([
+      { source: 'a', target: 'b', type: 'inner' },
+      { source: 'a', target: 'b', type: 'precondition' },
+      { source: 'b', target: 'a', type: 'inner' },
+      { source: 'c', target: 'a', type: 'inner' },
+    ], 0.2, 0.15)).toEqual([0.2, 0.35, 0.2, 0.2]);
   });
 });

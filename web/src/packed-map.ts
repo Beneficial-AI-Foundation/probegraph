@@ -191,6 +191,67 @@ export function edgesOf(
   return out;
 }
 
+export interface Circle { x: number; y: number; r: number }
+
+/** A quadratic curve: start, control point and end. */
+export interface Curve { sx: number; sy: number; cx: number; cy: number; tx: number; ty: number }
+
+/**
+ * The curve of a call from circle `a` to circle `b`: a quadratic curve
+ * between the centers, bent to one side by `bend` times their distance,
+ * and cut where it leaves `a` and where it enters `b`. The cut points are
+ * on the circle boundaries. Null when no part of the curve lies outside
+ * both circles.
+ */
+export function edgeCurve(a: Circle, b: Circle, bend: number): Curve | null {
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const cx = (a.x + b.x) / 2 - dy * bend;
+  const cy = (a.y + b.y) / 2 + dx * bend;
+  const at = (t: number): [number, number] => {
+    const u = 1 - t;
+    return [u * u * a.x + 2 * u * t * cx + t * t * b.x, u * u * a.y + 2 * u * t * cy + t * t * b.y];
+  };
+  const outside = (c: Circle, t: number) => {
+    const [x, y] = at(t);
+    return Math.hypot(x - c.x, y - c.y) >= c.r;
+  };
+  if (outside(a, 0) || outside(b, 1) || !outside(a, 1) || !outside(b, 0)) return null;
+  // Bisection: t0 where the curve leaves a, t1 where it enters b
+  const cut = (inside: (t: number) => boolean, lo: number, hi: number) => {
+    for (let i = 0; i < 40; i++) {
+      const mid = (lo + hi) / 2;
+      if (inside(mid)) lo = mid; else hi = mid;
+    }
+    return (lo + hi) / 2;
+  };
+  const t0 = cut(t => !outside(a, t), 0, 1);
+  const t1 = 1 - cut(t => !outside(b, 1 - t), 0, 1);
+  if (t0 >= t1) return null;
+  // The part of the curve between t0 and t1 is a quadratic curve too
+  const [sx, sy] = at(t0);
+  const [tx, ty] = at(t1);
+  const w = (1 - t0) * t1 + t0 * (1 - t1);
+  return {
+    sx, sy, tx, ty,
+    cx: (1 - t0) * (1 - t1) * a.x + w * cx + t0 * t1 * b.x,
+    cy: (1 - t0) * (1 - t1) * a.y + w * cy + t0 * t1 * b.y,
+  };
+}
+
+/**
+ * The bend of each edge for `edgeCurve`. Edges with the same source and
+ * target (different call types) get growing bends, so they do not overlap.
+ */
+export function edgeBends(edges: ReadonlyArray<PackedEdge>, base = 0.2, step = 0.15): number[] {
+  const seen = new Map<string, number>();
+  return edges.map(e => {
+    const key = `${e.source}\0${e.target}`;
+    const i = seen.get(key) ?? 0;
+    seen.set(key, i + 1);
+    return base + step * i;
+  });
+}
+
 // ============================================================================
 // Visualization
 // ============================================================================
@@ -356,6 +417,13 @@ export class PackedMapVisualization {
     if (!filteredGraph || filteredGraph.nodes.length === 0) {
       this.clear();
       this.showEmpty();
+      // The zoomed group is gone too. Not in clear(), which a graph load
+      // also calls before its ?packed= is read.
+      if (this.focusId) {
+        this.focusId = null;
+        this.svg.attr('data-packed-focus', '');
+        this.notifyFocusChanged();
+      }
       return;
     }
     this.hideEmpty();
@@ -703,38 +771,23 @@ export class PackedMapVisualization {
     }
     const edges = this.edgeCache.edges;
 
-    const path = (e: PackedEdge): string => {
-      const a = this.fnById.get(e.source)!;
-      const b = this.fnById.get(e.target)!;
-      const x1 = t.applyX(a.x), y1 = t.applyY(a.y);
-      const x2 = t.applyX(b.x), y2 = t.applyY(b.y);
-      const dx = x2 - x1, dy = y2 - y1;
-      const dist = Math.hypot(dx, dy) || 1;
-      // Bend to one side, so a call each way gives two curves
-      const cx = (x1 + x2) / 2 - dy * 0.2;
-      const cy = (y1 + y2) / 2 + dx * 0.2;
-      // Start and end on the circles' edges, toward the control point
-      const toward = (px: number, py: number, r: number) => {
-        const ex = cx - px, ey = cy - py;
-        const len = Math.hypot(ex, ey) || 1;
-        const step = Math.min(r, dist / 3);
-        return [px + (ex / len) * step, py + (ey / len) * step];
-      };
-      const [sx, sy] = toward(x1, y1, a.r * t.k);
-      const [tx, ty] = toward(x2, y2, b.r * t.k);
-      return `M${sx},${sy}Q${cx},${cy} ${tx},${ty}`;
-    };
+    const bends = edgeBends(edges);
+    const screen = (d: PackNode): Circle => ({ x: t.applyX(d.x), y: t.applyY(d.y), r: d.r * t.k });
+    const drawn = edges
+      .map((e, i) => ({ e, curve: edgeCurve(screen(this.fnById.get(e.source)!), screen(this.fnById.get(e.target)!), bends[i]) }))
+      .filter((d): d is { e: PackedEdge; curve: Curve } => d.curve !== null);
 
-    layer.selectAll<SVGPathElement, PackedEdge>('path')
-      .data(edges)
+    layer.selectAll<SVGPathElement, { e: PackedEdge; curve: Curve }>('path')
+      .data(drawn)
       .join('path')
       .attr('class', 'pm-edge')
-      .attr('d', path)
+      .attr('data-type', d => d.e.type)
+      .attr('d', ({ curve: c }) => `M${c.sx},${c.sy}Q${c.cx},${c.cy} ${c.tx},${c.ty}`)
       .attr('fill', 'none')
-      .attr('stroke', d => edgeColor(d.type))
+      .attr('stroke', d => edgeColor(d.e.type))
       .attr('stroke-width', 1.5)
       .attr('stroke-opacity', 0.85)
-      .attr('marker-end', d => `url(#${markerId(d.type)})`);
+      .attr('marker-end', d => `url(#${markerId(d.e.type)})`);
   }
 
   // ----- Keyboard -----

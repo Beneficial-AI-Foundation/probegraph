@@ -564,6 +564,12 @@ function handlePopState(): void {
   } finally {
     urlWritesSuppressed--;
   }
+  // The Packed Map dropped a stale ?packed= while URL writes were off:
+  // fix the address bar (replaceState, no new entry)
+  if (activeView === 'packed-map'
+    && (new URLSearchParams(window.location.search).get('packed') || null) !== packedFocus) {
+    updateURLWithFilters();
+  }
   if (focusUrl) loadFocusSet(focusUrl);
 }
 

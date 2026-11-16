@@ -160,12 +160,18 @@ Notes from the implementation (#130):
   zoom event, so their stroke, arrowheads and font keep one size. Edges
   have an arrowhead at the callee, because color alone does not show the
   direction.
+  Each curve starts and ends on the circle boundaries. Calls of several
+  types between the same two functions get growing bends, so each type
+  stays visible.
 - The legend lists three edge colors: body, requires and ensures calls.
   Mapping links go to Lean and spec links start at a theorem, so neither
   joins two drawn functions. Any other type is drawn gray, like a body
   call.
 - On a new layout (a filter change), the camera goes back to the focused
   group, or to the whole project if there is none.
+  If the filters leave no function, the focused group is dropped from
+  the URL, so turning Exec back on shows the whole project. After Back to
+  a stale `?packed=`, the address bar is fixed with replaceState.
 
 ### Phase 3: speed (only if Phase 1 measures it slow)
 

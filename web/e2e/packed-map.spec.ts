@@ -201,6 +201,7 @@ test.describe('Packed Map view', () => {
     });
     expect(focus).toBeNull();
     await expect(page.locator('.packed-map-svg')).toHaveAttribute('data-packed-focus', '');
+    await expect.poll(() => new URL(page.url()).searchParams.has('packed')).toBe(false);
   });
 
   test('labels: group labels at the start, function labels after zooming in', async ({ page }) => {
@@ -251,9 +252,22 @@ test.describe('Packed Map view', () => {
   test('Exec unchecked gives the empty state', async ({ page }) => {
     await page.goto(VIEW_URL);
     await expect(page.locator('.pm-fn').first()).toBeAttached({ timeout: 30000 });
+    const nested = await nestedGroupId(page);
+    await page.locator(`.pm-group[data-group-id="${nested}"]`).dispatchEvent('click');
+    await settle(page);
+    expect(new URL(page.url()).searchParams.get('packed')).toBe(nested);
+
     await page.locator('#show-exec-functions').uncheck();
     await expect(page.locator('.pm-empty')).toHaveText('No Rust functions match the filters.');
     await expect(page.locator('.pm-fn')).toHaveCount(0);
     await expect(page.locator('#view-packed-map')).toBeVisible();
+    // The zoomed group is gone with the functions: the URL drops it
+    expect(new URL(page.url()).searchParams.has('packed')).toBe(false);
+
+    // Exec back on: the whole project, not the old zoom
+    await page.locator('#show-exec-functions').check();
+    await expect(page.locator('.pm-fn').first()).toBeAttached();
+    await expect(page.locator('.packed-map-svg')).toHaveAttribute('data-packed-focus', '');
+    expect((await camera(page)).k).toBeCloseTo(1, 5);
   });
 });
