@@ -1370,6 +1370,21 @@ select.search-input {
   color: var(--pg-text-muted);
 }
 
+.pm-empty {
+  position: absolute;
+  top: 40%;
+  left: 0;
+  right: 0;
+  text-align: center;
+  color: var(--pg-text-muted);
+  font-size: 0.95rem;
+  pointer-events: none;
+}
+
+.pm-fn:hover {
+  filter: brightness(0.9);
+}
+
 .cm-crate-group:hover .cm-crate-box {
   filter: brightness(0.96);
 }

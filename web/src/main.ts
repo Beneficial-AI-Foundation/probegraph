@@ -12,6 +12,7 @@ import { CallGraphVisualization } from './graph';
 import { FileMapVisualization } from './file-map';
 import { CrateMapVisualization, buildCrateGraph } from './crate-map';
 import { HierarchyMapVisualization } from './hierarchy-map';
+import { PackedMapVisualization, hasPackedMapNodes, restrictToPackedNodes } from './packed-map';
 import { computeDerivedStatuses } from './status';
 import { parseAndNormalizeGraph, pickSourceConfig } from './graph-loader';
 import { editorSelectionIntent, relaxations, type EditorSelection, type SelectStatus } from './editor-selection';
@@ -630,11 +631,11 @@ function replaceURLLayer(layer: Layer): void {
   else url.searchParams.set('layer', layer);
   window.history.replaceState(window.history.state, '', url.toString());
 }
-let visualization: CallGraphVisualization | FileMapVisualization | CrateMapVisualization | HierarchyMapVisualization | null = null;
+let visualization: CallGraphVisualization | FileMapVisualization | CrateMapVisualization | HierarchyMapVisualization | PackedMapVisualization | null = null;
 
 /** Views that aggregate the whole graph and so bypass the large-graph guards. */
 function isAggregatedView(view: ActiveView): boolean {
-  return view === 'crate-map' || view === 'hierarchy';
+  return view === 'crate-map' || view === 'hierarchy' || view === 'packed-map';
 }
 
 let hierarchyExpanded: string[] = [];
@@ -747,6 +748,18 @@ function updateLanguageLabels(lang: ProjectLanguage): void {
 }
 
 /**
+ * Show the Packed Map button only for graphs with Rust code. If the view is
+ * active on a graph without any, fall back to the Call Graph; the caller
+ * applies the filters.
+ */
+function updatePackedMapButton(): void {
+  const available = hasPackedMapNodes(state.fullGraph);
+  const btn = document.getElementById('view-packed-map');
+  if (btn) btn.style.display = available ? '' : 'none';
+  if (!available && activeView === 'packed-map') switchView('callgraph', { apply: false });
+}
+
+/**
  * Show the URL's state before a graph loads, so a deferred large graph's
  * Load & Search sees a shared query and URL writes while deferred keep it.
  * loadGraph() reads the URL again against the graph.
@@ -781,6 +794,8 @@ function init(): void {
     activeView = 'crate-map';
   } else if (viewParam === 'hierarchy') {
     activeView = 'hierarchy';
+  } else if (viewParam === 'packed-map') {
+    activeView = 'packed-map';
   }
 
   // Initialize visualization for the active view
@@ -816,7 +831,7 @@ function createVisualization(container: HTMLElement): void {
   // Destroy existing visualization
   if (visualization) {
     if ('destroy' in visualization) {
-      (visualization as FileMapVisualization | CrateMapVisualization | HierarchyMapVisualization).destroy();
+      (visualization as FileMapVisualization | CrateMapVisualization | HierarchyMapVisualization | PackedMapVisualization).destroy();
     } else {
       visualization.clear();
       container.querySelector('svg')?.remove();
@@ -828,12 +843,14 @@ function createVisualization(container: HTMLElement): void {
   container.querySelector('.bp-legend')?.remove();
   container.querySelector('.cm-legend')?.remove();
   container.querySelector('.hm-legend')?.remove();
+  container.querySelector('.pm-empty')?.remove();
 
   // Update button states
   document.getElementById('view-callgraph')?.classList.toggle('active', activeView === 'callgraph');
   document.getElementById('view-file-map')?.classList.toggle('active', activeView === 'file-map');
   document.getElementById('view-crate-map')?.classList.toggle('active', activeView === 'crate-map');
   document.getElementById('view-hierarchy')?.classList.toggle('active', activeView === 'hierarchy');
+  document.getElementById('view-packed-map')?.classList.toggle('active', activeView === 'packed-map');
 
   if (activeView === 'crate-map') {
     visualization = new CrateMapVisualization(container, state, handleStateChange);
@@ -841,6 +858,8 @@ function createVisualization(container: HTMLElement): void {
     const viz = new HierarchyMapVisualization(container, state, handleStateChange);
     if (hierarchyExpanded.length > 0) viz.setExpanded(hierarchyExpanded);
     visualization = viz;
+  } else if (activeView === 'packed-map') {
+    visualization = new PackedMapVisualization(container, state, handleStateChange);
   } else if (activeView === 'file-map') {
     visualization = new FileMapVisualization(container, state, handleStateChange);
   } else {
@@ -884,6 +903,7 @@ function setupUIHandlers(): void {
   document.getElementById('view-file-map')?.addEventListener('click', () => switchView('file-map'));
   document.getElementById('view-crate-map')?.addEventListener('click', () => switchView('crate-map'));
   document.getElementById('view-hierarchy')?.addEventListener('click', () => switchView('hierarchy'));
+  document.getElementById('view-packed-map')?.addEventListener('click', () => switchView('packed-map'));
   document.getElementById('layer-blueprint')?.addEventListener('click', () => switchLayer('blueprint'));
   document.getElementById('layer-code')?.addEventListener('click', () => switchLayer('code'));
 
@@ -2174,6 +2194,7 @@ function showLayer(layer: Layer): void {
   renderKindFilters(state.projectLanguage);
   renderCallTypeFilters(state.projectLanguage);
   updateLanguageLabels(state.projectLanguage);
+  updatePackedMapButton();
 
   const isLarge = isLargeGraph(state.fullGraph);
 
@@ -2620,6 +2641,9 @@ function applyFiltersAndUpdate(): void {
   const compiled = compileQuery(state.filters, state.projectLanguage);
   updateQueryLabel(compiled.query);
   let filtered = applyFilters(state.fullGraph, state.filters, state.projectLanguage);
+  // The Packed Map draws Rust code only; restricting here keeps stats and
+  // node details in step with the view
+  if (activeView === 'packed-map') filtered = restrictToPackedNodes(filtered);
 
   const resultSize = filtered.nodes.length;
   const anchors = compiled.anchorIds;
