@@ -129,6 +129,19 @@ export function fitCamera(
   return { k, x: width / 2 - k * cx, y: height / 2 - k * cy };
 }
 
+/**
+ * The smallest zoom scale for a pack laid out in `layout` and shown in a
+ * `width` × `height` view: half the scale that fits the whole pack. Every
+ * camera the view sets itself (the whole pack, or a group fit) is above it,
+ * so a wheel step never snaps the scale up to the limit.
+ */
+export function minZoomScale(
+  width: number, height: number, layout: { width: number; height: number } | null,
+): number {
+  if (!layout) return 0.5;
+  return 0.5 * Math.min(width, height) / Math.min(layout.width, layout.height);
+}
+
 /** Screen size thresholds for labels, in px of circle radius (the plan gives diameters). */
 export const GROUP_LABEL_MIN_R = 30;
 export const FN_LABEL_MIN_R = 20;
@@ -324,6 +337,7 @@ const FN_FONT = 11;
 /** Distance of a group label's baseline below the top of its circle, px. */
 const GROUP_LABEL_INSET = 16;
 const ZOOM_MS = 600;
+const MAX_ZOOM = 10000;
 const PLAIN_EDGE_COLOR = '#666';
 const EDGE_TYPES = ['inner', 'precondition', 'postcondition', 'mapping', 'spec'];
 
@@ -421,7 +435,7 @@ export class PackedMapVisualization {
 
     // One camera: wheel, drag and click zoom all change this transform
     this.zoom = d3.zoom<SVGSVGElement, unknown>()
-      .scaleExtent([0.5, 10000])
+      .scaleExtent([minZoomScale(this.width, this.height, null), MAX_ZOOM])
       .on('zoom', (event: d3.D3ZoomEvent<SVGSVGElement, unknown>) => {
         this.g.attr('transform', event.transform.toString());
         this.renderOverlay();
@@ -499,6 +513,7 @@ export class PackedMapVisualization {
     this.width = width;
     this.height = height;
     this.svg.attr('viewBox', `0 0 ${width} ${height}`);
+    this.updateScaleExtent();
     // Keep the layout; put the camera back on the focus in the new size
     if (this.layoutKey !== null) this.svg.call(this.zoom.transform, this.focusTransform());
   }
@@ -627,6 +642,11 @@ export class PackedMapVisualization {
       .scale(k);
   }
 
+  /** Keep the wheel's lower limit below every camera the view sets (see minZoomScale). */
+  private updateScaleExtent(): void {
+    this.zoom.scaleExtent([minZoomScale(this.width, this.height, this.layoutSize), MAX_ZOOM]);
+  }
+
   private notifyFocusChanged(): void {
     window.dispatchEvent(new CustomEvent('packed-focus-changed', { detail: { focus: this.focusId } }));
   }
@@ -668,7 +688,9 @@ export class PackedMapVisualization {
       (d.children ?? []).filter(c => c.data.kind !== 'fn').map(c => c.data.id),
     ]));
     this.edgeCache = null;
-    if (this.hoverId && !this.fnById.has(this.hoverId)) this.hoverId = null;
+    this.updateScaleExtent();
+    // The old circles are gone without a mouseleave: the new ones set the hover
+    this.hoverId = null;
 
     const groupSel = this.g.append('g').attr('class', 'pm-groups')
       .selectAll<SVGGElement, PackNode>('g')

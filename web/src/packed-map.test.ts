@@ -8,7 +8,7 @@ import { describe, it, expect } from 'vitest';
 import * as d3 from 'd3';
 import {
   isPackedMapNode, hasPackedMapNodes, restrictToPackedNodes, connectivity, buildPackData, PackDatum,
-  fitCamera, visibleGroupLabels, fitLabel, edgesOf, nextFocusIndex, edgeCurve, edgeBends, functionOrder, zoomInTarget,
+  fitCamera, visibleGroupLabels, fitLabel, edgesOf, nextFocusIndex, edgeCurve, edgeBends, functionOrder, zoomInTarget, minZoomScale,
 } from './packed-map';
 import { D3Graph, D3Node, D3Link } from './types';
 
@@ -344,5 +344,20 @@ describe('zoomInTarget', () => {
 
   it('a zoomed group below a function that sits on its crate: the crate', () => {
     expect(zoomInTarget(['core'], ['core', 'core/src'])).toBe('core');
+  });
+});
+
+describe('minZoomScale', () => {
+  it('0.5 before a layout', () => {
+    expect(minZoomScale(800, 600, null)).toBe(0.5);
+  });
+
+  it('half the whole-pack fit, below any group fit after a shrink', () => {
+    const layout = { width: 800, height: 600 };
+    // 800 x 600 shrunk to 400 x 300: the whole pack fits at 0.5
+    const min = minZoomScale(400, 300, layout);
+    expect(min).toBeCloseTo(0.25);
+    // Copilot's example: a radius-290 group fitted into 400 x 300
+    expect(fitCamera(400, 300, 290, 400, 300).k).toBeGreaterThan(min);
   });
 });

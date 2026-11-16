@@ -273,6 +273,44 @@ test.describe('Packed Map view', () => {
     expect(parent).toBe(chain.length > 1 ? chain[chain.length - 2] : '');
   });
 
+  test('after a shrink below the old zoom limit, a wheel step out zooms out', async ({ page }) => {
+    await page.goto(VIEW_URL);
+    await expect(page.locator('.pm-group').first()).toBeAttached({ timeout: 30000 });
+    // At 1280 x 500 the whole-pack camera scale is about 0.42
+    await page.setViewportSize({ width: 1280, height: 500 });
+    await expect.poll(async () => (await camera(page)).k).toBeLessThan(0.5);
+    const before = await camera(page);
+
+    const box = (await page.locator('.packed-map-svg').boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.wheel(0, 100);
+    const after = await settle(page);
+    expect(after.k).toBeLessThan(before.k);
+  });
+
+  test('a new layout drops the hover of a function whose circle was redrawn', async ({ page }) => {
+    await page.goto(VIEW_URL);
+    await expect(page.locator('.pm-fn').first()).toBeAttached({ timeout: 30000 });
+    const { hovered, other } = await page.evaluate(() => {
+      const fns = [...document.querySelectorAll('.pm-fn')];
+      fns.sort((a, b) => Number(b.getAttribute('r')) - Number(a.getAttribute('r')));
+      const name = (el: Element) => el.querySelector('title')!.textContent!;
+      const top = fns[0];
+      const o = fns.find(el => name(el) !== name(top) && !name(el).includes('*'))!;
+      return { hovered: top.getAttribute('data-node-id')!, other: name(o) };
+    });
+    await page.locator(`.pm-fn[data-node-id="${hovered}"]`).dispatchEvent('mouseenter');
+    expect(await page.locator('.pm-edge').count()).toBeGreaterThan(0);
+
+    // Excluding another function draws a new layout; the hovered one stays
+    const count = await page.locator('.pm-fn').count();
+    await page.locator('#exclude-name-patterns').fill(other);
+    await expect.poll(() => page.locator('.pm-fn').count()).toBeLessThan(count);
+    await expect(page.locator(`.pm-fn[data-node-id="${hovered}"]`)).toBeAttached();
+    // Nothing is selected and the pointer entered no new circle: no edges
+    await expect(page.locator('.pm-edge')).toHaveCount(0);
+  });
+
   test('labels: group labels at the start, function labels after zooming in', async ({ page }) => {
     await page.goto(VIEW_URL);
     await expect(page.locator('.pm-group').first()).toBeAttached({ timeout: 30000 });
