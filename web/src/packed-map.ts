@@ -480,6 +480,8 @@ export class PackedMapVisualization {
       }
     }
     this.renderSelection();
+    // Also on a reused layout: the keyboard ring and the active option follow the update
+    this.renderFocus();
   }
 
   public destroy(): void {
@@ -963,9 +965,9 @@ export class PackedMapVisualization {
     const legend = document.createElement('div');
     legend.className = 'hm-legend pm-legend';
     legend.innerHTML = `
-      <div class="hm-legend-header pm-legend-toggle">
-        <strong>Packed Map</strong> <span class="hm-legend-arrow">${this.legendVisible ? '▼' : '▶'}</span>
-      </div>
+      <button type="button" class="hm-legend-header pm-legend-toggle" aria-expanded="${this.legendVisible}">
+        <strong>Packed Map</strong> <span class="hm-legend-arrow" aria-hidden="true">${this.legendVisible ? '▼' : '▶'}</span>
+      </button>
       <div class="hm-legend-body" style="display:${this.legendVisible ? 'block' : 'none'}">
         <div class="hm-legend-item"><span>Circle packing: nested circles</span></div>
         <div class="hm-legend-item"><span>Rust (<code>exec</code>) functions only</span></div>
@@ -1001,8 +1003,10 @@ export class PackedMapVisualization {
     `;
     this.container.appendChild(legend);
 
-    legend.querySelector('.pm-legend-toggle')?.addEventListener('click', () => {
+    const toggle = legend.querySelector('.pm-legend-toggle') as HTMLButtonElement;
+    toggle.addEventListener('click', () => {
       this.legendVisible = !this.legendVisible;
+      toggle.setAttribute('aria-expanded', String(this.legendVisible));
       const body = legend.querySelector('.hm-legend-body') as HTMLElement;
       const arrow = legend.querySelector('.hm-legend-arrow') as HTMLElement;
       if (body) body.style.display = this.legendVisible ? 'block' : 'none';
