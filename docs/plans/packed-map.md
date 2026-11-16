@@ -10,6 +10,8 @@ first draw took 210 ms. A click selection took about 7 ms without a new
 layout, and a wheel zoom step about 5 ms. The view is therefore in
 `isAggregatedView`, and Phase 3 is not needed for graphs of this size.
 The normal path would cut the view to 200 nodes (`MAX_RENDERED_NODES`).
+The measured graph has fewer than the 10,000 functions that "Size of the
+graph" asks for. Measure again when a larger probe-verus graph exists.
 
 Goal: add a bird's-eye view of a whole project, named "Packed Map".
 Each crate, directory and file is a circle. Its children are packed inside it, and the smallest
@@ -144,7 +146,9 @@ view to `isAggregatedView`. If not, Phase 3 comes first.
    - switch to the view and select a function,
    - click zoom then wheel zoom, with no jump,
    - reload with `?packed=`, and a stale `?packed=` id,
-   - Exec unchecked gives the empty state.
+   - Exec unchecked gives the empty state,
+   - a graph with no `exec` function hides the button and falls back to
+     the Call Graph, on load and on Back.
 
 ### Phase 3: speed (only if Phase 1 measures it slow)
 

@@ -379,6 +379,12 @@ describe('URL reading', () => {
     expect(write(defaultFilters(), { view: 'file-map' }).get('view')).toBe('file-map');
   });
 
+  it('round-trips view=packed-map', () => {
+    const read = (q: string) => readURLState(new URLSearchParams(q), defaultFilters(), graph()).view;
+    expect(read('view=packed-map')).toBe('packed-map');
+    expect(write(defaultFilters(), { view: 'packed-map' }).get('view')).toBe('packed-map');
+  });
+
   it('round-trips layer= and ignores unknown layers', () => {
     const read = (q: string) => readURLState(new URLSearchParams(q), defaultFilters(), graph()).layer;
     expect(write(defaultFilters(), { layer: 'code' }).get('layer')).toBe('code');

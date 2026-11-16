@@ -633,7 +633,11 @@ function replaceURLLayer(layer: Layer): void {
 }
 let visualization: CallGraphVisualization | FileMapVisualization | CrateMapVisualization | HierarchyMapVisualization | PackedMapVisualization | null = null;
 
-/** Views that aggregate the whole graph and so bypass the large-graph guards. */
+/**
+ * Views that draw the whole graph and so bypass the large-graph guards.
+ * Crate Map and Hierarchy aggregate into group boxes. The Packed Map draws
+ * every exec function, which measured fast enough (docs/plans/packed-map.md).
+ */
 function isAggregatedView(view: ActiveView): boolean {
   return view === 'crate-map' || view === 'hierarchy' || view === 'packed-map';
 }
@@ -873,6 +877,8 @@ function createVisualization(container: HTMLElement): void {
  * With `apply: false` the caller applies filters itself right after.
  */
 function switchView(view: ActiveView, opts: { apply?: boolean } = {}): void {
+  // Back or Forward can restore the Packed Map on a graph without exec code
+  if (view === 'packed-map' && state.fullGraph && !hasPackedMapNodes(state.fullGraph)) view = 'callgraph';
   if (view === activeView) return;
   activeView = view;
 
@@ -2195,6 +2201,8 @@ function showLayer(layer: Layer): void {
   renderCallTypeFilters(state.projectLanguage);
   updateLanguageLabels(state.projectLanguage);
   updatePackedMapButton();
+  // A new graph can keep the node ids of the old one: drop the cached layout
+  if (visualization instanceof PackedMapVisualization) visualization.clear();
 
   const isLarge = isLargeGraph(state.fullGraph);
 
@@ -2570,8 +2578,8 @@ function applyFiltersAndUpdate(): void {
 
   // For large graphs with no query intent, render a bounded seeded initial
   // view (entry-point seeds + their depth-limited neighborhood) instead of a
-  // blank page. Crate Map and Hierarchy are exempt: they aggregate to a
-  // compact group-level graph. The File Map is not seeded (keeps the empty
+  // blank page. The isAggregatedView views are exempt: they draw the whole
+  // graph. The File Map is not seeded (keeps the empty
   // view): its dagre layout is only sized for MAX_RENDERED_NODES-scale
   // inputs, and its border/fill colors need the deferred status computation
   // this branch skips. If no seed tier fits the render budget, fall back to
@@ -2630,8 +2638,8 @@ function applyFiltersAndUpdate(): void {
   seededViewInfo = null;
   
   // Run deferred computations on first real filter application.
-  // Crate Map and Hierarchy only need the crate graph, not the full set of
-  // deferred work.
+  // The isAggregatedView views only need the crate graph, not the full set
+  // of deferred work.
   if (isAggregatedView(activeView)) {
     ensureCrateGraphBuilt();
   } else {
@@ -2651,8 +2659,8 @@ function applyFiltersAndUpdate(): void {
     && !filtered.nodes.some(n => anchors.has(n.id));
 
   // Limit rendered nodes for large results to prevent D3 freeze: keep the
-  // nodes nearest to the query's anchors (see truncate.ts). Crate Map and
-  // Hierarchy aggregate into group boxes, so truncation would distort them.
+  // nodes nearest to the query's anchors (see truncate.ts). The
+  // isAggregatedView views draw the whole result, so they are not cut.
   const seeds = truncationSeeds(compiled.query, anchors, filtered);
   const cut = isAggregatedView(activeView) ? null : truncateToBudget(filtered, renderCap(), seeds);
   const wasTruncated = cut !== null && cut.omitted > 0;

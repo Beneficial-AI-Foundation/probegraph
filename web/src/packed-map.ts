@@ -141,7 +141,11 @@ export class PackedMapVisualization {
   private onStateChange: (state: GraphState, selectionChanged?: boolean) => void;
   private container: HTMLElement;
   private legendVisible = true;
-  /** Node ids and link count of the drawn graph: a selection-only update keeps the layout. */
+  /**
+   * Node ids and link endpoints of the drawn graph: an update with the same
+   * graph keeps the layout. A new graph load resets it (`clear`), because the
+   * ids can stay while statuses and paths change.
+   */
   private layoutKey: string | null = null;
 
   constructor(
@@ -183,7 +187,8 @@ export class PackedMapVisualization {
     }
     this.hideEmpty();
 
-    const key = filteredGraph.nodes.map(n => n.id).join('\n') + `|${filteredGraph.links.length}`;
+    const key = filteredGraph.nodes.map(n => n.id).join('\n') + '\0'
+      + filteredGraph.links.map(l => `${endpointId(l.source)}>${endpointId(l.target)}`).join('\n');
     if (key !== this.layoutKey) {
       this.layoutKey = key;
       this.render(filteredGraph);
@@ -259,7 +264,7 @@ export class PackedMapVisualization {
     groupSel.append('title')
       .text(d => {
         const grp = d.data.group!;
-        return `${grp.label}\n${grp.fnCount} functions, ${grp.verifiedCount} verified or trusted`;
+        return `${grp.label}\n${grp.fnCount} functions, ${grp.verifiedCount} verified, transitively verified or trusted`;
       });
 
     this.g.append('g').attr('class', 'pm-fns')
@@ -341,13 +346,14 @@ export class PackedMapVisualization {
         <div class="hm-legend-item"><span>Group: summed size of the functions inside</span></div>
         <div class="hm-legend-section"><strong>Color</strong></div>
         ${swatch('verified', 'Verified')}
+        ${swatch('transitively-verified', 'Transitively verified')}
         ${swatch('trusted', 'Trusted')}
         ${swatch('failed', 'Failed')}
         ${swatch('unverified', 'Unverified')}
         ${swatch('unknown', 'No status')}
         <div class="hm-legend-item">
           <svg width="16" height="16"><circle cx="8" cy="8" r="5.5" fill="none" stroke="${STATUS_COLORS['verified']}" stroke-width="3" stroke-dasharray="20 100"/></svg>
-          <span>Arc: share verified or trusted</span>
+          <span>Arc: share verified, transitively verified or trusted</span>
         </div>
         <div class="hm-legend-section"><strong>Interactions</strong></div>
         <div class="hm-legend-item"><span style="font-size:0.75rem; color:var(--pg-text-muted);">Click function: details panel</span></div>
