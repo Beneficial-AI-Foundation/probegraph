@@ -155,6 +155,54 @@ test.describe('Packed Map view', () => {
     await expect.poll(() => new URL(page.url()).searchParams.has('packed')).toBe(false);
   });
 
+  test('a window resize keeps the focused group centered in the new size', async ({ page }) => {
+    await page.goto(VIEW_URL);
+    await expect(page.locator('.pm-group').first()).toBeAttached({ timeout: 30000 });
+    const nested = await nestedGroupId(page);
+    await page.locator(`.pm-group[data-group-id="${nested}"]`).dispatchEvent('click');
+    await settle(page);
+
+    const size = page.viewportSize()!;
+    await page.setViewportSize({ width: Math.round(size.width * 0.7), height: size.height });
+    await expect.poll(() => page.evaluate(() => {
+      const svg = document.querySelector('.packed-map-svg') as SVGSVGElement;
+      return Math.abs(svg.viewBox.baseVal.width - svg.getBoundingClientRect().width);
+    })).toBeLessThan(1);
+
+    // The group's center is at the center of the new viewBox
+    const cam = await camera(page);
+    const { cx, cy, w, h } = await page.evaluate((id) => {
+      const g = document.querySelector(`.pm-group[data-group-id="${id}"]`)!;
+      const m = /translate\(([-\d.e]+),\s*([-\d.e]+)\)/.exec(g.getAttribute('transform')!)!;
+      const vb = (document.querySelector('.packed-map-svg') as SVGSVGElement).viewBox.baseVal;
+      return { cx: Number(m[1]), cy: Number(m[2]), w: vb.width, h: vb.height };
+    }, nested);
+    expect(Math.abs(cam.k * cx + cam.x - w / 2)).toBeLessThan(1);
+    expect(Math.abs(cam.k * cy + cam.y - h / 2)).toBeLessThan(1);
+  });
+
+  test('Back to a stale ?packed= with the same filters drops the id', async ({ page }) => {
+    await page.goto(VIEW_URL);
+    await expect(page.locator('.pm-group').first()).toBeAttached({ timeout: 30000 });
+
+    const focus = await page.evaluate(async () => {
+      const stale = new URL(location.href);
+      stale.searchParams.set('packed', 'no-such-group/x');
+      const here = location.href;
+      history.pushState({ pushed: true }, '', stale);
+      history.pushState({ pushed: true }, '', here);
+      const changed = new Promise<unknown>(resolve => {
+        window.addEventListener('packed-focus-changed',
+          (e) => resolve((e as CustomEvent).detail.focus), { once: true });
+        setTimeout(() => resolve('no event'), 5000);
+      });
+      history.back();
+      return changed;
+    });
+    expect(focus).toBeNull();
+    await expect(page.locator('.packed-map-svg')).toHaveAttribute('data-packed-focus', '');
+  });
+
   test('labels: group labels at the start, function labels after zooming in', async ({ page }) => {
     await page.goto(VIEW_URL);
     await expect(page.locator('.pm-group').first()).toBeAttached({ timeout: 30000 });

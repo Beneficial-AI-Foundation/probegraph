@@ -249,6 +249,14 @@ export class PackedMapVisualization {
   private fnNodes: PackNode[] = [];
   private groupById = new Map<string, PackNode>();
   private fnById = new Map<string, PackNode>();
+  /** Width and height the pack was laid out in; null before a layout. */
+  private layoutSize: { width: number; height: number } | null = null;
+  /** Ids of the drawn functions (the keys of `fnById`), for `edgesOf`. */
+  private drawnIds: ReadonlySet<string> = new Set();
+  /** Group pack id → its child group pack ids, for the label rules. */
+  private groupChildIds = new Map<string, string[]>();
+  /** Edges of one function in one graph: zoom events reuse them. */
+  private edgeCache: { fnId: string; graph: D3Graph; edges: PackedEdge[] } | null = null;
   /** Hierarchy group id (no `g:` prefix) of the zoomed-to group; null: the whole project. */
   private focusId: string | null = null;
   private hoverId: string | null = null;
@@ -324,6 +332,15 @@ export class PackedMapVisualization {
     if (key !== this.layoutKey) {
       this.layoutKey = key;
       this.render(filteredGraph);
+    } else {
+      // Same layout, but the links can differ in type (edge filters)
+      this.graph = filteredGraph;
+      // A `?packed=` id kept for this update (setFocus) that the layout lacks
+      if (this.focusId && !this.groupById.has(this.focusId)) {
+        this.focusId = null;
+        this.svg.attr('data-packed-focus', '');
+        this.notifyFocusChanged();
+      }
     }
     this.renderSelection();
   }
@@ -337,9 +354,13 @@ export class PackedMapVisualization {
   }
 
   public resize(width: number, height: number): void {
+    if (width <= 0 || height <= 0) return;
     this.svg.interrupt();
     this.width = width;
     this.height = height;
+    this.svg.attr('viewBox', `0 0 ${width} ${height}`);
+    // Keep the layout; put the camera back on the focus in the new size
+    if (this.layoutKey !== null) this.svg.call(this.zoom.transform, this.focusTransform());
   }
 
   public clear(): void {
@@ -352,6 +373,10 @@ export class PackedMapVisualization {
     this.fnNodes = [];
     this.groupById.clear();
     this.fnById.clear();
+    this.layoutSize = null;
+    this.drawnIds = new Set();
+    this.groupChildIds.clear();
+    this.edgeCache = null;
     this.hoverId = null;
   }
 
@@ -416,11 +441,24 @@ export class PackedMapVisualization {
     this.svg.call(this.zoom.transform, this.focusTransform());
   }
 
+  /**
+   * The camera on the focused group, or on the whole pack. The pack fills
+   * the view it was laid out in, so the whole pack is the identity until a
+   * resize.
+   */
   private focusTransform(): d3.ZoomTransform {
     const node = this.focusId ? this.groupById.get(this.focusId) : undefined;
-    if (!node) return d3.zoomIdentity;
-    const c = fitCamera(node.x, node.y, node.r, this.width, this.height);
-    return d3.zoomIdentity.translate(c.x, c.y).scale(c.k);
+    if (node) {
+      const c = fitCamera(node.x, node.y, node.r, this.width, this.height);
+      return d3.zoomIdentity.translate(c.x, c.y).scale(c.k);
+    }
+    const size = this.layoutSize;
+    if (!size || (size.width === this.width && size.height === this.height)) return d3.zoomIdentity;
+    // Scale the pack by the change of the shorter side, and center it
+    const k = Math.min(this.width, this.height) / Math.min(size.width, size.height);
+    return d3.zoomIdentity
+      .translate((this.width - k * size.width) / 2, (this.height - k * size.height) / 2)
+      .scale(k);
   }
 
   private notifyFocusChanged(): void {
@@ -454,6 +492,13 @@ export class PackedMapVisualization {
     this.fnNodes = nodes.filter(d => d.data.kind === 'fn');
     this.groupById = new Map(this.groupNodes.map(d => [d.data.group!.id, d]));
     this.fnById = new Map(this.fnNodes.map(d => [d.data.node!.id, d]));
+    this.layoutSize = { width: this.width, height: this.height };
+    this.drawnIds = new Set(this.fnById.keys());
+    this.groupChildIds = new Map(this.groupNodes.map(d => [
+      d.data.id,
+      (d.children ?? []).filter(c => c.data.kind !== 'fn').map(c => c.data.id),
+    ]));
+    this.edgeCache = null;
     if (this.hoverId && !this.fnById.has(this.hoverId)) this.hoverId = null;
 
     const groupSel = this.g.append('g').attr('class', 'pm-groups')
@@ -552,7 +597,7 @@ export class PackedMapVisualization {
       visible.map(d => ({
         id: d.data.id,
         r: d.r,
-        childIds: (d.children ?? []).filter(c => c.data.kind !== 'fn').map(c => c.data.id),
+        childIds: this.groupChildIds.get(d.data.id) ?? [],
       })),
       t.k,
     );
@@ -600,7 +645,10 @@ export class PackedMapVisualization {
       return;
     }
     const t = d3.zoomTransform(this.svg.node()!);
-    const edges = edgesOf(this.graph.links, fnId!, new Set(this.fnById.keys()));
+    if (!this.edgeCache || this.edgeCache.fnId !== fnId || this.edgeCache.graph !== this.graph) {
+      this.edgeCache = { fnId: fnId!, graph: this.graph, edges: edgesOf(this.graph.links, fnId!, this.drawnIds) };
+    }
+    const edges = this.edgeCache.edges;
 
     const path = (e: PackedEdge): string => {
       const a = this.fnById.get(e.source)!;
