@@ -264,6 +264,16 @@ describe('URL round trip per intent kind', () => {
 });
 
 describe('URL round trip for state outside the intent', () => {
+  it('packed: written only in the Packed Map view, read back as given', () => {
+    const f = defaultFilters();
+    const params = write(f, { view: 'packed-map', packedFocus: 'core/src/a.rs' });
+    expect(params.get('packed')).toBe('core/src/a.rs');
+    expect(readURLState(params, defaultFilters(), graph()).packedFocus).toBe('core/src/a.rs');
+    expect(write(f, { view: 'hierarchy', packedFocus: 'core' }).has('packed')).toBe(false);
+    expect(write(f, { view: 'packed-map', packedFocus: null }, 'packed=old').has('packed')).toBe(false);
+    expect(readURLState(new URLSearchParams('packed='), defaultFilters(), graph()).packedFocus).toBeNull();
+  });
+
   it('depth: finite, default and unlimited', () => {
     expect(write(filtersWith({ maxDepth: 1 })).has('depth')).toBe(false);
     expect(write(filtersWith({ maxDepth: null })).get('depth')).toBe('0');

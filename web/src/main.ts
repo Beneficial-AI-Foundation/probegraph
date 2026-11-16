@@ -311,6 +311,7 @@ function generateShareableURL(): string {
     sourceCrate: selectedSourceCrate,
     targetCrate: selectedTargetCrate,
     hierarchyExpanded,
+    packedFocus,
     pendingFocusUrl: pendingFocus?.url ?? null,
     entrypointsUrl: entrypointsJsonUrl,
     projectLanguage: state.projectLanguage,
@@ -516,6 +517,7 @@ function stateFromURL(): { focusUrl: string | null; view: ActiveView; layerChang
   selectedSourceCrate = parsed.sourceCrate;
   selectedTargetCrate = parsed.targetCrate;
   hierarchyExpanded = parsed.hierarchyExpanded;
+  packedFocus = parsed.packedFocus;
   pendingFocus = null;
   intentGeneration++;
   lastSelectionKey = selectionKey(state.filters.selectedNodes);
@@ -543,6 +545,7 @@ function handlePopState(): void {
   urlWritesSuppressed++;
   try {
     if (view !== activeView) switchView(view, { apply: false });
+    if (visualization instanceof PackedMapVisualization) visualization.setFocus(packedFocus);
     syncFilterUI();
     if (activeView === 'crate-map' && visualization instanceof CrateMapVisualization) {
       visualization.setBoundaryCrates(selectedSourceCrate || null, selectedTargetCrate || null);
@@ -643,6 +646,8 @@ function isAggregatedView(view: ActiveView): boolean {
 }
 
 let hierarchyExpanded: string[] = [];
+/** Packed Map group the camera is on (`?packed=`); null: the whole project. */
+let packedFocus: string | null = null;
 let selectedSourceCrate: string = '';
 let selectedTargetCrate: string = '';
 let crateDependencyMap: Map<string, Set<string>> = new Map();
@@ -774,6 +779,7 @@ function applyURLBeforeLoad(): void {
   selectedSourceCrate = parsed.sourceCrate;
   selectedTargetCrate = parsed.targetCrate;
   hierarchyExpanded = parsed.hierarchyExpanded;
+  packedFocus = parsed.packedFocus;
   entrypointsJsonUrl = parsed.entrypointsUrl;
   pendingFocus = parsed.focusUrl ? { url: parsed.focusUrl, generation: intentGeneration } : null;
   syncFilterUI();
@@ -863,7 +869,9 @@ function createVisualization(container: HTMLElement): void {
     if (hierarchyExpanded.length > 0) viz.setExpanded(hierarchyExpanded);
     visualization = viz;
   } else if (activeView === 'packed-map') {
-    visualization = new PackedMapVisualization(container, state, handleStateChange);
+    const viz = new PackedMapVisualization(container, state, handleStateChange);
+    viz.setFocus(packedFocus);
+    visualization = viz;
   } else if (activeView === 'file-map') {
     visualization = new FileMapVisualization(container, state, handleStateChange);
   } else {
@@ -916,6 +924,13 @@ function setupUIHandlers(): void {
   // Keep the ?expanded= URL parameter in sync with the Hierarchy view
   window.addEventListener('hierarchy-expanded-changed', ((event: CustomEvent) => {
     hierarchyExpanded = event.detail.expanded ?? [];
+    updateURLWithFilters();
+  }) as EventListener);
+
+  // Keep ?packed= in sync with the Packed Map camera (replaceState: Back
+  // does not step through zooms)
+  window.addEventListener('packed-focus-changed', ((event: CustomEvent) => {
+    packedFocus = event.detail.focus ?? null;
     updateURLWithFilters();
   }) as EventListener);
 
@@ -2390,6 +2405,7 @@ function loadGraph(graph: D3Graph, message: string, layer?: Layer): void {
   // crate graph, file list) are deferred until the user applies a filter or
   // switches to Crate Map. This keeps the initial page load fast.
   const { focusUrl } = stateFromURL();
+  if (visualization instanceof PackedMapVisualization) visualization.setFocus(packedFocus);
   entrypointsJsonUrl = new URLSearchParams(window.location.search).get('entrypoints');
   syncFilterUI();
 

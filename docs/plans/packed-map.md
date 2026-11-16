@@ -1,6 +1,7 @@
 # Viewer: Packed Map
 
-Status (2026-11-16): Phase 1 in progress on branch `web/packed-map`.
+Status (2026-11-16): Phase 1 in progress on branch `web/packed-map`
+(#128, PR #129). Phase 2 in progress on a branch stacked on it (#130).
 The open questions are answered, see "Decisions". Revised the same day
 after a Codex review.
 
@@ -149,6 +150,22 @@ view to `isAggregatedView`. If not, Phase 3 comes first.
    - Exec unchecked gives the empty state,
    - a graph with no `exec` function hides the button and falls back to
      the Call Graph, on load and on Back.
+
+Notes from the implementation (#130):
+
+- A click zooms to the clicked group, as the Design says, not one level
+  below the focused group. A click deep inside a crate can therefore skip
+  levels. Esc still goes up one level at a time.
+- Edges and labels are drawn in screen coordinates and redrawn on every
+  zoom event, so their stroke, arrowheads and font keep one size. Edges
+  have an arrowhead at the callee, because color alone does not show the
+  direction.
+- The legend lists three edge colors: body, requires and ensures calls.
+  Mapping links go to Lean and spec links start at a theorem, so neither
+  joins two drawn functions. Any other type is drawn gray, like a body
+  call.
+- On a new layout (a filter change), the camera goes back to the focused
+  group, or to the whole project if there is none.
 
 ### Phase 3: speed (only if Phase 1 measures it slow)
 

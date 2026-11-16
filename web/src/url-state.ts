@@ -25,6 +25,8 @@ export interface URLViewState {
   sourceCrate: string;
   targetCrate: string;
   hierarchyExpanded: string[];
+  /** Packed Map group the camera is on (`packed=`); written only in that view. */
+  packedFocus?: string | null;
   /** ?focus= to write while a focus load is pending (the intent is still none). */
   pendingFocusUrl: string | null;
   entrypointsUrl: string | null;
@@ -40,6 +42,8 @@ export interface ParsedURLState {
   sourceCrate: string;
   targetCrate: string;
   hierarchyExpanded: string[];
+  /** `packed=`: a Packed Map group id, possibly stale. */
+  packedFocus: string | null;
   focusUrl: string | null;
   entrypointsUrl: string | null;
   /** null: no `layer=` param, the graph's default layer applies. */
@@ -56,7 +60,7 @@ const OWNED_PARAMS = [
   'libsignal', 'external', 'rust', 'lean',
   'verified', 'failed', 'unverified', 'status',
   'excludeName', 'excludePath', 'hidden', 'hide',
-  'entrypoints', 'view', 'source-crate', 'target-crate', 'expanded', 'layer',
+  'entrypoints', 'view', 'source-crate', 'target-crate', 'expanded', 'packed', 'layer',
 ];
 
 const DEFAULT_DEPTH = 1;
@@ -147,6 +151,7 @@ export function writeURLState(params: URLSearchParams, s: URLViewState): void {
   if (s.view === 'hierarchy' && s.hierarchyExpanded.length > 0) {
     params.set('expanded', s.hierarchyExpanded.join(','));
   }
+  if (s.view === 'packed-map' && s.packedFocus) params.set('packed', s.packedFocus);
 
   writeIntent(params, f.intent, s.pendingFocusUrl);
   for (const id of f.selectedNodes) params.append('sel', id);
@@ -309,6 +314,7 @@ export function readURLState(
     hierarchyExpanded: params.has('expanded')
       ? params.get('expanded')!.split(',').map(s => s.trim()).filter(s => s)
       : [],
+    packedFocus: params.get('packed') || null,
     focusUrl,
     entrypointsUrl: params.get('entrypoints'),
   };

@@ -6,6 +6,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   isPackedMapNode, hasPackedMapNodes, restrictToPackedNodes, connectivity, buildPackData, PackDatum,
+  fitCamera, visibleGroupLabels, fitLabel, edgesOf,
 } from './packed-map';
 import { D3Graph, D3Node, D3Link } from './types';
 
@@ -151,5 +152,86 @@ describe('buildPackData', () => {
 
   it('returns an empty root for an empty graph', () => {
     expect(buildPackData(graph([], [])).children).toEqual([]);
+  });
+});
+
+describe('fitCamera', () => {
+  it('centers the circle and fits its diameter to the short side, less the margin', () => {
+    const c = fitCamera(100, 50, 20, 800, 400, 0.05);
+    expect(c.k).toBeCloseTo(360 / 40);
+    expect(100 * c.k + c.x).toBeCloseTo(400);
+    expect(50 * c.k + c.y).toBeCloseTo(200);
+  });
+
+  it('a zero radius gives scale 1', () => {
+    expect(fitCamera(10, 10, 0, 100, 100).k).toBe(1);
+  });
+});
+
+describe('visibleGroupLabels', () => {
+  const groups = [
+    { id: 'crate', r: 100, childIds: ['dir', 'small'] },
+    { id: 'dir', r: 40, childIds: ['file'] },
+    { id: 'file', r: 10, childIds: [] },
+    { id: 'small', r: 5, childIds: [] },
+  ];
+
+  it('labels a large group with no large child group', () => {
+    expect([...visibleGroupLabels(groups, 0.5, 30)]).toEqual(['crate']);
+  });
+
+  it('hides the parent label when a child label shows', () => {
+    expect([...visibleGroupLabels(groups, 1, 30)]).toEqual(['dir']);
+    expect([...visibleGroupLabels(groups, 4, 30)].sort()).toEqual(['file']);
+  });
+
+  it('a small sibling does not hide the parent', () => {
+    expect(visibleGroupLabels([groups[0], groups[3]], 1, 30)).toEqual(new Set(['crate']));
+  });
+
+  it('no label below the threshold', () => {
+    expect(visibleGroupLabels(groups, 0.1, 30).size).toBe(0);
+  });
+});
+
+describe('fitLabel', () => {
+  it('keeps a name that fits', () => {
+    expect(fitLabel('abc', 100, 10)).toBe('abc');
+  });
+
+  it('cuts a long name and ends it with an ellipsis', () => {
+    // 10 px font: 6 px per character, 30 px holds 5
+    expect(fitLabel('abcdefgh', 30, 10)).toBe('abcd…');
+  });
+
+  it('gives nothing when one character and the ellipsis do not fit', () => {
+    expect(fitLabel('abcdefgh', 8, 10)).toBe('');
+  });
+});
+
+describe('edgesOf', () => {
+  const links = [
+    { source: 'a', target: 'b', type: 'inner' },
+    { source: 'a', target: 'b', type: 'inner' },
+    { source: 'a', target: 'b', type: 'precondition' },
+    { source: 'c', target: 'a', type: 'inner' },
+    { source: 'a', target: 'a', type: 'inner' },
+    { source: 'a', target: 'gone', type: 'inner' },
+    { source: 'b', target: 'c', type: 'inner' },
+  ];
+
+  it('keeps the calls to and from the function, one per type, among drawn functions', () => {
+    expect(edgesOf(links, 'a', new Set(['a', 'b', 'c']))).toEqual([
+      { source: 'a', target: 'b', type: 'inner' },
+      { source: 'a', target: 'b', type: 'precondition' },
+      { source: 'c', target: 'a', type: 'inner' },
+    ]);
+  });
+
+  it('accepts resolved node endpoints', () => {
+    const a = node('a', 'k', 'k/src/x.rs');
+    const b = node('b', 'k', 'k/src/x.rs');
+    expect(edgesOf([{ source: a, target: b, type: 'inner' }], 'b', new Set(['a', 'b'])))
+      .toEqual([{ source: 'a', target: 'b', type: 'inner' }]);
   });
 });
