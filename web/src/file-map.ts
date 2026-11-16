@@ -376,9 +376,9 @@ export class FileMapVisualization {
     const legend = document.createElement('div');
     legend.className = 'bp-legend';
     legend.innerHTML = `
-      <div class="bp-legend-header" id="bp-legend-toggle">
-        <strong>Legend</strong> <span class="bp-legend-arrow">${this.legendVisible ? '&#9660;' : '&#9654;'}</span>
-      </div>
+      <button type="button" class="bp-legend-header legend-toggle" id="bp-legend-toggle" aria-expanded="${this.legendVisible}">
+        <strong>Legend</strong> <span class="bp-legend-arrow" aria-hidden="true">${this.legendVisible ? '&#9660;' : '&#9654;'}</span>
+      </button>
       <div class="bp-legend-body" style="display:${this.legendVisible ? 'block' : 'none'}">
         <div class="bp-legend-section"><strong>Shapes</strong></div>
         <div class="bp-legend-item">
@@ -431,8 +431,10 @@ export class FileMapVisualization {
     `;
     this.container.appendChild(legend);
 
-    legend.querySelector('#bp-legend-toggle')?.addEventListener('click', () => {
+    const toggle = legend.querySelector('#bp-legend-toggle') as HTMLButtonElement;
+    toggle.addEventListener('click', () => {
       this.legendVisible = !this.legendVisible;
+      toggle.setAttribute('aria-expanded', String(this.legendVisible));
       const body = legend.querySelector('.bp-legend-body') as HTMLElement;
       const arrow = legend.querySelector('.bp-legend-arrow') as HTMLElement;
       if (body) body.style.display = this.legendVisible ? 'block' : 'none';

@@ -1123,9 +1123,9 @@ export class CrateMapVisualization {
     const noun = crateNoun(this.state.projectLanguage);
     const Noun = noun.charAt(0).toUpperCase() + noun.slice(1);
     legend.innerHTML = `
-      <div class="cm-legend-header" id="cm-legend-toggle">
-        <strong>${mapTitle}</strong> <span class="cm-legend-arrow">${this.legendVisible ? '\u25BC' : '\u25B6'}</span>
-      </div>
+      <button type="button" class="cm-legend-header legend-toggle" id="cm-legend-toggle" aria-expanded="${this.legendVisible}">
+        <strong>${mapTitle}</strong> <span class="cm-legend-arrow" aria-hidden="true">${this.legendVisible ? '\u25BC' : '\u25B6'}</span>
+      </button>
       <div class="cm-legend-body" style="display:${this.legendVisible ? 'block' : 'none'}">
         <div class="cm-legend-item">
           <svg width="24" height="16"><rect x="1" y="1" width="22" height="14" rx="4" fill="rgba(66,133,244,0.12)" stroke="rgba(66,133,244,0.5)" stroke-width="1.5"/></svg>
@@ -1146,8 +1146,10 @@ export class CrateMapVisualization {
     `;
     this.container.appendChild(legend);
 
-    legend.querySelector('#cm-legend-toggle')?.addEventListener('click', () => {
+    const toggle = legend.querySelector('#cm-legend-toggle') as HTMLButtonElement;
+    toggle.addEventListener('click', () => {
       this.legendVisible = !this.legendVisible;
+      toggle.setAttribute('aria-expanded', String(this.legendVisible));
       const body = legend.querySelector('.cm-legend-body') as HTMLElement;
       const arrow = legend.querySelector('.cm-legend-arrow') as HTMLElement;
       if (body) body.style.display = this.legendVisible ? 'block' : 'none';

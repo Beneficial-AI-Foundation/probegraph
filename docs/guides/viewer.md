@@ -544,6 +544,9 @@ The sidebar's Verification Legend shows them, and the File Map, Crate Map
 and Hierarchy draw their own legends. The exact colours are the
 `--pg-status-*` tokens in `web/style.css`.
 
+Click a legend's header to collapse or expand the legend. The header is
+a button, so you can also move to it with Tab and press Enter or Space.
+
 ## Clicking nodes
 
 - **Click** a node to show it in node details. The click also adds it to a
