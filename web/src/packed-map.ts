@@ -967,6 +967,7 @@ export class PackedMapVisualization {
         <strong>Packed Map</strong> <span class="hm-legend-arrow">${this.legendVisible ? '▼' : '▶'}</span>
       </div>
       <div class="hm-legend-body" style="display:${this.legendVisible ? 'block' : 'none'}">
+        <div class="hm-legend-item"><span>Circle packing: nested circles</span></div>
         <div class="hm-legend-item"><span>Rust (<code>exec</code>) functions only</span></div>
         <div class="hm-legend-section"><strong>Size</strong></div>
         <div class="hm-legend-item"><span>Function: 1 + distinct callers and callees</span></div>

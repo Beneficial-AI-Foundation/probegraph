@@ -52,7 +52,8 @@ see [web/ARCHITECTURE.md](../../web/ARCHITECTURE.md#input-formats).
   everything. Click a function for its details. Group boxes show rollup
   counts and a verified-fraction bar, and edges are aggregated between the
   visible boxes. The expanded groups are kept in `?expanded=`.
-- **Packed Map (testing)** — a bird's-eye view of the Rust code. Crates,
+- **Packed Map (testing)** — a bird's-eye view of the Rust code, drawn as
+  a circle packing (the nested-circle layout of `d3.pack`). Crates,
   directories and files are nested circles, and the smallest circles are
   functions. Only `exec` functions are drawn: proofs and specs are left
   out, and the stats count the drawn functions only. If the graph has no
