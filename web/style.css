@@ -1390,8 +1390,13 @@ select.search-input {
   outline-offset: -2px;
 }
 
-/* A button, so the legend header works with the keyboard */
-.pm-legend-toggle {
+.pm-fn:hover {
+  filter: brightness(0.9);
+}
+
+/* Legend headers are buttons so the keyboard can toggle them.
+   Reset the browser button look so they match the old div headers. */
+.legend-toggle {
   width: 100%;
   border: none;
   border-bottom: 1px solid var(--pg-border-soft);
@@ -1400,13 +1405,9 @@ select.search-input {
   text-align: left;
 }
 
-.pm-legend-toggle:focus-visible {
+.legend-toggle:focus-visible {
   outline: 2px solid var(--pg-accent);
   outline-offset: -2px;
-}
-
-.pm-fn:hover {
-  filter: brightness(0.9);
 }
 
 .cm-crate-group:hover .cm-crate-box {

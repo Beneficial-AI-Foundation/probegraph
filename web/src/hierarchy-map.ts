@@ -501,9 +501,9 @@ export class HierarchyMapVisualization {
     const legend = document.createElement('div');
     legend.className = 'hm-legend';
     legend.innerHTML = `
-      <div class="hm-legend-header" id="hm-legend-toggle">
-        <strong>Hierarchy</strong> <span class="hm-legend-arrow">${this.legendVisible ? '▼' : '▶'}</span>
-      </div>
+      <button type="button" class="hm-legend-header legend-toggle" id="hm-legend-toggle" aria-expanded="${this.legendVisible}">
+        <strong>Hierarchy</strong> <span class="hm-legend-arrow" aria-hidden="true">${this.legendVisible ? '▼' : '▶'}</span>
+      </button>
       <div class="hm-legend-body" style="display:${this.legendVisible ? 'block' : 'none'}">
         <div class="hm-legend-item">
           <svg width="24" height="16"><rect x="1" y="1" width="22" height="14" rx="4" fill="rgba(66,133,244,0.12)" stroke="rgba(66,133,244,0.5)" stroke-width="1.5"/></svg>
@@ -526,8 +526,10 @@ export class HierarchyMapVisualization {
     `;
     this.container.appendChild(legend);
 
-    legend.querySelector('#hm-legend-toggle')?.addEventListener('click', () => {
+    const toggle = legend.querySelector('#hm-legend-toggle') as HTMLButtonElement;
+    toggle.addEventListener('click', () => {
       this.legendVisible = !this.legendVisible;
+      toggle.setAttribute('aria-expanded', String(this.legendVisible));
       const body = legend.querySelector('.hm-legend-body') as HTMLElement;
       const arrow = legend.querySelector('.hm-legend-arrow') as HTMLElement;
       if (body) body.style.display = this.legendVisible ? 'block' : 'none';

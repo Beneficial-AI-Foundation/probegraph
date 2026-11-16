@@ -987,7 +987,7 @@ export class PackedMapVisualization {
     const legend = document.createElement('div');
     legend.className = 'hm-legend pm-legend';
     legend.innerHTML = `
-      <button type="button" class="hm-legend-header pm-legend-toggle" aria-expanded="${this.legendVisible}">
+      <button type="button" class="hm-legend-header legend-toggle pm-legend-toggle" aria-expanded="${this.legendVisible}">
         <strong>Packed Map</strong> <span class="hm-legend-arrow" aria-hidden="true">${this.legendVisible ? '▼' : '▶'}</span>
       </button>
       <div class="hm-legend-body" style="display:${this.legendVisible ? 'block' : 'none'}">
