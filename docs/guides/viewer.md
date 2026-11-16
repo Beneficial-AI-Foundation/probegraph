@@ -73,8 +73,12 @@ see [web/ARCHITECTURE.md](../../web/ARCHITECTURE.md#input-formats).
   parent label is hidden. A long name is cut and ends with "…". Hover a
   function, or select it, to draw its calls to the other drawn functions:
   gray for a body call, orange for a requires call, pink for an ensures
-  call. The legend shows these colors. If the filters leave no Rust
-  function, the view says so.
+  call. The legend shows these colors. To use the keyboard, press Tab to
+  move the focus to the map. The arrow keys then move a dashed ring from
+  function to function, crate by crate and file by file. Home and End go
+  to the first and the last function. Enter or Space opens the details of
+  the function in the ring. If the filters leave no Rust function, the
+  view says so.
 
 Crate Map and Hierarchy aggregate the whole graph into groups. The Packed
 Map draws every function of the graph. The large-graph limits below don't
