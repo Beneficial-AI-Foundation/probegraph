@@ -259,6 +259,15 @@ export function edgeBends(edges: ReadonlyArray<PackedEdge>, base = 0.2, step = 0
 type PackNode = d3.HierarchyCircularNode<PackDatum>;
 
 /**
+ * The function leaves of a pack tree in depth-first order: crate by crate,
+ * file by file. This is the keyboard order. `descendants()` is
+ * breadth-first, so it would mix files at different directory depths.
+ */
+export function functionOrder<T extends d3.HierarchyNode<PackDatum>>(root: T): T[] {
+  return root.leaves().filter(d => d.data.kind === 'fn') as T[];
+}
+
+/**
  * Keyboard navigation over the function circles, in pack order (crate by
  * crate, file by file): the index `key` moves the focus to, or null for a
  * key that does not move it. The focus stops at both ends.
@@ -344,8 +353,12 @@ export class PackedMapVisualization {
   /** Hierarchy group id (no `g:` prefix) of the zoomed-to group; null: the whole project. */
   private focusId: string | null = null;
   private hoverId: string | null = null;
-  /** Node id of the function with the keyboard focus ring (not the zoomed group). */
-  private focusedId: string | null = null;
+  /**
+   * Position in `fnNodes` of the function with the keyboard focus ring (not
+   * the zoomed group), or -1. A position, not a node id: a graph can repeat
+   * an id (two atoms with one name), and each copy is its own circle.
+   */
+  private focusIndex = -1;
 
   constructor(
     container: HTMLElement,
@@ -472,6 +485,8 @@ export class PackedMapVisualization {
     this.graph = null;
     this.groupNodes = [];
     this.fnNodes = [];
+    this.focusIndex = -1;
+    this.svg.attr('aria-activedescendant', null);
     this.groupById.clear();
     this.fnById.clear();
     this.layoutSize = null;
@@ -590,7 +605,10 @@ export class PackedMapVisualization {
 
     const nodes = packed.descendants().filter(d => d.depth > 0);
     this.groupNodes = nodes.filter(d => d.data.kind !== 'fn');
-    this.fnNodes = nodes.filter(d => d.data.kind === 'fn');
+    // Keep the keyboard focus on the same function in the new layout, if it is drawn
+    const focusedId = this.fnNodes[this.focusIndex]?.data.node!.id;
+    this.fnNodes = functionOrder(packed);
+    this.focusIndex = focusedId === undefined ? -1 : this.fnNodes.findIndex(d => d.data.node!.id === focusedId);
     this.groupById = new Map(this.groupNodes.map(d => [d.data.group!.id, d]));
     this.fnById = new Map(this.fnNodes.map(d => [d.data.node!.id, d]));
     this.layoutSize = { width: this.width, height: this.height };
@@ -601,7 +619,6 @@ export class PackedMapVisualization {
     ]));
     this.edgeCache = null;
     if (this.hoverId && !this.fnById.has(this.hoverId)) this.hoverId = null;
-    if (this.focusedId && !this.fnById.has(this.focusedId)) this.focusedId = null;
 
     const groupSel = this.g.append('g').attr('class', 'pm-groups')
       .selectAll<SVGGElement, PackNode>('g')
@@ -656,7 +673,7 @@ export class PackedMapVisualization {
       .style('cursor', 'pointer')
       .on('click', (event: MouseEvent, d) => {
         event.stopPropagation();
-        this.focusedId = d.data.node!.id;
+        this.focusIndex = this.fnNodes.indexOf(d);
         this.select(d);
       })
       .on('mouseenter', (_event: MouseEvent, d) => {
@@ -792,14 +809,10 @@ export class PackedMapVisualization {
 
   // ----- Keyboard -----
 
-  private focusedIndex(): number {
-    return this.fnNodes.findIndex(d => d.data.node!.id === this.focusedId);
-  }
-
   private handleMapKeyDown(event: KeyboardEvent): void {
     const count = this.fnNodes.length;
     if (count === 0) return;
-    let index = this.focusedIndex();
+    let index = this.focusIndex;
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
       if (index >= 0) this.select(this.fnNodes[index]);
@@ -823,7 +836,7 @@ export class PackedMapVisualization {
 
   private moveFocus(index: number): void {
     const d = this.fnNodes[index];
-    this.focusedId = d.data.node!.id;
+    this.focusIndex = index;
     // Keep the focused function on screen at the current zoom
     const svgNode = this.svg.node()!;
     const [sx, sy] = d3.zoomTransform(svgNode).apply([d.x, d.y]);
@@ -837,7 +850,7 @@ export class PackedMapVisualization {
   /** Draw the focus ring and set the active option while the map has the focus. */
   private renderFocus(): void {
     const svgNode = this.svg.node();
-    const index = this.focusedIndex();
+    const index = this.focusIndex;
     const ring = this.g.select<SVGCircleElement>('.pm-focus-ring');
     if (!svgNode || index < 0 || document.activeElement !== svgNode) {
       ring.style('display', 'none');

@@ -66,8 +66,9 @@ see [web/ARCHITECTURE.md](../../web/ARCHITECTURE.md#input-formats).
   Click a function for its details. Click a group circle to zoom to it.
   Press Esc or click the background to zoom out one level. The wheel and
   drag zoom and pan from where a click zoom stops. The zoomed group is
-  kept in `?packed=`. If that group is gone after a reload or a filter
-  change, the view shows the whole project. A group gets a label when its
+  kept in `?packed=`. If a filter change draws other functions, the zoom
+  goes back to that group. If that group is gone after a reload or a
+  filter change, the view shows the whole project. A group gets a label when its
   circle is about 60 px wide or more on screen, and a function when its
   circle is about 40 px wide or more. If a child group has a label, the
   parent label is hidden. A long name is cut and ends with "…". Hover a
