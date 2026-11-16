@@ -1,11 +1,13 @@
 /**
  * Unit tests for the Packed Map data model (packed-map.ts): the `exec`
- * rule, the graph restriction, connectivity and the pack input tree.
+ * rule, the graph restriction, connectivity, the pack input tree and the
+ * keyboard order.
  */
 
 import { describe, it, expect } from 'vitest';
 import {
-  isPackedMapNode, hasPackedMapNodes, restrictToPackedNodes, connectivity, buildPackData, PackDatum,
+  isPackedMapNode, hasPackedMapNodes, restrictToPackedNodes, connectivity, buildPackData, nextFocusIndex,
+  PackDatum,
 } from './packed-map';
 import { D3Graph, D3Node, D3Link } from './types';
 
@@ -151,5 +153,26 @@ describe('buildPackData', () => {
 
   it('returns an empty root for an empty graph', () => {
     expect(buildPackData(graph([], [])).children).toEqual([]);
+  });
+});
+
+describe('nextFocusIndex', () => {
+  it('moves one step with the arrow keys and stops at both ends', () => {
+    expect(nextFocusIndex(1, 'ArrowRight', 3)).toBe(2);
+    expect(nextFocusIndex(1, 'ArrowDown', 3)).toBe(2);
+    expect(nextFocusIndex(2, 'ArrowRight', 3)).toBe(2);
+    expect(nextFocusIndex(1, 'ArrowLeft', 3)).toBe(0);
+    expect(nextFocusIndex(1, 'ArrowUp', 3)).toBe(0);
+    expect(nextFocusIndex(0, 'ArrowLeft', 3)).toBe(0);
+  });
+
+  it('jumps to the ends with Home and End', () => {
+    expect(nextFocusIndex(1, 'Home', 3)).toBe(0);
+    expect(nextFocusIndex(1, 'End', 3)).toBe(2);
+  });
+
+  it('ignores other keys and an empty map', () => {
+    expect(nextFocusIndex(1, 'a', 3)).toBeNull();
+    expect(nextFocusIndex(0, 'ArrowRight', 0)).toBeNull();
   });
 });

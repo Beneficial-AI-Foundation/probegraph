@@ -64,7 +64,11 @@ see [web/ARCHITECTURE.md](../../web/ARCHITECTURE.md#input-formats).
   circle is the share of its functions that are verified, transitively
   verified or trusted.
   Click a function for its details, and use the wheel and drag to zoom
-  and pan. If the filters leave no Rust function, the view says so.
+  and pan. To use the keyboard, press Tab to move the focus to the map.
+  The arrow keys then move a dashed ring from function to function, crate
+  by crate and file by file. Home and End go to the first and the last
+  function. Enter or Space opens the details of the function in the ring.
+  If the filters leave no Rust function, the view says so.
 
 Crate Map and Hierarchy aggregate the whole graph into groups. The Packed
 Map draws every function of the graph. The large-graph limits below don't

@@ -1381,6 +1381,15 @@ select.search-input {
   pointer-events: none;
 }
 
+.packed-map-svg:focus {
+  outline: none;
+}
+
+.packed-map-svg:focus-visible {
+  outline: 2px solid var(--pg-accent);
+  outline-offset: -2px;
+}
+
 .pm-fn:hover {
   filter: brightness(0.9);
 }

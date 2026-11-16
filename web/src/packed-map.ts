@@ -121,6 +121,29 @@ export function buildPackData(graph: D3Graph): PackDatum {
 
 type PackNode = d3.HierarchyCircularNode<PackDatum>;
 
+/**
+ * Keyboard navigation over the function circles, in pack order (crate by
+ * crate, file by file): the index `key` moves the focus to, or null for a
+ * key that does not move it. The focus stops at both ends.
+ */
+export function nextFocusIndex(current: number, key: string, count: number): number | null {
+  if (count === 0) return null;
+  switch (key) {
+    case 'ArrowRight':
+    case 'ArrowDown':
+      return Math.min(current + 1, count - 1);
+    case 'ArrowLeft':
+    case 'ArrowUp':
+      return Math.max(current - 1, 0);
+    case 'Home':
+      return 0;
+    case 'End':
+      return count - 1;
+    default:
+      return null;
+  }
+}
+
 const GROUP_STROKE = 'rgba(100, 116, 139, 0.45)';
 const ARC_WIDTH = 3;
 
@@ -147,6 +170,11 @@ export class PackedMapVisualization {
    * ids can stay while statuses and paths change.
    */
   private layoutKey: string | null = null;
+  private zoom: d3.ZoomBehavior<SVGSVGElement, unknown>;
+  /** Function circles in pack order, the keyboard navigation order. */
+  private fnNodes: PackNode[] = [];
+  /** Node id of the function with the keyboard focus. */
+  private focusedId: string | null = null;
 
   constructor(
     container: HTMLElement,
@@ -166,12 +194,22 @@ export class PackedMapVisualization {
       .attr('width', '100%')
       .attr('height', '100%')
       .attr('viewBox', `0 0 ${this.width} ${this.height}`)
-      .attr('class', 'packed-map-svg');
+      .attr('class', 'packed-map-svg')
+      // One tab stop for the whole map; arrow keys move between functions
+      .attr('tabindex', 0)
+      .attr('role', 'listbox')
+      .attr('aria-label', 'Packed Map functions. Arrow keys move between functions, Enter or Space opens the details.')
+      .on('keydown', (event: KeyboardEvent) => this.handleKeyDown(event))
+      .on('focus', () => this.renderFocus())
+      .on('blur', () => this.renderFocus());
 
-    const zoom = d3.zoom<SVGSVGElement, unknown>()
+    this.zoom = d3.zoom<SVGSVGElement, unknown>()
       .scaleExtent([0.5, 200])
-      .on('zoom', (event) => { this.g.attr('transform', event.transform); });
-    this.svg.call(zoom);
+      .on('zoom', (event) => {
+        this.g.attr('transform', event.transform);
+        this.renderFocus();
+      });
+    this.svg.call(this.zoom);
 
     this.g = this.svg.append('g');
     this.renderLegend();
@@ -211,6 +249,7 @@ export class PackedMapVisualization {
   public clear(): void {
     this.g.selectAll('*').remove();
     this.layoutKey = null;
+    this.fnNodes = [];
   }
 
   // ----- Rendering -----
@@ -236,6 +275,8 @@ export class PackedMapVisualization {
     const nodes = packed.descendants().filter(d => d.depth > 0);
     const groups = nodes.filter(d => d.data.kind !== 'fn');
     const fns = nodes.filter(d => d.data.kind === 'fn');
+    this.fnNodes = fns;
+    if (this.focusedId && !fns.some(d => d.data.node!.id === this.focusedId)) this.focusedId = null;
 
     const groupSel = this.g.append('g').attr('class', 'pm-groups')
       .selectAll<SVGGElement, PackNode>('g')
@@ -272,6 +313,9 @@ export class PackedMapVisualization {
       .data(fns)
       .join('circle')
       .attr('class', 'pm-fn')
+      .attr('id', (_d, i) => `pm-fn-${i}`)
+      .attr('role', 'option')
+      .attr('aria-label', d => `${d.data.label}, ${d.data.node!.verification_status ?? 'no status'}`)
       .attr('cx', d => d.x)
       .attr('cy', d => d.y)
       .attr('r', d => d.r)
@@ -279,12 +323,20 @@ export class PackedMapVisualization {
       .style('cursor', 'pointer')
       .on('click', (event: MouseEvent, d) => {
         event.stopPropagation();
-        this.state = { ...this.state, selectedNode: d.data.node! };
-        this.renderSelection();
-        this.onStateChange(this.state);
+        this.focusedId = d.data.node!.id;
+        this.select(d);
       })
       .append('title')
       .text(d => d.data.label);
+
+    // Above the circles and labels; drawn only while the map has the focus
+    this.g.append('circle')
+      .attr('class', 'pm-focus-ring')
+      .attr('fill', 'none')
+      .attr('stroke', 'var(--pg-text)')
+      .attr('stroke-dasharray', '3 2')
+      .attr('pointer-events', 'none')
+      .style('display', 'none');
 
     // Crate names only; the label rules for every level come in Phase 2
     this.g.append('g').attr('class', 'pm-labels')
@@ -301,11 +353,82 @@ export class PackedMapVisualization {
       .text(d => d.data.label);
   }
 
+  private select(d: PackNode): void {
+    this.state = { ...this.state, selectedNode: d.data.node! };
+    this.renderSelection();
+    this.renderFocus();
+    this.onStateChange(this.state);
+  }
+
   private renderSelection(): void {
     const selectedId = this.state.selectedNode?.id;
     this.g.selectAll<SVGCircleElement, PackNode>('.pm-fn')
+      .attr('aria-selected', d => d.data.node!.id === selectedId ? 'true' : 'false')
       .attr('stroke', d => d.data.node!.id === selectedId ? SELECTION_COLOR : null)
       .attr('stroke-width', d => d.data.node!.id === selectedId ? Math.max(d.r / 3, 1.5) : null);
+  }
+
+  // ----- Keyboard -----
+
+  private focusedIndex(): number {
+    return this.fnNodes.findIndex(d => d.data.node!.id === this.focusedId);
+  }
+
+  private handleKeyDown(event: KeyboardEvent): void {
+    const count = this.fnNodes.length;
+    if (count === 0) return;
+    let index = this.focusedIndex();
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      if (index >= 0) this.select(this.fnNodes[index]);
+      return;
+    }
+    // The first arrow key starts at the selected function, or else the first
+    if (index < 0) {
+      const selectedId = this.state.selectedNode?.id;
+      index = Math.max(this.fnNodes.findIndex(d => d.data.node!.id === selectedId), 0);
+      if (event.key.startsWith('Arrow')) {
+        event.preventDefault();
+        this.moveFocus(index);
+        return;
+      }
+    }
+    const next = nextFocusIndex(index, event.key, count);
+    if (next === null) return;
+    event.preventDefault();
+    this.moveFocus(next);
+  }
+
+  private moveFocus(index: number): void {
+    const d = this.fnNodes[index];
+    this.focusedId = d.data.node!.id;
+    // Keep the focused function on screen at the current zoom
+    const svgNode = this.svg.node()!;
+    const [sx, sy] = d3.zoomTransform(svgNode).apply([d.x, d.y]);
+    if (sx < 0 || sx > this.width || sy < 0 || sy > this.height) {
+      this.svg.call(this.zoom.translateTo, d.x, d.y);
+    }
+    this.renderFocus();
+  }
+
+  /** Draw the focus ring and set the active option while the map has the focus. */
+  private renderFocus(): void {
+    const svgNode = this.svg.node();
+    const index = this.focusedIndex();
+    const ring = this.g.select<SVGCircleElement>('.pm-focus-ring');
+    if (!svgNode || index < 0 || document.activeElement !== svgNode) {
+      ring.style('display', 'none');
+      this.svg.attr('aria-activedescendant', null);
+      return;
+    }
+    const d = this.fnNodes[index];
+    const k = d3.zoomTransform(svgNode).k;
+    ring.style('display', null)
+      .attr('cx', d.x)
+      .attr('cy', d.y)
+      .attr('r', d.r + 3 / k)
+      .attr('stroke-width', 1.5 / k);
+    this.svg.attr('aria-activedescendant', `pm-fn-${index}`);
   }
 
   // ----- Empty state -----
@@ -358,6 +481,8 @@ export class PackedMapVisualization {
         <div class="hm-legend-section"><strong>Interactions</strong></div>
         <div class="hm-legend-item"><span style="font-size:0.75rem; color:var(--pg-text-muted);">Click function: details panel</span></div>
         <div class="hm-legend-item"><span style="font-size:0.75rem; color:var(--pg-text-muted);">Wheel and drag: zoom and pan</span></div>
+        <div class="hm-legend-item"><span style="font-size:0.75rem; color:var(--pg-text-muted);">Tab, then arrow keys: move between functions</span></div>
+        <div class="hm-legend-item"><span style="font-size:0.75rem; color:var(--pg-text-muted);">Enter or Space: details panel</span></div>
       </div>
     `;
     this.container.appendChild(legend);
