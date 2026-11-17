@@ -27,6 +27,7 @@ export interface HierarchyGroup {
   // Rollups over the whole subtree:
   fnCount: number;
   fileCount: number;
+  /** Functions whose status `isDone` accepts (default: isVerifiedStatus). */
   verifiedCount: number;
 }
 
@@ -81,8 +82,14 @@ interface BuildGroup {
  * starts with the crate label's own segments (common in Rust workspaces and
  * Lean two-segment crate names), that prefix is stripped so the crate level
  * is not duplicated as directories.
+ *
+ * `isDone` picks the statuses that `verifiedCount` counts. The Packed Map
+ * passes a stricter test for Lean (packedArcStatus).
  */
-export function buildHierarchyTree(graph: D3Graph): HierarchyTree {
+export function buildHierarchyTree(
+  graph: D3Graph,
+  isDone: (status: D3Node['verification_status']) => boolean = isVerifiedStatus,
+): HierarchyTree {
   const rootMap = new Map<string, BuildGroup>();
 
   for (const node of graph.nodes) {
@@ -152,7 +159,7 @@ export function buildHierarchyTree(graph: D3Graph): HierarchyTree {
     };
     for (const id of inner.nodeIds) {
       const node = nodeById.get(id);
-      if (node && isVerifiedStatus(node.verification_status)) group.verifiedCount++;
+      if (node && isDone(node.verification_status)) group.verifiedCount++;
     }
 
     const childGroups = [...inner.children.values()]

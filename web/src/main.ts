@@ -767,12 +767,13 @@ function updateLanguageLabels(lang: ProjectLanguage): void {
 }
 
 /**
- * Show the Packed Map button only for graphs with Rust code. If the view is
- * active on a graph without any, fall back to the Call Graph; the caller
- * applies the filters.
+ * Show the Packed Map button only for graphs with something it can draw
+ * (isPackedMapCandidate: Rust code, or the declarations of a pure Lean
+ * graph). The filters do not change this. If the view is active on a graph
+ * without any, fall back to the Call Graph; the caller applies the filters.
  */
 function updatePackedMapButton(): void {
-  const available = hasPackedMapNodes(state.fullGraph);
+  const available = hasPackedMapNodes(state.fullGraph, state.projectLanguage);
   const btn = document.getElementById('view-packed-map');
   if (btn) btn.style.display = available ? '' : 'none';
   if (!available && activeView === 'packed-map') switchView('callgraph', { apply: false });
@@ -893,6 +894,7 @@ function createVisualization(container: HTMLElement): void {
         center: true,
         offer: true,
       }));
+    viz.setLanguage(state.projectLanguage);
     viz.setFocus(packedFocus);
     visualization = viz;
   } else if (activeView === 'file-map') {
@@ -908,8 +910,8 @@ function createVisualization(container: HTMLElement): void {
  * With `apply: false` the caller applies filters itself right after.
  */
 function switchView(view: ActiveView, opts: { apply?: boolean } = {}): void {
-  // Back or Forward can restore the Packed Map on a graph without exec code
-  if (view === 'packed-map' && state.fullGraph && !hasPackedMapNodes(state.fullGraph)) view = 'callgraph';
+  // Back or Forward can restore the Packed Map on a graph it cannot draw
+  if (view === 'packed-map' && state.fullGraph && !hasPackedMapNodes(state.fullGraph, state.projectLanguage)) view = 'callgraph';
   if (view === activeView) return;
   activeView = view;
 
@@ -2264,7 +2266,10 @@ function showLayer(layer: Layer): void {
   updateLanguageLabels(state.projectLanguage);
   updatePackedMapButton();
   // A new graph can keep the node ids of the old one: drop the cached layout
-  if (visualization instanceof PackedMapVisualization) visualization.clear();
+  if (visualization instanceof PackedMapVisualization) {
+    visualization.clear();
+    visualization.setLanguage(state.projectLanguage);
+  }
 
   const isLarge = isLargeGraph(state.fullGraph);
 
@@ -2711,10 +2716,11 @@ function applyFiltersAndUpdate(): void {
 
   const compiled = compileQuery(state.filters, state.projectLanguage);
   updateQueryLabel(compiled.query);
-  let filtered = applyFilters(state.fullGraph, state.filters, state.projectLanguage);
-  // The Packed Map draws Rust code only; restricting here keeps stats and
-  // node details in step with the view
-  if (activeView === 'packed-map') filtered = restrictToPackedNodes(filtered);
+  // The Packed Map draws only its candidates; restricting in the filter
+  // step keeps stats and node details in step with the view
+  const language = state.projectLanguage;
+  let filtered = applyFilters(state.fullGraph, state.filters, language,
+    activeView === 'packed-map' ? { restrict: g => restrictToPackedNodes(g, language), inventory: true } : undefined);
 
   const resultSize = filtered.nodes.length;
   const anchors = compiled.anchorIds;

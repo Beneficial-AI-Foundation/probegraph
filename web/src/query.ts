@@ -796,6 +796,7 @@ function compileTextQuery(source: string, sink: string, maxDepth: number | null)
 export function executeQuery(
   compiled: CompiledQuery,
   fullGraph: D3Graph,
+  opts: { keepIsolated?: boolean } = {},
 ): D3Graph {
   const {
     query, traversalPredicates, displayPredicates, focusConfig, anchorIds,
@@ -1000,7 +1001,9 @@ export function executeQuery(
   // -- Step 7: cleanup --
   // An exact status selection without a query keeps every node it matches,
   // even when the status filter removed all its links
-  const keepAllMatches = query.type === 'noTraversal' && displayPredicates.exactStatuses !== null;
+  // `keepIsolated` (the Packed Map inventory, see applyFilters) skips it too
+  const keepAllMatches = query.type === 'noTraversal'
+    && (displayPredicates.exactStatuses !== null || opts.keepIsolated === true);
   if (!keepAllMatches) {
     // Blueprint entries without uses edges (planned-only, decl-missing) are
     // often isolated and still part of the plan
