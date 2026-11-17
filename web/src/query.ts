@@ -574,8 +574,8 @@ function buildMatcher(queryStr: string): NodeMatcher {
 
 /**
  * Node predicate for the seeded initial view: every display-affecting filter
- * that is not query intent (hidden nodes, kind flags, exclude patterns, build
- * artifacts, libsignal origin, verification status). Lives here so it shares
+ * that is not query intent (hidden nodes, kind flags, stub crates, exclude
+ * patterns, build artifacts, libsignal origin, verification status). Lives here so it shares
  * the pipeline's helpers and cannot drift from them.
  */
 export function compileSeededDisplayPredicate(
@@ -589,6 +589,7 @@ export function compileSeededDisplayPredicate(
   return (node: D3Node) => {
     if (filters.hiddenNodes.has(node.id)) return false;
     if (!passesKind(node.kind || 'exec')) return false;
+    if (node.in_stub_crate && !filters.showStubCrates) return false;
     if (nodeMatchesExcludeNamePattern(node, excludeName)) return false;
     if (nodeMatchesExcludePathPattern(node, excludePath)) return false;
     if (nodeIsFromBuildArtifact(node)) return false;
@@ -624,7 +625,8 @@ export function compileQuery(
 
   // -- Traversal predicates --
   const traversalPredicates: TraversalPredicates = {
-    kindFilter: (node: D3Node) => passesKind(node.kind || 'exec'),
+    kindFilter: (node: D3Node) =>
+      passesKind(node.kind || 'exec') && (filters.showStubCrates || !node.in_stub_crate),
     excludeNamePatterns: parseExcludePatterns(filters.excludeNamePatterns),
     excludePathPatterns: parseExcludePatterns(filters.excludePathPatterns),
     includeFilePatterns: useFileAsResultFilter ? [] : parsedFilePatterns,

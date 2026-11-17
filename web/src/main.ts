@@ -7,7 +7,7 @@ import {
   compileQuery, GraphQuery, NodeMatcher, filterLinksByType, linkTypeShown, roleFilteredGraph,
   compileSeededDisplayPredicate,
 } from './query';
-import { computeSeedTiers, expandFromSeeds, SeedTier, SeedExpansion } from './graph-utils';
+import { computeSeedTiers, expandFromSeeds, SeedTier, SeedExpansion, markStubCrates } from './graph-utils';
 import { CallGraphVisualization } from './graph';
 import { FileMapVisualization } from './file-map';
 import { CrateMapVisualization, buildCrateGraph } from './crate-map';
@@ -359,6 +359,7 @@ function syncFilterUI(): void {
   setCheckbox('show-body-deps', state.filters.showBodyDeps);
   setCheckbox('show-libsignal', state.filters.showLibsignal);
   setCheckbox('show-non-libsignal', state.filters.showNonLibsignal);
+  setCheckbox('show-stub-crates', state.filters.showStubCrates);
   setCheckbox('show-rust-nodes', state.filters.showRustNodes);
   setCheckbox('show-lean-nodes', state.filters.showLeanNodes);
   syncStatusCheckboxes();
@@ -1030,6 +1031,11 @@ function setupUIHandlers(): void {
 
   document.getElementById('show-non-libsignal')?.addEventListener('change', (e) => {
     state.filters.showNonLibsignal = (e.target as HTMLInputElement).checked;
+    applyFiltersAndUpdate();
+  });
+
+  document.getElementById('show-stub-crates')?.addEventListener('change', (e) => {
+    state.filters.showStubCrates = (e.target as HTMLInputElement).checked;
     applyFiltersAndUpdate();
   });
 
@@ -1884,6 +1890,13 @@ function updateSourceTypeFilterVisibility(): void {
   container.style.display = hasLibsignal && hasExternal ? '' : 'none';
 }
 
+/** Show the Stub crates filter only when the graph has a stub crate. */
+function updateStubCratesFilterVisibility(): void {
+  const container = document.getElementById('stub-crates-container');
+  if (!container) return;
+  container.style.display = state.fullGraph?.nodes.some(n => n.in_stub_crate) ? '' : 'none';
+}
+
 /**
  * Render Language filter checkboxes when the graph contains multiple languages.
  * Only shown when both Rust and Lean nodes are present.
@@ -2192,11 +2205,12 @@ function copyGraph(graph: D3Graph): D3Graph {
 
 /**
  * Set crate_name on every node with language-aware extraction (Lean:
- * two-level module path, Rust/Verus: top-level crate).
+ * two-level module path, Rust/Verus: top-level crate), then mark stub crates.
  */
 function fillCrateNames(graph: D3Graph): void {
   const language = detectProjectLanguage(graph);
   for (const node of graph.nodes) node.crate_name = extractCrateName(node, language);
+  markStubCrates(graph);
 }
 
 /**
@@ -2230,6 +2244,7 @@ function showLayer(layer: Layer): void {
   // Detect project language and update UI accordingly
   state.projectLanguage = detectProjectLanguage(state.fullGraph);
   updateSourceTypeFilterVisibility();
+  updateStubCratesFilterVisibility();
   renderLanguageFilters();
   renderKindFilters(state.projectLanguage);
   renderCallTypeFilters(state.projectLanguage);

@@ -36,6 +36,7 @@ const NODE_FILTER_RELAXATIONS: { [K in keyof FilterOptions]?: FilterOptions[K] }
   showTypes: true,
   showProjections: true,
   showInstances: true,
+  showStubCrates: true,
   showRustNodes: true,
   showLeanNodes: true,
   showLibsignal: true,

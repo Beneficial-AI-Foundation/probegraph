@@ -20,6 +20,7 @@ import {
   resolveNodeMatcher,
   compileQuery,
   compileSeededDisplayPredicate,
+  executeQuery,
   TraversalPredicates,
 } from './query';
 import { D3Graph, D3Node, D3Link, FilterOptions, LinkRole } from './types';
@@ -87,6 +88,7 @@ function createFilters(overrides: Partial<FilterOptions> = {}): FilterOptions {
     showAxioms: true,
     showTypes: true,
     showProjections: true,
+    showStubCrates: true,
     showInstances: true,
     showRustNodes: true,
     showLeanNodes: true,
@@ -817,5 +819,30 @@ describe('compileSeededDisplayPredicate', () => {
     const noUnverified = compileSeededDisplayPredicate(createFilters({ showUnverifiedNodes: false }));
     expect(noUnverified(mkNode())).toBe(false);
     expect(noUnverified(mkNode({ verification_status: 'failed' }))).toBe(true);
+  });
+});
+
+describe('Stub crates filter', () => {
+  // app calls lib and ext; ext is in a stub crate
+  const app = createNode({ id: 'app', display_name: 'app', crate_name: 'app' });
+  const lib = createNode({ id: 'lib', display_name: 'lib', crate_name: 'app' });
+  const ext = { ...createNode({ id: 'ext', display_name: 'ext', crate_name: 'dep' }), in_stub_crate: true };
+  const graph = createGraph([app, lib, ext], [createLink('app', 'lib'), createLink('app', 'ext')]);
+  const ids = (f: FilterOptions) => executeQuery(compileQuery(f), graph).nodes.map(n => n.id).sort();
+
+  it('hides stub-crate nodes and their links when off', () => {
+    const result = executeQuery(compileQuery(createFilters({ showStubCrates: false })), graph);
+    expect(result.nodes.map(n => n.id).sort()).toEqual(['app', 'lib']);
+    expect(result.links.map(l => l.target)).toEqual(['lib']);
+  });
+
+  it('shows them when on', () => {
+    expect(ids(createFilters({ showStubCrates: true }))).toEqual(['app', 'ext', 'lib']);
+  });
+
+  it('applies to the seeded display predicate', () => {
+    expect(compileSeededDisplayPredicate(createFilters({ showStubCrates: false }))(ext)).toBe(false);
+    expect(compileSeededDisplayPredicate(createFilters({ showStubCrates: true }))(ext)).toBe(true);
+    expect(compileSeededDisplayPredicate(createFilters({ showStubCrates: false }))(app)).toBe(true);
   });
 });

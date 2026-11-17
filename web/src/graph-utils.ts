@@ -1,4 +1,4 @@
-import { D3Graph, D3Node, D3Link } from './types';
+import { BLUEPRINT_LANGUAGE, D3Graph, D3Node, D3Link } from './types';
 
 function linkEndpoints(link: D3Link): [string, string] {
   const s = typeof link.source === 'string' ? link.source : link.source.id;
@@ -295,4 +295,29 @@ export function transitiveReduction(nodes: D3Node[], links: D3Link[]): D3Link[] 
     const key = `${s}\0${t}\0${(link as any).type || 'inner'}`;
     return !redundant.has(key);
   });
+}
+
+// ============================================================================
+// Stub crates
+// ============================================================================
+
+/**
+ * Set `in_stub_crate` on every node of a crate where no node has a source
+ * path. Extractors such as probe-rust record calls into other crates as
+ * atoms with an empty `code-path`; those crates have nothing to show but
+ * their names. Needs `crate_name` filled in. Marks nothing when no node of
+ * the graph has a source path, so a graph without paths is not hidden whole.
+ * Blueprint nodes are never marked.
+ */
+export function markStubCrates(graph: D3Graph): void {
+  const withSource = new Set<string>();
+  for (const node of graph.nodes) {
+    if (node.relative_path) withSource.add(node.crate_name);
+  }
+  for (const node of graph.nodes) {
+    const stub = withSource.size > 0
+      && node.language !== BLUEPRINT_LANGUAGE
+      && !withSource.has(node.crate_name);
+    node.in_stub_crate = stub || undefined;
+  }
 }

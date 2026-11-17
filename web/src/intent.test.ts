@@ -308,6 +308,13 @@ describe('URL round trip for state outside the intent', () => {
     expect(read('status=bogus').exactStatuses).toBeNull();
   });
 
+  it('round-trips the Stub crates filter as stubs=1, off by default', () => {
+    expect(write(defaultFilters()).has('stubs')).toBe(false);
+    expect(write(filtersWith({ showStubCrates: true })).get('stubs')).toBe('1');
+    expect(roundTrip(filtersWith({ showStubCrates: true })).showStubCrates).toBe(true);
+    expect(roundTrip(defaultFilters()).showStubCrates).toBe(false);
+  });
+
   it('every param goes back to default when its filter does (delete before set)', () => {
     const nonDefault = filtersWith({
       intent: textIntent('foo', 'bar'),
@@ -317,6 +324,7 @@ describe('URL round trip for state outside the intent', () => {
       maxDepth: 3,
       showExecFunctions: false, showProofFunctions: false, showSpecFunctions: true,
       showAxioms: false, showTypes: true, showProjections: true, showInstances: true,
+      showStubCrates: true,
       showInnerCalls: false, showPreconditionCalls: true, showPostconditionCalls: true,
       showMappingLinks: false, showSpecLinks: false,
       showStatementDeps: false, showBodyDeps: false,

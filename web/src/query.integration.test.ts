@@ -42,6 +42,7 @@ function createFilters(overrides: Partial<FilterOptions> = {}): FilterOptions {
     showAxioms: true,
     showTypes: true,
     showProjections: true,
+    showStubCrates: true,
     showInstances: true,
     showRustNodes: true,
     showLeanNodes: true,
