@@ -21,6 +21,7 @@ import {
   compileQuery,
   compileSeededDisplayPredicate,
   executeQuery,
+  withoutStubCrates,
   TraversalPredicates,
 } from './query';
 import { D3Graph, D3Node, D3Link, FilterOptions, LinkRole } from './types';
@@ -838,6 +839,13 @@ describe('Stub crates filter', () => {
 
   it('shows them when on', () => {
     expect(ids(createFilters({ showStubCrates: true }))).toEqual(['app', 'ext', 'lib']);
+  });
+
+  it('withoutStubCrates drops stub nodes and their links only when hidden', () => {
+    const hidden = withoutStubCrates(graph, { showStubCrates: false });
+    expect(hidden.nodes.map(n => n.id)).toEqual(['app', 'lib']);
+    expect(hidden.links.map(l => l.target)).toEqual(['lib']);
+    expect(withoutStubCrates(graph, { showStubCrates: true })).toBe(graph);
   });
 
   it('applies to the seeded display predicate', () => {

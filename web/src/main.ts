@@ -4,7 +4,7 @@ import { readyWorkHtml, trustDetailsHtml } from './trust-details';
 import { groupDrawing, witness } from './trust-base';
 import { applyFilters, getCallers, getCallees } from './filters';
 import {
-  compileQuery, GraphQuery, NodeMatcher, filterLinksByType, linkTypeShown, roleFilteredGraph,
+  compileQuery, GraphQuery, NodeMatcher, filterLinksByType, linkTypeShown, roleFilteredGraph, withoutStubCrates,
   compileSeededDisplayPredicate,
 } from './query';
 import { computeSeedTiers, expandFromSeeds, SeedTier, SeedExpansion, markStubCrates } from './graph-utils';
@@ -713,12 +713,12 @@ function initGuidePanel(): void {
   guidePanel = new GuidePanel(guideActions);
 }
 
-// Kind and link type filters the Guide was last rendered with
+// Kind, stub crate and link type filters the Guide was last rendered with
 let guideFilterKey = '';
 
 /**
  * Re-render the Guide. Its rankings and chips only name nodes and links the
- * current kind and link type filters show; counts use the full graph.
+ * current kind, stub crate and link type filters show; counts use the full graph.
  */
 function refreshGuidePanel(opts: { onlyIfFiltersChanged?: boolean } = {}): void {
   if (!state.fullGraph || !guidePanel) return;
@@ -726,7 +726,7 @@ function refreshGuidePanel(opts: { onlyIfFiltersChanged?: boolean } = {}): void 
   const compiled = compileQuery(f, state.projectLanguage);
   const key = JSON.stringify([
     compiled.linkTypeFilter, f.showExecFunctions, f.showProofFunctions, f.showSpecFunctions,
-    f.showAxioms, f.showTypes, f.showProjections, f.showInstances,
+    f.showAxioms, f.showTypes, f.showProjections, f.showInstances, f.showStubCrates,
   ]);
   if (opts.onlyIfFiltersChanged && key === guideFilterKey) return;
   guideFilterKey = key;
@@ -1504,9 +1504,10 @@ interface SeededViewInfo {
 
 // Set while the current view is the entry-point-seeded initial view
 let seededViewInfo: SeededViewInfo | null = null;
-// Seed tiers of the role-filtered graph, keyed by the statement / body-or-proof
-// boxes (turning off a role can create new sources); reset in loadGraph()
-let seedTiersCache: { roleKey: string; tiers: SeedTier[] } | null = null;
+// Seed tiers of the role-filtered graph without hidden stub crates, keyed by
+// the statement / body-or-proof boxes (turning off a role can create new
+// sources) and the Stub crates box; reset in loadGraph()
+let seedTiersCache: { key: string; tiers: SeedTier[] } | null = null;
 // The depth the user actually asked for (?depth= or slider), kept separate
 // from state.filters.maxDepth: the seeded render commits the *achieved* depth
 // there, and an async re-seed (a late ?entrypoints= payload whose tier fits
@@ -1575,11 +1576,13 @@ function computeSeededExpansion(
 ): { tier: SeedTier; expansion: SeedExpansion } | null {
   if (!state.fullGraph) return null;
   // The statement / body-or-proof boxes restrict the expansion, as they do
-  // query traversal
-  const graph = roleFilteredGraph(state.fullGraph, state.filters);
-  const roleKey = `${state.filters.showStatementDeps}:${state.filters.showBodyDeps}`;
-  if (seedTiersCache?.roleKey !== roleKey) {
-    seedTiersCache = { roleKey, tiers: computeSeedTiers(graph) };
+  // query traversal. Hidden stub crates are left out so they do not use up
+  // the render budget.
+  const graph = withoutStubCrates(roleFilteredGraph(state.fullGraph, state.filters), state.filters);
+  const { showStatementDeps, showBodyDeps, showStubCrates } = state.filters;
+  const key = `${showStatementDeps}:${showBodyDeps}:${showStubCrates}`;
+  if (seedTiersCache?.key !== key) {
+    seedTiersCache = { key, tiers: computeSeedTiers(graph) };
   }
   const tiers: SeedTier[] = entrypointsParam && activeLayer === 'code'
     ? [{ name: 'blueprint-param', seeds: entrypointsParam.seeds }, ...seedTiersCache.tiers]

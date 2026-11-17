@@ -444,6 +444,27 @@ export function roleFilteredGraph(
   return { ...graph, links: graph.links.filter(l => linkRoleShown(l, filter)) };
 }
 
+/**
+ * The graph without stub-crate nodes and their links, unless the Stub crates
+ * filter shows them. Stub-crate nodes have no source, so they are call
+ * targets only: removing them cuts no path between other nodes.
+ */
+export function withoutStubCrates(
+  graph: D3Graph,
+  filter: Pick<FilterOptions, 'showStubCrates'>,
+): D3Graph {
+  if (filter.showStubCrates || !graph.nodes.some(n => n.in_stub_crate)) return graph;
+  const stubIds = new Set(graph.nodes.filter(n => n.in_stub_crate).map(n => n.id));
+  return {
+    ...graph,
+    nodes: graph.nodes.filter(n => !stubIds.has(n.id)),
+    links: graph.links.filter(l => {
+      const { sourceId, targetId } = getLinkId(l);
+      return !stubIds.has(sourceId) && !stubIds.has(targetId);
+    }),
+  };
+}
+
 /** Whether a link's type and role pass the filter. */
 export function linkTypeShown(link: D3Link, filter: LinkTypeFilter): boolean {
   const t = link.type || 'inner';
