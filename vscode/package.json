@@ -217,7 +217,8 @@
   "overrides": {
     "mocha": {
       "diff": "^8.0.3",
-      "serialize-javascript": "^7.0.5"
+      "serialize-javascript": "^7.0.5",
+      "minimatch": "^11.0.9"
     },
     "minimatch@^9": "^11.0.9",
     "minimatch@^10": "^11.0.9"
