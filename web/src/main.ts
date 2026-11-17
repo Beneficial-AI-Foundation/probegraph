@@ -875,7 +875,16 @@ function createVisualization(container: HTMLElement): void {
     if (hierarchyExpanded.length > 0) viz.setExpanded(hierarchyExpanded);
     visualization = viz;
   } else if (activeView === 'packed-map') {
-    const viz = new PackedMapVisualization(container, state, handleStateChange);
+    // As if picked in the search box: the Call Graph keeps a query that
+    // reaches the function, and Back returns to the Packed Map. With no
+    // query, the capped overview is no query to keep: the function's own
+    // query replaces it.
+    const viz = new PackedMapVisualization(container, state, handleStateChange,
+      node => revealNode(node.id, {
+        policy: { kind: 'replace', always: state.filters.intent.kind === 'none' },
+        center: true,
+        offer: true,
+      }));
     viz.setFocus(packedFocus);
     visualization = viz;
   } else if (activeView === 'file-map') {
@@ -3948,7 +3957,13 @@ function revealNode(id: string, opts: RevealOptions): RevealResult {
     } finally {
       urlWritesSuppressed--;
     }
-    if (!wrote) updateURLWithFilters();
+    // With the query kept, the view change and the unhiding still need an
+    // entry of their own. A layer switch already pushed one.
+    if (!wrote && !switched && (viewChanged || unhidden)) {
+      window.history.pushState({ pushed: true }, '', generateShareableURL());
+    } else if (!wrote) {
+      updateURLWithFilters();
+    }
   }
   return presentReveal(node, opts, token);
 }
@@ -3999,7 +4014,10 @@ function applySearchPolicy(
   id: string, label: string, policy: Exclude<RevealPolicy, { kind: 'editor' }>,
   history: 'push' | 'replace' = 'push',
 ): boolean {
-  if (policy.kind === 'replace' && classifyReveal(revealContext(), id).reason !== 'outside-intent') return false;
+  if (policy.kind === 'replace') {
+    const { reason } = classifyReveal(revealContext(), id);
+    if (reason !== 'outside-intent' && !(policy.always && reason === 'truncated')) return false;
+  }
   const intent = searchIntent(state.filters.intent, id, label, policy);
   if (intent === state.filters.intent) return false;
   setIntent(intent, { history, pushed: true });
