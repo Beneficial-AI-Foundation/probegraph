@@ -18,7 +18,7 @@ The viewer tries these sources in order:
    committed one is the demo graph shown on GitHub Pages.
 4. The **Load Graph JSON** button — pick a local file.
 
-Fetched files larger than 10 MiB are not parsed immediately (a `HEAD`
+Fetched files larger than 20 MiB are not parsed immediately (a `HEAD`
 request checks the size first): the viewer shows a "Large Graph Detected"
 prompt and loads only when you set a Source, Sink, or Include Files filter
 and press **Load & Search**. The exception is the local `./graph.json` when

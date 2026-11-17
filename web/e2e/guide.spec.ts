@@ -1,10 +1,15 @@
 /**
- * E2E tests for the Guide ranked lists and chips on the default graph
- * (public/graph.json, probe-aeneas). Expectations are read from the rendered
- * nodes and the URL, not from counts pinned to the dataset.
+ * E2E tests for the Guide ranked lists and chips on a frozen probe-aeneas
+ * 0.18 extract of SparsePostQuantumRatchet-verify (src/test-data). It still has
+ * unverified work, so the Frontier and the status counts are not empty.
+ * Expectations are read from the rendered nodes and the URL, not from counts
+ * pinned to the dataset.
  */
 
 import { test, expect, type Page } from '@playwright/test';
+import { readFileSync } from 'node:fs';
+
+const FIXTURE = readFileSync(new URL('../src/test-data/spqr-aeneas-0.18.json', import.meta.url), 'utf8');
 
 interface Shown {
   id: string;
@@ -14,7 +19,9 @@ interface Shown {
 }
 
 async function open(page: Page): Promise<void> {
-  await page.goto('/probegraph/?json=graph.json');
+  await page.route(url => url.pathname === '/guide-graph.json',
+    route => route.fulfill({ body: FIXTURE, contentType: 'application/json' }));
+  await page.goto('/probegraph/?json=/guide-graph.json');
   await expect(page.locator('#stats')).toContainText('Total Nodes', { timeout: 30000 });
   await page.locator('#tab-guide').click();
 }

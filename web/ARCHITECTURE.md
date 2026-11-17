@@ -185,7 +185,7 @@ runs. Categorical group colours (File Map, Crate Map, Hierarchy) come from
 All constants are in `main.ts` unless noted.
 
 - **Deferred loading**: fetched files over `LARGE_FILE_SIZE_THRESHOLD`
-  (10 MiB) wait for a query before parsing.
+  (20 MiB) wait for a query before parsing.
 - **Large-graph gate**: graphs over `LARGE_GRAPH_NODE_THRESHOLD` nodes or
   `LARGE_GRAPH_LINK_THRESHOLD` links get a seeded Call Graph view
   (`computeSeedTiers` / `expandFromSeeds` in `graph-utils.ts`) with those

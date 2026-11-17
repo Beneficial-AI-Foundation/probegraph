@@ -5,9 +5,9 @@ import { readFileSync } from 'node:fs';
 const FIXTURE = JSON.parse(readFileSync(
   new URL('../src/test-data/blueprint-project-template.json', import.meta.url), 'utf8'));
 
-// Padded past the 10 MiB auto-load cap, so the viewer defers the load
+// Padded past the 20 MiB auto-load cap, so the viewer defers the load
 function serveLarge(page: Page, extract: unknown): Promise<void> {
-  const body = JSON.stringify(extract) + ' '.repeat(11 * 1024 * 1024);
+  const body = JSON.stringify(extract) + ' '.repeat(21 * 1024 * 1024);
   return page.route(url => url.pathname === '/large.json', route => route.fulfill({ body, contentType: 'application/json' }));
 }
 

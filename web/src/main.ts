@@ -131,7 +131,7 @@ const LARGE_GRAPH_NODE_THRESHOLD = 2000;
 // This gate is about loading, not rendering: JSON.parse on large files freezes
 // the browser. The seeded initial view bounds rendering, so auto-load is safe
 // up to this cap; anything bigger stays behind the explicit "Load & Search" path.
-const LARGE_FILE_SIZE_THRESHOLD = 10 * 1024 * 1024;
+const LARGE_FILE_SIZE_THRESHOLD = 20 * 1024 * 1024;
 
 // Track if we're deferring load due to large file
 let deferredGraphUrl: string | null = null;
