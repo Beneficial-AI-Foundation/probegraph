@@ -69,6 +69,13 @@ see [web/ARCHITECTURE.md](../../web/ARCHITECTURE.md#input-formats).
   The arrow keys then move a dashed ring from function to function, crate
   by crate and file by file. Home and End go to the first and the last
   function. Enter or Space opens the details of the function in the ring.
+  Double-click a function, or press Shift+Enter on it, to open it in the
+  Call Graph. This works like a row of the search box: if the current
+  query already reaches the function, the query stays. If not, the Call
+  Graph shows the function, its callers and its callees at the current
+  depth. With no query, the Call Graph also shows them when the function
+  is not among the drawn nodes of a large graph. Browser back returns to
+  the Packed Map.
   If the filters leave no Rust function, the view says so.
 
 Crate Map and Hierarchy aggregate the whole graph into groups. The Packed

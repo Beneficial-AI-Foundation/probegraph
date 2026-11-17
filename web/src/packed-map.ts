@@ -188,15 +188,19 @@ export class PackedMapVisualization {
    * one name), and each copy is its own circle.
    */
   private focusIndex = -1;
+  /** Opens a function in the Call Graph (double-click, Shift+Enter). */
+  private onOpen: (node: D3Node) => void;
 
   constructor(
     container: HTMLElement,
     state: GraphState,
     onStateChange: (state: GraphState, selectionChanged?: boolean) => void,
+    onOpen: (node: D3Node) => void = () => {},
   ) {
     this.container = container;
     this.state = state;
     this.onStateChange = onStateChange;
+    this.onOpen = onOpen;
 
     const rect = container.getBoundingClientRect();
     this.width = rect.width || 800;
@@ -211,7 +215,7 @@ export class PackedMapVisualization {
       // One tab stop for the whole map; arrow keys move between functions
       .attr('tabindex', 0)
       .attr('role', 'listbox')
-      .attr('aria-label', 'Packed Map functions. Arrow keys move between functions, Enter or Space opens the details.')
+      .attr('aria-label', 'Packed Map functions. Arrow keys move between functions, Enter or Space opens the details, Shift+Enter opens the function in the Call Graph.')
       .on('keydown', (event: KeyboardEvent) => this.handleKeyDown(event))
       .on('focus', () => this.renderFocus())
       .on('blur', () => this.renderFocus());
@@ -349,6 +353,11 @@ export class PackedMapVisualization {
         this.focusIndex = this.fnNodes.indexOf(d);
         this.select(d);
       })
+      // Not the zoom's double-click: the map stays as it is for Back
+      .on('dblclick', (event: MouseEvent, d) => {
+        event.stopPropagation();
+        this.onOpen(d.data.node!);
+      })
       .append('title')
       .text(d => d.data.label);
 
@@ -397,6 +406,11 @@ export class PackedMapVisualization {
     const count = this.fnNodes.length;
     if (count === 0) return;
     let index = this.focusIndex;
+    if (event.key === 'Enter' && event.shiftKey) {
+      event.preventDefault();
+      if (index >= 0) this.onOpen(this.fnNodes[index].data.node!);
+      return;
+    }
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
       if (index >= 0) this.select(this.fnNodes[index]);
@@ -499,9 +513,11 @@ export class PackedMapVisualization {
         </div>
         <div class="hm-legend-section"><strong>Interactions</strong></div>
         <div class="hm-legend-item"><span style="font-size:0.75rem; color:var(--pg-text-muted);">Click function: details panel</span></div>
+        <div class="hm-legend-item"><span style="font-size:0.75rem; color:var(--pg-text-muted);">Double-click function: open in Call Graph</span></div>
         <div class="hm-legend-item"><span style="font-size:0.75rem; color:var(--pg-text-muted);">Wheel and drag: zoom and pan</span></div>
         <div class="hm-legend-item"><span style="font-size:0.75rem; color:var(--pg-text-muted);">Tab, then arrow keys: move between functions</span></div>
         <div class="hm-legend-item"><span style="font-size:0.75rem; color:var(--pg-text-muted);">Enter or Space: details panel</span></div>
+        <div class="hm-legend-item"><span style="font-size:0.75rem; color:var(--pg-text-muted);">Shift+Enter: open in Call Graph</span></div>
       </div>
     `;
     this.container.appendChild(legend);
