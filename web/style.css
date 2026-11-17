@@ -1299,6 +1299,19 @@ select.search-input {
   pointer-events: none;
 }
 
+/* Rust world and Lean world backgrounds (mixed projects) */
+.bp-world-group {
+  pointer-events: none;
+}
+
+.bp-world-label {
+  font-size: 13px;
+  font-family: var(--pg-font-sans);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  pointer-events: none;
+}
+
 /* ================================================================
    Crate Map View
    ================================================================ */

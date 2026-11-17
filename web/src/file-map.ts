@@ -27,6 +27,23 @@ const FILL_COLORS: Record<FillStatus, string> = {
 const FILE_GROUP_COLORS = groupColors(0.10);
 const FILE_GROUP_STROKE_COLORS = groupColors(0.30);
 
+// --- Language worlds (mixed Rust + Lean projects only) ---
+
+/** The side of a mixed project a node belongs to. */
+export type LanguageWorld = 'rust' | 'lean';
+
+/** Lean nodes go to the Lean world; every other language goes to Rust. */
+export function languageWorldOf(node: D3Node): LanguageWorld {
+  return node.language === 'lean' ? 'lean' : 'rust';
+}
+
+export const WORLD_STYLES: Record<LanguageWorld, { label: string; fill: string; stroke: string; text: string }> = {
+  rust: { label: 'Rust', fill: 'rgba(206,66,43,0.06)', stroke: 'rgba(206,66,43,0.45)', text: 'rgba(160,50,30,0.75)' },
+  lean: { label: 'Lean', fill: 'rgba(59,110,200,0.07)', stroke: 'rgba(59,110,200,0.45)', text: 'rgba(40,80,160,0.75)' },
+};
+
+const WORLD_ORDER: LanguageWorld[] = ['rust', 'lean'];
+
 // --- Node shape constants ---
 
 const NODE_MIN_W = 120;
@@ -82,6 +99,96 @@ function appendShape(
       const hw = w(d) / 2;
       return `0,${-hh} ${hw},0 0,${hh} ${-hw},0`;
     });
+}
+
+/** Result of {@link layoutFileMap}. */
+export interface FileMapLayout {
+  /** The dagre graph after layout; group boxes are `file:<key>` and `world:<world>`. */
+  graph: any;
+  /** File box keys, in first-seen order. */
+  fileKeys: string[];
+  /** File box key to the file's relative path. */
+  filePaths: Map<string, string>;
+  /** File box key to the language world that holds it. */
+  fileWorlds: Map<string, LanguageWorld>;
+  /** Worlds that have a box; empty when worlds are off. */
+  worlds: LanguageWorld[];
+  nodeWidths: Map<string, number>;
+  /** False when the compound layout crashed and the flat fallback ran. */
+  grouped: boolean;
+}
+
+function newLayoutGraph(compound: boolean): any {
+  const g = new dagre.graphlib.Graph({ compound });
+  g.setGraph({ rankdir: 'LR', nodesep: 30, ranksep: 160, marginx: 40, marginy: 40 });
+  g.setDefaultEdgeLabel(() => ({}));
+  return g;
+}
+
+function linkEnds(link: D3Link): [string, string] {
+  const s = typeof link.source === 'string' ? link.source : link.source.id;
+  const t = typeof link.target === 'string' ? link.target : link.target.id;
+  return [s, t];
+}
+
+/**
+ * Lay out the File Map with dagre: one box per file, and with `useWorlds`
+ * (mixed Rust + Lean projects) each file box inside a Rust world or a Lean
+ * world box. The world is part of the file key, so a path that holds nodes
+ * of both languages gets one box in each world.
+ */
+export function layoutFileMap(nodes: D3Node[], links: D3Link[], useWorlds: boolean): FileMapLayout {
+  const fileKeyOf = (node: D3Node): string => {
+    const path = node.relative_path || 'unknown';
+    return useWorlds ? `${languageWorldOf(node)}:${path}` : path;
+  };
+
+  const filePaths = new Map<string, string>();
+  const fileWorlds = new Map<string, LanguageWorld>();
+  for (const node of nodes) {
+    const key = fileKeyOf(node);
+    if (!filePaths.has(key)) {
+      filePaths.set(key, node.relative_path || 'unknown');
+      fileWorlds.set(key, languageWorldOf(node));
+    }
+  }
+  const fileKeys = [...filePaths.keys()];
+  const worlds = useWorlds
+    ? WORLD_ORDER.filter(w => [...fileWorlds.values()].includes(w))
+    : [];
+
+  const nodeWidths = new Map<string, number>();
+  for (const node of nodes) nodeWidths.set(node.id, nodeWidthFor(node.display_name));
+
+  const g = newLayoutGraph(true);
+  for (const world of worlds) {
+    g.setNode(`world:${world}`, { label: WORLD_STYLES[world].label, clusterLabelPos: 'top' });
+  }
+  for (const key of fileKeys) {
+    g.setNode(`file:${key}`, { label: key, clusterLabelPos: 'top' });
+    if (useWorlds) g.setParent(`file:${key}`, `world:${fileWorlds.get(key)}`);
+  }
+  for (const node of nodes) {
+    g.setNode(node.id, { width: nodeWidths.get(node.id)! + 10, height: NODE_H + 10 });
+    g.setParent(node.id, `file:${fileKeyOf(node)}`);
+  }
+  for (const link of links) g.setEdge(...linkEnds(link));
+
+  try {
+    dagre.layout(g);
+    return { graph: g, fileKeys, filePaths, fileWorlds, worlds, nodeWidths, grouped: true };
+  } catch {
+    // Dagre's compound layout can crash on certain topologies
+    // (e.g. cycles spanning clusters). Fall back to a flat layout.
+  }
+
+  const flat = newLayoutGraph(false);
+  for (const node of nodes) {
+    flat.setNode(node.id, { width: nodeWidths.get(node.id)! + 10, height: NODE_H + 10 });
+  }
+  for (const link of links) flat.setEdge(...linkEnds(link));
+  dagre.layout(flat);
+  return { graph: flat, fileKeys, filePaths, fileWorlds, worlds, nodeWidths, grouped: false };
 }
 
 export class FileMapVisualization {
@@ -156,76 +263,9 @@ export class FileMapVisualization {
     // Transitive reduction for cleaner DAG
     links = transitiveReduction(nodes, links);
 
-    // Group nodes by file for compound graph clustering
-    const fileGroups = new Map<string, D3Node[]>();
-    for (const node of nodes) {
-      const key = node.relative_path || 'unknown';
-      if (!fileGroups.has(key)) fileGroups.set(key, []);
-      fileGroups.get(key)!.push(node);
-    }
-    const fileKeys = [...fileGroups.keys()];
-
-    // Run dagre layout with compound graph mode
-    let gGraph: any = new dagre.graphlib.Graph({ compound: true });
-    gGraph.setGraph({
-      rankdir: 'LR',
-      nodesep: 30,
-      ranksep: 160,
-      marginx: 40,
-      marginy: 40,
-    });
-    gGraph.setDefaultEdgeLabel(() => ({}));
-
-    for (const key of fileKeys) {
-      const groupId = `file:${key}`;
-      gGraph.setNode(groupId, { label: key, clusterLabelPos: 'top' });
-    }
-
-    const nodeWidths = new Map<string, number>();
-    for (const node of nodes) {
-      const nw = nodeWidthFor(node.display_name);
-      nodeWidths.set(node.id, nw);
-      gGraph.setNode(node.id, { width: nw + 10, height: NODE_H + 10 });
-      const fileKey = node.relative_path || 'unknown';
-      gGraph.setParent(node.id, `file:${fileKey}`);
-    }
-    for (const link of links) {
-      const s = typeof link.source === 'string' ? link.source : link.source.id;
-      const t = typeof link.target === 'string' ? link.target : link.target.id;
-      gGraph.setEdge(s, t);
-    }
-
-    let compoundLayoutFailed = false;
-    try {
-      dagre.layout(gGraph);
-    } catch {
-      compoundLayoutFailed = true;
-    }
-
-    // Dagre's compound graph layout can crash on certain topologies
-    // (e.g. cycles spanning clusters). Fall back to a flat layout.
-    if (compoundLayoutFailed) {
-      const flatGraph = new dagre.graphlib.Graph();
-      flatGraph.setGraph({
-        rankdir: 'LR',
-        nodesep: 30,
-        ranksep: 160,
-        marginx: 40,
-        marginy: 40,
-      });
-      flatGraph.setDefaultEdgeLabel(() => ({}));
-      for (const node of nodes) {
-        const nw = nodeWidths.get(node.id) || NODE_MIN_W;
-        flatGraph.setNode(node.id, { width: nw + 10, height: NODE_H + 10 });
-      }
-      for (const link of links) {
-        const s = typeof link.source === 'string' ? link.source : link.source.id;
-        const t = typeof link.target === 'string' ? link.target : link.target.id;
-        flatGraph.setEdge(s, t);
-      }
-      dagre.layout(flatGraph);
-      gGraph = flatGraph as any;
-    }
+    const useWorlds = this.state.projectLanguage === 'mixed';
+    const { graph: gGraph, fileKeys, filePaths, worlds, nodeWidths } =
+      layoutFileMap(nodes, links, useWorlds);
 
     // Apply dagre positions back to nodes
     const posMap = new Map<string, { x: number; y: number }>();
@@ -241,7 +281,32 @@ export class FileMapVisualization {
     // Clear previous render
     this.g.selectAll('*').remove();
 
-    // Render file group backgrounds (behind everything else)
+    // Render language world backgrounds (behind the file groups)
+    for (const world of worlds) {
+      const info = gGraph.node(`world:${world}`);
+      if (!info || !info.width || !info.height) continue;
+      const style = WORLD_STYLES[world];
+      this.g.append('rect')
+        .attr('class', `bp-world-group bp-world-${world}`)
+        .attr('x', info.x - info.width / 2)
+        .attr('y', info.y - info.height / 2)
+        .attr('width', info.width)
+        .attr('height', info.height)
+        .attr('rx', 14)
+        .attr('fill', style.fill)
+        .attr('stroke', style.stroke)
+        .attr('stroke-width', 1.5)
+        .attr('stroke-dasharray', '8,4');
+
+      this.g.append('text')
+        .attr('class', 'bp-world-label')
+        .attr('x', info.x - info.width / 2 + 10)
+        .attr('y', info.y - info.height / 2 - 6)
+        .attr('fill', style.text)
+        .text(`${style.label} world`);
+    }
+
+    // Render file group backgrounds
     for (let i = 0; i < fileKeys.length; i++) {
       const groupId = `file:${fileKeys[i]}`;
       const info = gGraph.node(groupId);
@@ -264,7 +329,7 @@ export class FileMapVisualization {
         .attr('class', 'bp-file-label')
         .attr('x', info.x - info.width / 2 + 8)
         .attr('y', info.y - info.height / 2 + 14)
-        .text(extractFileName(fileKeys[i]));
+        .text(extractFileName(filePaths.get(fileKeys[i]) || fileKeys[i]));
     }
 
     // Render links
@@ -426,7 +491,10 @@ export class FileMapVisualization {
         <div class="bp-legend-item">
           <svg width="28" height="10"><line x1="0" y1="5" x2="28" y2="5" stroke="${edgeTypeColor('spec')}" stroke-width="1.5" stroke-dasharray="3,3"/></svg>
           <span>Specification</span>
-        </div>` : ''}
+        </div>
+        <div class="bp-legend-section"><strong>Background</strong></div>
+        ${WORLD_ORDER.map(w => `
+        <div class="bp-legend-item"><span class="bp-swatch" style="background:${WORLD_STYLES[w].fill};border:1px dashed ${WORLD_STYLES[w].stroke}"></span>${WORLD_STYLES[w].label} world</div>`).join('')}` : ''}
       </div>
     `;
     this.container.appendChild(legend);
