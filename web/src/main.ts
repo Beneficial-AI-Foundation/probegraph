@@ -360,6 +360,9 @@ function syncFilterUI(): void {
   setCheckbox('show-libsignal', state.filters.showLibsignal);
   setCheckbox('show-non-libsignal', state.filters.showNonLibsignal);
   setCheckbox('show-stub-crates', state.filters.showStubCrates);
+  // The crate lists depend on the Stub crates box; syncIntentInputs skips
+  // them in the Crate Map. Cheap when nothing changed.
+  populateCrateDropdowns();
   setCheckbox('show-rust-nodes', state.filters.showRustNodes);
   setCheckbox('show-lean-nodes', state.filters.showLeanNodes);
   syncStatusCheckboxes();
