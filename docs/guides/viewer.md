@@ -37,6 +37,11 @@ see [web/ARCHITECTURE.md](../../web/ARCHITECTURE.md#input-formats).
   reduction. Shapes encode kind (rounded rectangle = definition/exec,
   ellipse = theorem/proof, diamond = spec/axiom); the border color encodes the
   node's own verification readiness and the fill encodes subtree completeness.
+  In a project with both Rust and Lean code, the file boxes sit inside two
+  larger boxes with dashed borders. The Rust world has a red tint, and the
+  Lean world has a blue tint. If one path holds both Rust and Lean declarations, it
+  gets a file box in each world. If dagre cannot lay out the nested boxes,
+  the File Map shows the nodes without any boxes.
 - **Crate Map** — one node per crate, edges weighted by call count. For Lean
   graphs the button is relabeled **Namespace Map** and grouping uses the first
   two path segments (e.g. `ArkLib/Data`); on the blueprint layer it is the
