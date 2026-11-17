@@ -5,9 +5,9 @@
 
 import { describe, it, expect } from 'vitest';
 import { languageWorldOf, layoutFileMap } from './file-map';
-import { D3Node, D3Link } from './types';
+import { D3Node, D3Link, detectProjectLanguage } from './types';
 
-function node(id: string, relativePath: string, language?: string): D3Node {
+function node(id: string, relativePath: string, language?: string, kind = 'exec'): D3Node {
   return {
     id,
     display_name: id,
@@ -20,7 +20,7 @@ function node(id: string, relativePath: string, language?: string): D3Node {
     is_libsignal: true,
     dependencies: [],
     dependents: [],
-    kind: 'def',
+    kind,
     language,
   };
 }
@@ -57,7 +57,18 @@ describe('languageWorldOf', () => {
     expect(languageWorldOf(node('a', 'x', 'lean'))).toBe('lean');
     expect(languageWorldOf(node('b', 'x', 'rust'))).toBe('rust');
     expect(languageWorldOf(node('c', 'x', 'verus'))).toBe('rust');
-    expect(languageWorldOf(node('d', 'x'))).toBe('rust');
+  });
+
+  it('goes by kind for a node without language, as older graph formats have', () => {
+    expect(languageWorldOf(node('a', 'x', undefined, 'exec'))).toBe('rust');
+    expect(languageWorldOf(node('b', 'x', undefined, 'spec'))).toBe('rust');
+    expect(languageWorldOf(node('c', 'x', undefined, 'theorem'))).toBe('lean');
+    expect(languageWorldOf(node('d', 'x', undefined, 'axiom'))).toBe('lean');
+  });
+
+  it('trusts language over kind when both are present', () => {
+    expect(languageWorldOf(node('a', 'x', 'rust', 'theorem'))).toBe('rust');
+    expect(languageWorldOf(node('b', 'x', 'lean', 'exec'))).toBe('lean');
   });
 });
 
@@ -87,6 +98,15 @@ describe('layoutFileMap', () => {
     const layout = layoutFileMap(nodes, [], true);
     expect(layout.fileKeys.sort()).toEqual(['lean:shared/x', 'rust:shared/x']);
     expect(layout.filePaths.get('lean:shared/x')).toBe('shared/x');
+  });
+
+  it('makes both worlds for an untagged mixed graph', () => {
+    const nodes = [node('e', 'src/a.rs', undefined, 'exec'), node('t', 'Spec/A.lean', undefined, 'theorem')];
+    expect(detectProjectLanguage({ nodes, links: [], metadata: { total_nodes: 2, total_edges: 0, project_root: '', generated_at: '' } })).toBe('mixed');
+    const layout = layoutFileMap(nodes, [], true);
+    expect(layout.worlds).toEqual(['rust', 'lean']);
+    expect(layout.graph.parent('file:lean:Spec/A.lean')).toBe('world:lean');
+    expect(layout.graph.parent('file:rust:src/a.rs')).toBe('world:rust');
   });
 
   it('only makes the worlds that have nodes', () => {

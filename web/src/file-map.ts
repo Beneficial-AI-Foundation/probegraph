@@ -1,7 +1,7 @@
 import * as d3 from 'd3';
 import dagreModule from '@dagrejs/dagre';
 const dagre = dagreModule as any;
-import { D3Graph, D3Node, D3Link, GraphState, BorderStatus, FillStatus, DeclKind, getKindSetsForLanguage } from './types';
+import { D3Graph, D3Node, D3Link, GraphState, BorderStatus, FillStatus, DeclKind, getKindSetsForLanguage, isLeanOnlyKind } from './types';
 import { transitiveReduction } from './graph-utils';
 import { STATUS_COLORS, edgeTypeColor, groupColors, SELECTION_COLOR } from './theme';
 
@@ -32,9 +32,14 @@ const FILE_GROUP_STROKE_COLORS = groupColors(0.30);
 /** The side of a mixed project a node belongs to. */
 export type LanguageWorld = 'rust' | 'lean';
 
-/** Lean nodes go to the Lean world; every other language goes to Rust. */
+/**
+ * Lean nodes go to the Lean world; every other language goes to Rust.
+ * A node without `language` (older graph formats) goes by its kind, with
+ * the same rule that marks such a graph as mixed.
+ */
 export function languageWorldOf(node: D3Node): LanguageWorld {
-  return node.language === 'lean' ? 'lean' : 'rust';
+  if (node.language) return node.language === 'lean' ? 'lean' : 'rust';
+  return isLeanOnlyKind(node.kind) ? 'lean' : 'rust';
 }
 
 export const WORLD_STYLES: Record<LanguageWorld, { label: string; fill: string; stroke: string; text: string }> = {

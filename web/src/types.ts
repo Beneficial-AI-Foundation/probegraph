@@ -84,6 +84,14 @@ const LEAN_KINDS = new Set([
 ]);
 
 /**
+ * True for a Lean declaration kind that Verus does not also use. This is
+ * the rule {@link detectProjectLanguage} uses for graphs without `language`.
+ */
+export function isLeanOnlyKind(kind: string | undefined): boolean {
+  return !!kind && LEAN_KINDS.has(kind) && !VERUS_KINDS.has(kind);
+}
+
+/**
  * Detect project language by scanning the `language` field on nodes.
  * Falls back to kind-based heuristic when no language field is present.
  */
@@ -110,7 +118,7 @@ export function detectProjectLanguage(graph: D3Graph): ProjectLanguage {
     if (node.kind) kinds.add(node.kind);
   }
   const hasVerusKinds = [...kinds].some(k => VERUS_KINDS.has(k));
-  const hasLeanKinds = [...kinds].some(k => LEAN_KINDS.has(k) && !VERUS_KINDS.has(k));
+  const hasLeanKinds = [...kinds].some(isLeanOnlyKind);
   if (hasVerusKinds && hasLeanKinds) return 'mixed';
   if (hasVerusKinds) return 'verus';
   if (hasLeanKinds) return 'lean';
