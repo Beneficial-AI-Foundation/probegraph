@@ -85,9 +85,10 @@ see [web/ARCHITECTURE.md](../../web/ARCHITECTURE.md#input-formats).
   Call Graph. This works like a row of the search box: if the current
   query already reaches the function, the query stays. If not, the Call
   Graph shows the function, its callers and its callees at the current
-  depth. With no query, the Call Graph also shows them when the function
-  is not among the drawn nodes of a large graph. Browser back returns to
-  the Packed Map. If the filters leave no Rust function, the view says so.
+  depth. With no query and no clicked nodes in the Call Graph, it also
+  shows them when the function is not among the drawn nodes of a large
+  graph. Browser back returns to the Packed Map. If the filters leave no
+  Rust function, the view says so.
 
 Crate Map and Hierarchy aggregate the whole graph into groups. The Packed
 Map draws every function of the graph. The large-graph limits below don't

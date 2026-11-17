@@ -490,4 +490,97 @@ test.describe('Packed Map: open in the Call Graph', () => {
     await expect.poll(async () => (await shownIds(page)).includes(focused)).toBe(true);
     await expect(page.locator('#node-info h3')).toHaveText(focused.slice('probe:'.length));
   });
+
+  test('a selection query stays when the cap leaves the function out', async ({ page }) => {
+    // sel=h at depth 1 is a query of 301 nodes: the cap draws 200
+    const query = '&sel=probe:h&depth=1';
+    await open(page, query, '');
+    await expect.poll(async () => (await shownIds(page)).length).toBe(200);
+    const drawn = new Set(await shownIds(page));
+    const left = LEAVES.find(l => !drawn.has(l))!;
+    await page.locator('#view-packed-map').click();
+    await expect(page.locator('.pm-fn').first()).toBeVisible();
+    await page.locator(`.pm-fn[data-node-id="${left}"]`).dispatchEvent('dblclick');
+
+    await expect(page.locator('#view-callgraph')).toHaveClass(/active/);
+    await expect(page.locator('.toast').last()).toContainText('Query this node instead');
+    const params = new URL(page.url()).searchParams;
+    expect([params.get('sel'), params.get('id')]).toEqual(['probe:h', null]);
+  });
+
+  test('a reveal that keeps the query cancels a pending focus load', async ({ page }) => {
+    let release!: () => void;
+    const released = new Promise<void>(resolve => { release = resolve; });
+    await page.route('**/focus.json', async (route: Route) => {
+      await released;
+      await route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify({ focus_nodes: ['probe:a'], metadata: { description: 'focus a' } }),
+      });
+    });
+    await open(page, '&focus=focus.json');
+    await expect(page.locator('.pm-fn').first()).toBeVisible();
+    // b is drawn in the capped overview: the reveal keeps the query
+    await page.locator('.pm-fn[data-node-id="probe:b"]').dispatchEvent('dblclick');
+    await expect(page.locator('#view-callgraph')).toHaveClass(/active/);
+    await expect(page.locator('#node-info h3')).toHaveText('b');
+
+    release();
+    await page.waitForTimeout(500);
+    expect(await shownIds(page)).toContain('probe:b');
+    await expect(page.locator('#query-label')).not.toContainText('focus a');
+    expect(new URL(page.url()).searchParams.get('focus')).toBeNull();
+  });
+});
+
+// 100 roots -> 5 children -> 2 grandchildren -> 12 leaves: 13,600 nodes, a
+// large graph. Its seeded view refuses depth 3 (over 2,000 nodes) and draws
+// depth 2, which leaves the leaves out.
+function largeGraph() {
+  const node = (id: string) => ({
+    id, display_name: id, symbol: id,
+    full_path: `/l/${id}.rs`, relative_path: `src/${id}.rs`, file_name: `${id}.rs`,
+    parent_folder: 'src', crate_name: 'l', is_libsignal: false, kind: 'exec',
+    dependencies: [] as string[], dependents: [] as string[],
+  });
+  const nodes = [];
+  const links = [];
+  for (let i = 0; i < 100; i++) {
+    nodes.push(node(`r${i}`));
+    for (let j = 0; j < 5; j++) {
+      const child = `c${i * 5 + j}`;
+      nodes.push(node(child));
+      links.push({ source: `r${i}`, target: child, type: 'inner' });
+      for (let k = 0; k < 2; k++) {
+        const grand = `g${(i * 5 + j) * 2 + k}`;
+        nodes.push(node(grand));
+        links.push({ source: child, target: grand, type: 'inner' });
+        for (let l = 0; l < 12; l++) {
+          const leaf = `x${((i * 5 + j) * 2 + k) * 12 + l}`;
+          nodes.push(node(leaf));
+          links.push({ source: grand, target: leaf, type: 'inner' });
+        }
+      }
+    }
+  }
+  return {
+    nodes, links,
+    metadata: { total_nodes: nodes.length, total_edges: links.length, project_root: '/l', generated_at: '2026-01-01' },
+  };
+}
+
+test('Packed Map: the query of a function opened from a large graph keeps the depth', async ({ page }) => {
+  await page.route('**/large.json', (route: Route) =>
+    route.fulfill({ contentType: 'application/json', body: JSON.stringify(largeGraph()) }));
+  await page.goto('/probegraph/?json=large.json&view=packed-map&depth=3');
+  await expect(page.locator('.pm-fn').first()).toBeAttached({ timeout: 30000 });
+  // x0 is three calls below r0: the seeded view at depth 2 leaves it out
+  await page.locator('.pm-fn[data-node-id="x0"]').dispatchEvent('dblclick');
+
+  await expect(page.locator('#view-callgraph')).toHaveClass(/active/);
+  await expect.poll(() => new URL(page.url()).searchParams.get('id')).toBe('x0');
+  expect(new URL(page.url()).searchParams.get('depth')).toBe('3');
+  await expect(page.locator('#depth-value')).toHaveText('3');
+  // Callers up to r0, three levels up
+  await expect.poll(async () => (await shownIds(page)).includes('r0')).toBe(true);
 });
