@@ -199,8 +199,8 @@ circles, labels and edges. Hit tests use the pack coordinates
 
 ### Phase 4: pure Lean projects
 
-Status (2026-11-17): proposed, not started. Revised the same day after
-two Codex review rounds.
+Status (2026-11-17): implemented, issue #146. Revised the same day after
+two Codex review rounds. The measurements are below, after Changes.
 
 Goal: show the Packed Map for a pure Lean graph as an inventory: every
 eligible declaration gets a circle, also one with no links. Today the
@@ -336,6 +336,26 @@ Changes:
    (canvas) comes next.
 10. `docs/guides/viewer.md`: what a Lean graph shows, the grouping by
     file path, the arc rule, and the legend captions.
+
+Measurements (2026-11-17, item 9). Graph: spqr `lean_extract.json`,
+loaded from a local route. Browser: headless Chromium 145
+(Playwright 1.58.2, "Desktop Chrome" profile, 1280 × 800 view). Machine:
+Intel Core Ultra 9 185H (22 threads), 60 GB RAM, Linux. Each step runs in
+the page and stops after two animation frames, so a step cannot be
+shorter than about 33 ms at 60 Hz. The numbers are medians over 5 page
+loads (15 runs for selection and wheel).
+
+| Step | Median | Max | Limit |
+|---|---|---|---|
+| First draw (click the button after the load: filter step, pack, render) | 66 ms | 76 ms | 1 s |
+| Click selection | 31 ms | 40 ms | 50 ms |
+| Wheel zoom step | 31 ms | 31 ms | 50 ms |
+| Filter change (Theorems off) | 37 ms | 39 ms | none |
+| Resize (1280 × 800 to 1000 × 700) | 5 ms | 6 ms | 50 ms |
+
+The default filters draw 2,034 declarations in 369 group circles, with
+6,790 links. With Theorems off, 1,209 declarations are left. No step is
+over its limit, so Phase 3 (canvas) is not needed for spqr.
 
 ### Later: mixed projects
 
