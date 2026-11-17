@@ -535,8 +535,11 @@ is a crate where no node has a source path. Extractors such as probe-rust
 record calls into other crates (for example `proptest`, `rand`, `core`) as
 atoms with an empty `code-path`, so these crates have names but no code. With
 the box off, every view hides their nodes and the edges to them, and the
-Hierarchy and Packed Map show only the crates with source. Turn the box on to
-see which external functions the code calls. The section appears only when
+Hierarchy and Packed Map show only the crates with source. A function of the
+project whose only calls go to stub crates stays visible. Like the Declaration
+Kind boxes, this box restricts traversal: a query does not go through a hidden
+stub-crate node. The crate dropdowns do not list hidden stub crates. Turn the
+box on to see which external functions the code calls. The section appears only when
 the graph has a stub crate. A graph where no node has a source path has no
 stub crates, so nothing is hidden.
 

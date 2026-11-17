@@ -1036,6 +1036,7 @@ function setupUIHandlers(): void {
 
   document.getElementById('show-stub-crates')?.addEventListener('change', (e) => {
     state.filters.showStubCrates = (e.target as HTMLInputElement).checked;
+    populateCrateDropdowns();
     applyFiltersAndUpdate();
   });
 
@@ -1584,9 +1585,15 @@ function computeSeededExpansion(
   if (seedTiersCache?.key !== key) {
     seedTiersCache = { key, tiers: computeSeedTiers(graph) };
   }
-  const tiers: SeedTier[] = entrypointsParam && activeLayer === 'code'
+  const allTiers: SeedTier[] = entrypointsParam && activeLayer === 'code'
     ? [{ name: 'blueprint-param', seeds: entrypointsParam.seeds }, ...seedTiersCache.tiers]
     : seedTiersCache.tiers;
+  // ?entrypoints= seeds come from the full graph: drop the ones that are
+  // hidden stub-crate nodes, and skip a tier with no seed left
+  const inGraph = new Set(graph.nodes.map(n => n.id));
+  const tiers = allTiers
+    .map(tier => ({ ...tier, seeds: tier.seeds.filter(id => inGraph.has(id)) }))
+    .filter(tier => tier.seeds.length > 0);
   const budget = { maxNodes: LARGE_GRAPH_NODE_THRESHOLD, maxLinks: LARGE_GRAPH_LINK_THRESHOLD };
   for (const tier of tiers) {
     const expansion = expandFromSeeds(graph, tier.seeds, requestedDepth, budget);
@@ -3211,13 +3218,17 @@ let crateDropdownKey = '';
 function populateCrateDropdowns(): void {
   if (!state.fullGraph) return;
 
-  const key = `${graphLoadGeneration}\0${selectedSourceCrate}\0${selectedTargetCrate}`;
+  const key = dropdownKey();
   if (key === crateDropdownKey) return;
 
   ensureCrateGraphBuilt();
 
+  // Hidden stub crates are left out, except a selected one, so the controls
+  // still match the boundary query
   const allCrateNames = new Set<string>();
   for (const node of state.fullGraph.nodes) {
+    if (node.in_stub_crate && !state.filters.showStubCrates
+        && node.crate_name !== selectedSourceCrate && node.crate_name !== selectedTargetCrate) continue;
     if (node.crate_name && node.crate_name !== 'unknown') {
       allCrateNames.add(node.crate_name);
     }
@@ -3254,7 +3265,11 @@ function populateCrateDropdowns(): void {
     selectedTargetCrate = fill(tgtSel, targetList, selectedTargetCrate);
   }
 
-  crateDropdownKey = `${graphLoadGeneration}\0${selectedSourceCrate}\0${selectedTargetCrate}`;
+  crateDropdownKey = dropdownKey();
+}
+
+function dropdownKey(): string {
+  return [graphLoadGeneration, selectedSourceCrate, selectedTargetCrate, state.filters.showStubCrates].join('\0');
 }
 
 /**

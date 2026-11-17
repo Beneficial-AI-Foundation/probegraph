@@ -841,6 +841,23 @@ describe('Stub crates filter', () => {
     expect(ids(createFilters({ showStubCrates: true }))).toEqual(['app', 'ext', 'lib']);
   });
 
+  it('keeps a project node whose only calls go to a hidden stub crate', () => {
+    // app2 calls only ext: hiding ext must not hide app2
+    const app2 = createNode({ id: 'app2', display_name: 'app2', crate_name: 'app' });
+    const g = createGraph([app2, ext], [createLink('app2', 'ext')]);
+    expect(executeQuery(compileQuery(createFilters({ showStubCrates: false })), g).nodes.map(n => n.id))
+      .toEqual(['app2']);
+    expect(executeQuery(compileQuery(createFilters({ showStubCrates: true })), g).nodes.map(n => n.id).sort())
+      .toEqual(['app2', 'ext']);
+  });
+
+  it('does not keep a node whose link to the stub crate is of a hidden type', () => {
+    const app2 = createNode({ id: 'app2', display_name: 'app2', crate_name: 'app' });
+    const g = createGraph([app2, ext], [createLink('app2', 'ext', 'precondition')]);
+    const f = createFilters({ showStubCrates: false, showPreconditionCalls: false });
+    expect(executeQuery(compileQuery(f), g).nodes).toEqual([]);
+  });
+
   it('withoutStubCrates drops stub nodes and their links only when hidden', () => {
     const hidden = withoutStubCrates(graph, { showStubCrates: false });
     expect(hidden.nodes.map(n => n.id)).toEqual(['app', 'lib']);
