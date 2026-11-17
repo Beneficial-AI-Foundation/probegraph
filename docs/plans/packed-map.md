@@ -114,6 +114,20 @@ selection change redraws only the highlight and the edges. It does not
 rebuild the tree or run `d3.pack` again. The layout is cached. If
 `filteredGraph` changes, the layout is built again.
 
+Open in the Call Graph. A double-click on a function, or Shift+Enter on
+the function in the focus ring, opens it in the Call Graph. It calls
+`revealNode` with the `replace` policy, the same as a row of the search
+box: a query that reaches the function stays, and otherwise the query
+becomes the function with its callers and callees. The new query keeps
+the depth the user set, although the seeded view of a large graph can
+draw a lower one. The render cap can leave the function out of the Call
+Graph. The search box then offers the function's query in a toast. The
+double-click sets it at once (`always` on the policy) when there is no
+query and no clicked Call Graph node (`selectedNodes`), because the
+capped overview is no query to keep. Back returns to the Packed Map.
+The map has no double-click zoom, so a double-click on a group circle
+acts as two clicks.
+
 Size of the graph. The view draws one circle per function, so it is not
 an aggregated view like Hierarchy. Phase 1 keeps the large-graph guards.
 Phase 1 also measures the first draw and a zoom on a current probe-verus

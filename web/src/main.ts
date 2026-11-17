@@ -875,7 +875,20 @@ function createVisualization(container: HTMLElement): void {
     if (hierarchyExpanded.length > 0) viz.setExpanded(hierarchyExpanded);
     visualization = viz;
   } else if (activeView === 'packed-map') {
-    const viz = new PackedMapVisualization(container, state, handleStateChange);
+    // As if picked in the search box: the Call Graph keeps a query that
+    // reaches the function, and Back returns to the Packed Map. With no
+    // query and no selection (which makes a query with a depth), the
+    // capped overview is no query to keep: the function's own query
+    // replaces it.
+    const viz = new PackedMapVisualization(container, state, handleStateChange,
+      node => revealNode(node.id, {
+        policy: {
+          kind: 'replace',
+          always: state.filters.intent.kind === 'none' && state.filters.selectedNodes.size === 0,
+        },
+        center: true,
+        offer: true,
+      }));
     viz.setFocus(packedFocus);
     visualization = viz;
   } else if (activeView === 'file-map') {
@@ -3941,14 +3954,33 @@ function revealNode(id: string, opts: RevealOptions): RevealResult {
     // one Back restores the view, the hidden node and the query. A new
     // intent replaces the switch's entry, so one Back restores the layer too.
     let wrote = false;
+    // The seeded view of a large graph can lower the depth in the apply
+    // below. A new query is still made at the depth the user set.
+    const depth = state.filters.maxDepth;
     urlWritesSuppressed++;
     try {
       if (viewChanged || unhidden) applyFiltersAndUpdate();
-      wrote = applySearchPolicy(id, node.display_name, policy, switched ? 'replace' : 'push');
+      wrote = applySearchPolicy(id, node.display_name, policy, switched ? 'replace' : 'push', () => {
+        state.filters.maxDepth = depth;
+        syncDepthSliderUI(depth);
+      });
     } finally {
       urlWritesSuppressed--;
     }
-    if (!wrote) updateURLWithFilters();
+    // The reveal is newer than a pending focus load, also when it keeps
+    // the query (a new query cancels the load in setIntent)
+    if (!wrote && pendingFocus) {
+      pendingFocus = null;
+      intentGeneration++;
+      resumeDeferredEntrypoints();
+    }
+    // With the query kept, the view change and the unhiding still need an
+    // entry of their own. A layer switch already pushed one.
+    if (!wrote && !switched && (viewChanged || unhidden)) {
+      window.history.pushState({ pushed: true }, '', generateShareableURL());
+    } else if (!wrote) {
+      updateURLWithFilters();
+    }
   }
   return presentReveal(node, opts, token);
 }
@@ -3998,11 +4030,15 @@ function showTrustPath(fromId: string, toId: string): void {
 function applySearchPolicy(
   id: string, label: string, policy: Exclude<RevealPolicy, { kind: 'editor' }>,
   history: 'push' | 'replace' = 'push',
+  before?: () => void,
 ): boolean {
-  if (policy.kind === 'replace' && classifyReveal(revealContext(), id).reason !== 'outside-intent') return false;
+  if (policy.kind === 'replace') {
+    const { reason } = classifyReveal(revealContext(), id);
+    if (reason !== 'outside-intent' && !(policy.always && reason === 'truncated')) return false;
+  }
   const intent = searchIntent(state.filters.intent, id, label, policy);
   if (intent === state.filters.intent) return false;
-  setIntent(intent, { history, pushed: true });
+  setIntent(intent, { history, pushed: true, before });
   return true;
 }
 

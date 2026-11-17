@@ -1,11 +1,13 @@
 /**
  * E2E tests for the Packed Map view (docs/plans/packed-map.md, Phase 2):
  * selection, the shared click and wheel camera, `?packed=` and the empty
- * state. Uses the tracked multi-crate fixture graph_backup_dalek.json.
+ * state, and opening a function in the Call Graph. Uses the tracked
+ * multi-crate fixture graph_backup_dalek.json, and a served graph for the
+ * Call Graph tests.
  * Clicks on SVG circles are dispatched, as in hierarchy.spec.ts.
  */
 
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Page, type Route } from '@playwright/test';
 
 const BASE = '/probegraph/?json=./graph_backup_dalek.json';
 const VIEW_URL = `${BASE}&view=packed-map`;
@@ -377,4 +379,208 @@ test.describe('Packed Map view', () => {
     await expect(page.locator('.packed-map-svg')).toHaveAttribute('data-packed-focus', '');
     expect((await camera(page)).k).toBeCloseTo(1, 5);
   });
+});
+
+// h calls 300 leaves, which is over the 200-node render cap. a calls b.
+const LEAVES = Array.from({ length: 300 }, (_, i) => `probe:l${i}`);
+const LINKS: [string, string][] = [
+  ...LEAVES.map(l => ['probe:h', l] as [string, string]),
+  ['probe:a', 'probe:b'],
+];
+
+function graph() {
+  const ids = ['probe:h', ...LEAVES, 'probe:a', 'probe:b'];
+  const nodes = ids.map(id => {
+    const name = id.slice('probe:'.length);
+    return {
+      id, display_name: name, symbol: id,
+      full_path: `/r/${name}.rs`, relative_path: `src/${name}.rs`, file_name: `${name}.rs`,
+      parent_folder: 'src', crate_name: 'r', is_libsignal: false, kind: 'exec',
+      dependencies: LINKS.filter(([s]) => s === id).map(([, t]) => t),
+      dependents: LINKS.filter(([, t]) => t === id).map(([s]) => s),
+    };
+  });
+  return {
+    nodes,
+    links: LINKS.map(([source, target]) => ({ source, target, type: 'inner' })),
+    metadata: { total_nodes: nodes.length, total_edges: LINKS.length, project_root: '/r', generated_at: '2026-01-01' },
+  };
+}
+
+async function open(page: Page, query: string, view = '&view=packed-map'): Promise<void> {
+  await page.route('**/packed.json', (route: Route) =>
+    route.fulfill({ contentType: 'application/json', body: JSON.stringify(graph()) }));
+  await page.goto(`/probegraph/?json=packed.json${view}${query}`);
+  await expect(page.locator('#stats')).toContainText('Total Nodes', { timeout: 15000 });
+}
+
+async function shownIds(page: Page): Promise<string[]> {
+  return (await page.locator('circle.node').evaluateAll(
+    els => els.map(el => (el as any).__data__?.id as string),
+  )).sort();
+}
+
+test.describe('Packed Map: open in the Call Graph', () => {
+  test('double-click queries a function the capped Call Graph leaves out, and Back returns', async ({ page }) => {
+    // The Call Graph draws 200 of the 302 nodes: pick a leaf it leaves out
+    await open(page, '', '');
+    await expect.poll(async () => (await shownIds(page)).length).toBe(200);
+    const drawn = new Set(await shownIds(page));
+    const left = LEAVES.find(l => !drawn.has(l))!;
+    await page.locator('#view-packed-map').click();
+    await expect(page.locator('.pm-fn').first()).toBeVisible();
+    // Programmatic: the circles are small, and a coordinate click can miss
+    await page.locator(`.pm-fn[data-node-id="${left}"]`).dispatchEvent('dblclick');
+
+    await expect(page.locator('#view-callgraph')).toHaveClass(/active/);
+    await expect(page.locator('.pm-fn')).toHaveCount(0);
+    await expect.poll(() => new URL(page.url()).searchParams.get('id')).toBe(left);
+    await expect.poll(() => shownIds(page)).toEqual(['probe:h', left]);
+    await expect(page.locator('#node-info h3')).toHaveText(left.slice('probe:'.length));
+
+    await page.goBack();
+    await expect(page.locator('#view-packed-map')).toHaveClass(/active/);
+    await expect(page.locator('.pm-fn').first()).toBeVisible();
+    expect(new URL(page.url()).searchParams.get('id')).toBeNull();
+  });
+
+  test('double-click on a function the Call Graph draws keeps the overview, and Back returns', async ({ page }) => {
+    await open(page, '', '');
+    await expect.poll(async () => (await shownIds(page)).length).toBe(200);
+    const ids = new Set(await shownIds(page));
+    const leaf = LEAVES.find(l => ids.has(l))!;
+    await page.locator('#view-packed-map').click();
+    await expect(page.locator('.pm-fn').first()).toBeVisible();
+    await page.locator(`.pm-fn[data-node-id="${leaf}"]`).dispatchEvent('dblclick');
+
+    await expect(page.locator('#view-callgraph')).toHaveClass(/active/);
+    await expect(page.locator('#node-info h3')).toHaveText(leaf.slice('probe:'.length));
+    expect(new URL(page.url()).searchParams.get('id')).toBeNull();
+    expect(await shownIds(page)).toContain(leaf);
+
+    await page.goBack();
+    await expect(page.locator('#view-packed-map')).toHaveClass(/active/);
+    await expect(page.locator('.pm-fn').first()).toBeVisible();
+  });
+
+  test('double-click keeps a query that reaches the function', async ({ page }) => {
+    await open(page, '&id=probe:a&dir=callees');
+    await expect(page.locator('.pm-fn').first()).toBeVisible();
+    await expect(page.locator('.pm-fn')).toHaveCount(2);
+    await page.locator('.pm-fn[data-node-id="probe:b"]').dispatchEvent('dblclick');
+
+    await expect(page.locator('#view-callgraph')).toHaveClass(/active/);
+    await expect.poll(() => shownIds(page)).toEqual(['probe:a', 'probe:b']);
+    expect(new URL(page.url()).searchParams.get('id')).toBe('probe:a');
+    await expect(page.locator('#node-info h3')).toHaveText('b');
+  });
+
+  test('Shift+Enter opens the function in the focus ring', async ({ page }) => {
+    await open(page, '');
+    await expect(page.locator('.pm-fn').first()).toBeVisible();
+    await page.locator('.packed-map-svg').focus();
+    await page.keyboard.press('End');
+    const focused = await page.locator('.packed-map-svg').evaluate(svg => {
+      const id = svg.getAttribute('aria-activedescendant')!;
+      return (document.getElementById(id) as any).__data__.data.node.id as string;
+    });
+
+    await page.keyboard.press('Shift+Enter');
+    await expect(page.locator('#view-callgraph')).toHaveClass(/active/);
+    await expect.poll(async () => (await shownIds(page)).includes(focused)).toBe(true);
+    await expect(page.locator('#node-info h3')).toHaveText(focused.slice('probe:'.length));
+  });
+
+  test('a selection query stays when the cap leaves the function out', async ({ page }) => {
+    // sel=h at depth 1 is a query of 301 nodes: the cap draws 200
+    const query = '&sel=probe:h&depth=1';
+    await open(page, query, '');
+    await expect.poll(async () => (await shownIds(page)).length).toBe(200);
+    const drawn = new Set(await shownIds(page));
+    const left = LEAVES.find(l => !drawn.has(l))!;
+    await page.locator('#view-packed-map').click();
+    await expect(page.locator('.pm-fn').first()).toBeVisible();
+    await page.locator(`.pm-fn[data-node-id="${left}"]`).dispatchEvent('dblclick');
+
+    await expect(page.locator('#view-callgraph')).toHaveClass(/active/);
+    await expect(page.locator('.toast').last()).toContainText('Query this node instead');
+    const params = new URL(page.url()).searchParams;
+    expect([params.get('sel'), params.get('id')]).toEqual(['probe:h', null]);
+  });
+
+  test('a reveal that keeps the query cancels a pending focus load', async ({ page }) => {
+    let release!: () => void;
+    const released = new Promise<void>(resolve => { release = resolve; });
+    await page.route('**/focus.json', async (route: Route) => {
+      await released;
+      await route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify({ focus_nodes: ['probe:a'], metadata: { description: 'focus a' } }),
+      });
+    });
+    await open(page, '&focus=focus.json');
+    await expect(page.locator('.pm-fn').first()).toBeVisible();
+    // b is drawn in the capped overview: the reveal keeps the query
+    await page.locator('.pm-fn[data-node-id="probe:b"]').dispatchEvent('dblclick');
+    await expect(page.locator('#view-callgraph')).toHaveClass(/active/);
+    await expect(page.locator('#node-info h3')).toHaveText('b');
+
+    release();
+    await page.waitForTimeout(500);
+    expect(await shownIds(page)).toContain('probe:b');
+    await expect(page.locator('#query-label')).not.toContainText('focus a');
+    expect(new URL(page.url()).searchParams.get('focus')).toBeNull();
+  });
+});
+
+// 100 roots -> 5 children -> 2 grandchildren -> 12 leaves: 13,600 nodes, a
+// large graph. Its seeded view refuses depth 3 (over 2,000 nodes) and draws
+// depth 2, which leaves the leaves out.
+function largeGraph() {
+  const node = (id: string) => ({
+    id, display_name: id, symbol: id,
+    full_path: `/l/${id}.rs`, relative_path: `src/${id}.rs`, file_name: `${id}.rs`,
+    parent_folder: 'src', crate_name: 'l', is_libsignal: false, kind: 'exec',
+    dependencies: [] as string[], dependents: [] as string[],
+  });
+  const nodes = [];
+  const links = [];
+  for (let i = 0; i < 100; i++) {
+    nodes.push(node(`r${i}`));
+    for (let j = 0; j < 5; j++) {
+      const child = `c${i * 5 + j}`;
+      nodes.push(node(child));
+      links.push({ source: `r${i}`, target: child, type: 'inner' });
+      for (let k = 0; k < 2; k++) {
+        const grand = `g${(i * 5 + j) * 2 + k}`;
+        nodes.push(node(grand));
+        links.push({ source: child, target: grand, type: 'inner' });
+        for (let l = 0; l < 12; l++) {
+          const leaf = `x${((i * 5 + j) * 2 + k) * 12 + l}`;
+          nodes.push(node(leaf));
+          links.push({ source: grand, target: leaf, type: 'inner' });
+        }
+      }
+    }
+  }
+  return {
+    nodes, links,
+    metadata: { total_nodes: nodes.length, total_edges: links.length, project_root: '/l', generated_at: '2026-01-01' },
+  };
+}
+
+test('Packed Map: the query of a function opened from a large graph keeps the depth', async ({ page }) => {
+  await page.route('**/large.json', (route: Route) =>
+    route.fulfill({ contentType: 'application/json', body: JSON.stringify(largeGraph()) }));
+  await page.goto('/probegraph/?json=large.json&view=packed-map&depth=3');
+  await expect(page.locator('.pm-fn').first()).toBeAttached({ timeout: 30000 });
+  // x0 is three calls below r0: the seeded view at depth 2 leaves it out
+  await page.locator('.pm-fn[data-node-id="x0"]').dispatchEvent('dblclick');
+
+  await expect(page.locator('#view-callgraph')).toHaveClass(/active/);
+  await expect.poll(() => new URL(page.url()).searchParams.get('id')).toBe('x0');
+  expect(new URL(page.url()).searchParams.get('depth')).toBe('3');
+  await expect(page.locator('#depth-value')).toHaveText('3');
+  // Callers up to r0, three levels up
+  await expect.poll(async () => (await shownIds(page)).includes('r0')).toBe(true);
 });
