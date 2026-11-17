@@ -436,7 +436,7 @@ test.describe('Packed Map: open in the Call Graph', () => {
     await expect(page.locator('.pm-fn')).toHaveCount(0);
     await expect.poll(() => new URL(page.url()).searchParams.get('id')).toBe(left);
     await expect.poll(() => shownIds(page)).toEqual(['probe:h', left]);
-    await expect(page.locator('#node-info')).toContainText(left.slice('probe:'.length));
+    await expect(page.locator('#node-info h3')).toHaveText(left.slice('probe:'.length));
 
     await page.goBack();
     await expect(page.locator('#view-packed-map')).toHaveClass(/active/);
@@ -454,7 +454,7 @@ test.describe('Packed Map: open in the Call Graph', () => {
     await page.locator(`.pm-fn[data-node-id="${leaf}"]`).dispatchEvent('dblclick');
 
     await expect(page.locator('#view-callgraph')).toHaveClass(/active/);
-    await expect(page.locator('#node-info')).toContainText(leaf.slice('probe:'.length));
+    await expect(page.locator('#node-info h3')).toHaveText(leaf.slice('probe:'.length));
     expect(new URL(page.url()).searchParams.get('id')).toBeNull();
     expect(await shownIds(page)).toContain(leaf);
 
@@ -472,7 +472,7 @@ test.describe('Packed Map: open in the Call Graph', () => {
     await expect(page.locator('#view-callgraph')).toHaveClass(/active/);
     await expect.poll(() => shownIds(page)).toEqual(['probe:a', 'probe:b']);
     expect(new URL(page.url()).searchParams.get('id')).toBe('probe:a');
-    await expect(page.locator('#node-info')).toContainText('b');
+    await expect(page.locator('#node-info h3')).toHaveText('b');
   });
 
   test('Shift+Enter opens the function in the focus ring', async ({ page }) => {
@@ -488,6 +488,6 @@ test.describe('Packed Map: open in the Call Graph', () => {
     await page.keyboard.press('Shift+Enter');
     await expect(page.locator('#view-callgraph')).toHaveClass(/active/);
     await expect.poll(async () => (await shownIds(page)).includes(focused)).toBe(true);
-    await expect(page.locator('#node-info')).toContainText(focused.slice('probe:'.length));
+    await expect(page.locator('#node-info h3')).toHaveText(focused.slice('probe:'.length));
   });
 });
