@@ -530,6 +530,19 @@ appears only when a graph mixes both values. Probe atom output never sets the
 flag, so in practice it shows only for older D3-format graphs
 ([#61](https://github.com/Beneficial-AI-Foundation/probegraph/issues/61)).
 
+**Dependencies** has one box, **Stub crates**, off by default. A stub crate
+is a crate where no node has a source path. Extractors such as probe-rust
+record calls into other crates (for example `proptest`, `rand`, `core`) as
+atoms with an empty `code-path`, so these crates have names but no code. With
+the box off, every view hides their nodes and the edges to them, and the
+Hierarchy and Packed Map show only the crates with source. A function of the
+project whose only calls go to stub crates stays visible. Like the Declaration
+Kind boxes, this box restricts traversal: a query does not go through a hidden
+stub-crate node. The crate dropdowns do not list hidden stub crates. Turn the
+box on to see which external functions the code calls. The section appears only when
+the graph has a stub crate. A graph where no node has a source path has no
+stub crates, so nothing is hidden.
+
 **Exclude by Name** and **Exclude by Path** take comma-separated globs
 (`*_comm*`, `*/specs/*`). Exclude by Path is matched against the node ID, not
 the file path, so its presets only work where IDs contain the path; probe and
@@ -727,6 +740,7 @@ non-default values are included. All parameters:
 | `status` | exact status set, comma-separated (e.g. `transitively-verified`) |
 | `rust`, `lean` | language toggles for mixed graphs (`1`/`0`) |
 | `libsignal`, `external` | source-type toggles (`1`/`0`) |
+| `stubs` | Stub crates toggle (`1` shows them; default off) |
 
 Precedence when several query parameters are present: `id`, then
 `source-id`/`sink-id`, then `focus`,

@@ -20,6 +20,8 @@ import {
   resolveNodeMatcher,
   compileQuery,
   compileSeededDisplayPredicate,
+  executeQuery,
+  withoutStubCrates,
   TraversalPredicates,
 } from './query';
 import { D3Graph, D3Node, D3Link, FilterOptions, LinkRole } from './types';
@@ -87,6 +89,7 @@ function createFilters(overrides: Partial<FilterOptions> = {}): FilterOptions {
     showAxioms: true,
     showTypes: true,
     showProjections: true,
+    showStubCrates: true,
     showInstances: true,
     showRustNodes: true,
     showLeanNodes: true,
@@ -817,5 +820,54 @@ describe('compileSeededDisplayPredicate', () => {
     const noUnverified = compileSeededDisplayPredicate(createFilters({ showUnverifiedNodes: false }));
     expect(noUnverified(mkNode())).toBe(false);
     expect(noUnverified(mkNode({ verification_status: 'failed' }))).toBe(true);
+  });
+});
+
+describe('Stub crates filter', () => {
+  // app calls lib and ext; ext is in a stub crate
+  const app = createNode({ id: 'app', display_name: 'app', crate_name: 'app' });
+  const lib = createNode({ id: 'lib', display_name: 'lib', crate_name: 'app' });
+  const ext = { ...createNode({ id: 'ext', display_name: 'ext', crate_name: 'dep' }), in_stub_crate: true };
+  const graph = createGraph([app, lib, ext], [createLink('app', 'lib'), createLink('app', 'ext')]);
+  const ids = (f: FilterOptions) => executeQuery(compileQuery(f), graph).nodes.map(n => n.id).sort();
+
+  it('hides stub-crate nodes and their links when off', () => {
+    const result = executeQuery(compileQuery(createFilters({ showStubCrates: false })), graph);
+    expect(result.nodes.map(n => n.id).sort()).toEqual(['app', 'lib']);
+    expect(result.links.map(l => l.target)).toEqual(['lib']);
+  });
+
+  it('shows them when on', () => {
+    expect(ids(createFilters({ showStubCrates: true }))).toEqual(['app', 'ext', 'lib']);
+  });
+
+  it('keeps a project node whose only calls go to a hidden stub crate', () => {
+    // app2 calls only ext: hiding ext must not hide app2
+    const app2 = createNode({ id: 'app2', display_name: 'app2', crate_name: 'app' });
+    const g = createGraph([app2, ext], [createLink('app2', 'ext')]);
+    expect(executeQuery(compileQuery(createFilters({ showStubCrates: false })), g).nodes.map(n => n.id))
+      .toEqual(['app2']);
+    expect(executeQuery(compileQuery(createFilters({ showStubCrates: true })), g).nodes.map(n => n.id).sort())
+      .toEqual(['app2', 'ext']);
+  });
+
+  it('does not keep a node whose link to the stub crate is of a hidden type', () => {
+    const app2 = createNode({ id: 'app2', display_name: 'app2', crate_name: 'app' });
+    const g = createGraph([app2, ext], [createLink('app2', 'ext', 'precondition')]);
+    const f = createFilters({ showStubCrates: false, showPreconditionCalls: false });
+    expect(executeQuery(compileQuery(f), g).nodes).toEqual([]);
+  });
+
+  it('withoutStubCrates drops stub nodes and their links only when hidden', () => {
+    const hidden = withoutStubCrates(graph, { showStubCrates: false });
+    expect(hidden.nodes.map(n => n.id)).toEqual(['app', 'lib']);
+    expect(hidden.links.map(l => l.target)).toEqual(['lib']);
+    expect(withoutStubCrates(graph, { showStubCrates: true })).toBe(graph);
+  });
+
+  it('applies to the seeded display predicate', () => {
+    expect(compileSeededDisplayPredicate(createFilters({ showStubCrates: false }))(ext)).toBe(false);
+    expect(compileSeededDisplayPredicate(createFilters({ showStubCrates: true }))(ext)).toBe(true);
+    expect(compileSeededDisplayPredicate(createFilters({ showStubCrates: false }))(app)).toBe(true);
   });
 });

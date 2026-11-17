@@ -8,7 +8,8 @@
 import { test, expect, type Page } from '@playwright/test';
 
 // quicksort example: partition calls len and swap; quicksort calls partition,
-// len and split_at_mut; test_quicksort calls quicksort.
+// len and split_at_mut; test_quicksort calls quicksort. The core nodes have
+// no source path, so core is a stub crate, hidden by default.
 function node(id: string, name: string, lines?: [number, number]) {
   return {
     id, display_name: name, symbol: id,
@@ -83,7 +84,10 @@ test.describe('VS Code webview', () => {
       selectedNodeId: 'qs/partition()',
     });
     await expect(page.locator('#query-label')).toContainText('neighborhood of partition');
-    // partition, its callees len and swap, its caller quicksort, and test_quicksort
+    // partition, its caller quicksort, and test_quicksort; core is a stub crate
+    await expect(page.locator('#graph-container svg circle')).toHaveCount(3);
+    // The Stub crates box brings back its callees len and swap
+    await page.locator('#show-stub-crates').check();
     await expect(page.locator('#graph-container svg circle')).toHaveCount(5);
   });
 
@@ -116,8 +120,8 @@ test.describe('VS Code webview', () => {
     await expect(page.locator('#query-label')).toContainText('test_quicksort');
     await expect(page.locator('#source-input')).toHaveValue('test_quicksort');
     // The depth from loadGraph stays: test_quicksort → quicksort →
-    // partition, len, split_at_mut → swap
-    await expect(page.locator('#graph-container svg circle')).toHaveCount(6);
+    // partition (len, split_at_mut and swap are in the stub crate core)
+    await expect(page.locator('#graph-container svg circle')).toHaveCount(3);
   });
 
   test.describe('with revisions', () => {
@@ -145,8 +149,9 @@ test.describe('VS Code webview', () => {
       await expect.poll(() => results(page)).toEqual([
         { type: 'selectResult', revision: 1, requestId: 1, status: 'shown' },
       ]);
-      // depth 1: partition, its callees len and swap, its caller quicksort
-      await expect.poll(() => drawn(page)).toEqual(['core/len()', 'core/swap()', 'qs/partition()', 'qs/quicksort()']);
+      // depth 1: partition and its caller quicksort; its callees len and
+      // swap are in the stub crate core
+      await expect.poll(() => drawn(page)).toEqual(['qs/partition()', 'qs/quicksort()']);
       await expect(page.locator('#node-info')).toContainText('partition');
     });
 

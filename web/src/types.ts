@@ -276,6 +276,10 @@ export interface D3Node {
   is_entry_point?: boolean;
   blueprint?: BlueprintInfo;  // probe-leanblueprint fields (node atoms and bound Lean atoms)
   is_hidden?: boolean;  // probe-lean `is-hidden`
+  // Derived at load time (markStubCrates): the node's crate has no atom with
+  // a source path, e.g. an external dependency the extractor saw only as a
+  // call target. Hidden unless FilterOptions.showStubCrates.
+  in_stub_crate?: boolean;
   is_generated?: boolean;  // probe-lean `is-lean-generated` or `is-aeneas-generated`
   // probe-lean `type-dependencies-external` IDs with no atom in the graph,
   // so no link; search indexes them as statement names
@@ -380,6 +384,7 @@ export interface FilterOptions {
   showTypes: boolean;              // Show structure/inductive/class nodes (default: false)
   showProjections: boolean;        // Show auto-generated projections (default: false)
   showInstances: boolean;          // Show typeclass instances (default: false)
+  showStubCrates: boolean;         // Show nodes of crates with no source (default: false)
   // Language filters (for multi-language projects)
   showRustNodes: boolean;          // Show Rust/Verus nodes (default: true)
   showLeanNodes: boolean;          // Show Lean nodes (default: true)

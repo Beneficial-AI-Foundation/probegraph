@@ -9,9 +9,39 @@
 
 import { test, expect } from '@playwright/test';
 
-const APP_URL = '/probegraph/?json=./graph_backup_dalek.json&view=hierarchy';
+// stubs=1: the drill-down wants many crate boxes, and most crates of this
+// fixture are stub crates (no source path), hidden by default
+const APP_URL = '/probegraph/?json=./graph_backup_dalek.json&view=hierarchy&stubs=1';
+const DEFAULT_URL = '/probegraph/?json=./graph_backup_dalek.json&view=hierarchy';
 
 test.describe('Hierarchy view', () => {
+  test('hides stub crates by default and shows them with the Stub crates box', async ({ page }) => {
+    await page.goto(DEFAULT_URL);
+    await expect(page.locator('.hm-group').first()).toBeVisible({ timeout: 30000 });
+    const crate = (name: string) => page.locator('.hm-group text', { hasText: new RegExp(`^${name}$`) });
+    await expect(crate('curve25519-dalek')).toHaveCount(1);
+    await expect(crate('core')).toHaveCount(0);
+    const before = await page.locator('.hm-group').count();
+
+    const box = page.locator('#show-stub-crates');
+    await expect(box).toBeVisible();
+    await expect(box).not.toBeChecked();
+    await box.check();
+    await expect(crate('core')).toHaveCount(1);
+    expect(await page.locator('.hm-group').count()).toBeGreaterThan(before);
+    expect(page.url()).toContain('stubs=1');
+  });
+
+  test('crate dropdowns follow the Stub crates box restored from the URL', async ({ page }) => {
+    const options = () => page.locator('#source-crate-select option').evaluateAll(
+      os => os.map(o => (o as HTMLOptionElement).value));
+    await page.goto('/probegraph/?json=./graph_backup_dalek.json&view=crate-map&stubs=1');
+    await expect.poll(options, { timeout: 30000 }).toContain('core');
+    await page.goto('/probegraph/?json=./graph_backup_dalek.json&view=crate-map');
+    await expect.poll(options, { timeout: 30000 }).toContain('curve25519-dalek');
+    expect(await options()).not.toContain('core');
+  });
+
   test('drills from crate overview to function level and back', async ({ page }) => {
     await page.goto(APP_URL);
 

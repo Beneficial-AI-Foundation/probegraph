@@ -10,7 +10,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { computeSeedTiers, expandFromSeeds, SeedBudget } from './graph-utils';
+import { computeSeedTiers, expandFromSeeds, markStubCrates, SeedBudget } from './graph-utils';
 import { computeTopologicalDepth } from './graph';
 import { parseAndNormalizeGraph } from './graph-loader';
 import { D3Graph, D3Node, D3Link } from './types';
@@ -339,5 +339,37 @@ describe.skipIf(!existsSync(AENEAS_PATH))('Golden: Aeneas curve25519-dalek 4.2.0
     expect(r.depth).toBe(1);
     expect(r.nodeIds.size).toBe(526);
     expect(r.linkCount).toBe(1837);
+  });
+});
+
+describe('markStubCrates', () => {
+  const node = (id: string, crate: string, path: string, language?: string): D3Node =>
+    ({ ...createNode(id), crate_name: crate, relative_path: path, language });
+  const graphOf = (nodes: D3Node[]): D3Graph =>
+    ({ nodes, links: [], metadata: { total_nodes: nodes.length, total_edges: 0, project_root: '/', generated_at: '' } });
+  const stubIds = (g: D3Graph) => g.nodes.filter(n => n.in_stub_crate).map(n => n.id);
+
+  it('marks every node of a crate with no source path', () => {
+    const g = graphOf([node('a', 'app', 'src/a.rs'), node('x', 'dep', ''), node('y', 'dep', '')]);
+    markStubCrates(g);
+    expect(stubIds(g)).toEqual(['x', 'y']);
+  });
+
+  it('keeps a crate with at least one source path whole', () => {
+    const g = graphOf([node('a', 'app', 'src/a.rs'), node('b', 'app', '')]);
+    markStubCrates(g);
+    expect(stubIds(g)).toEqual([]);
+  });
+
+  it('marks nothing when no node has a source path', () => {
+    const g = graphOf([node('x', 'dep', ''), node('y', 'other', '')]);
+    markStubCrates(g);
+    expect(stubIds(g)).toEqual([]);
+  });
+
+  it('never marks blueprint nodes', () => {
+    const g = graphOf([node('a', 'app', 'src/a.rs'), node('bp', 'Blueprint', '', 'blueprint')]);
+    markStubCrates(g);
+    expect(stubIds(g)).toEqual([]);
   });
 });

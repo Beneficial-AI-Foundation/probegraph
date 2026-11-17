@@ -4,10 +4,10 @@ import { readyWorkHtml, trustDetailsHtml } from './trust-details';
 import { groupDrawing, witness } from './trust-base';
 import { applyFilters, getCallers, getCallees } from './filters';
 import {
-  compileQuery, GraphQuery, NodeMatcher, filterLinksByType, linkTypeShown, roleFilteredGraph,
+  compileQuery, GraphQuery, NodeMatcher, filterLinksByType, linkTypeShown, roleFilteredGraph, withoutStubCrates,
   compileSeededDisplayPredicate,
 } from './query';
-import { computeSeedTiers, expandFromSeeds, SeedTier, SeedExpansion } from './graph-utils';
+import { computeSeedTiers, expandFromSeeds, SeedTier, SeedExpansion, markStubCrates } from './graph-utils';
 import { CallGraphVisualization } from './graph';
 import { FileMapVisualization } from './file-map';
 import { CrateMapVisualization, buildCrateGraph } from './crate-map';
@@ -359,6 +359,10 @@ function syncFilterUI(): void {
   setCheckbox('show-body-deps', state.filters.showBodyDeps);
   setCheckbox('show-libsignal', state.filters.showLibsignal);
   setCheckbox('show-non-libsignal', state.filters.showNonLibsignal);
+  setCheckbox('show-stub-crates', state.filters.showStubCrates);
+  // The crate lists depend on the Stub crates box; syncIntentInputs skips
+  // them in the Crate Map. Cheap when nothing changed.
+  populateCrateDropdowns();
   setCheckbox('show-rust-nodes', state.filters.showRustNodes);
   setCheckbox('show-lean-nodes', state.filters.showLeanNodes);
   syncStatusCheckboxes();
@@ -712,12 +716,12 @@ function initGuidePanel(): void {
   guidePanel = new GuidePanel(guideActions);
 }
 
-// Kind and link type filters the Guide was last rendered with
+// Kind, stub crate and link type filters the Guide was last rendered with
 let guideFilterKey = '';
 
 /**
  * Re-render the Guide. Its rankings and chips only name nodes and links the
- * current kind and link type filters show; counts use the full graph.
+ * current kind, stub crate and link type filters show; counts use the full graph.
  */
 function refreshGuidePanel(opts: { onlyIfFiltersChanged?: boolean } = {}): void {
   if (!state.fullGraph || !guidePanel) return;
@@ -725,7 +729,7 @@ function refreshGuidePanel(opts: { onlyIfFiltersChanged?: boolean } = {}): void 
   const compiled = compileQuery(f, state.projectLanguage);
   const key = JSON.stringify([
     compiled.linkTypeFilter, f.showExecFunctions, f.showProofFunctions, f.showSpecFunctions,
-    f.showAxioms, f.showTypes, f.showProjections, f.showInstances,
+    f.showAxioms, f.showTypes, f.showProjections, f.showInstances, f.showStubCrates,
   ]);
   if (opts.onlyIfFiltersChanged && key === guideFilterKey) return;
   guideFilterKey = key;
@@ -1030,6 +1034,12 @@ function setupUIHandlers(): void {
 
   document.getElementById('show-non-libsignal')?.addEventListener('change', (e) => {
     state.filters.showNonLibsignal = (e.target as HTMLInputElement).checked;
+    applyFiltersAndUpdate();
+  });
+
+  document.getElementById('show-stub-crates')?.addEventListener('change', (e) => {
+    state.filters.showStubCrates = (e.target as HTMLInputElement).checked;
+    populateCrateDropdowns();
     applyFiltersAndUpdate();
   });
 
@@ -1498,9 +1508,10 @@ interface SeededViewInfo {
 
 // Set while the current view is the entry-point-seeded initial view
 let seededViewInfo: SeededViewInfo | null = null;
-// Seed tiers of the role-filtered graph, keyed by the statement / body-or-proof
-// boxes (turning off a role can create new sources); reset in loadGraph()
-let seedTiersCache: { roleKey: string; tiers: SeedTier[] } | null = null;
+// Seed tiers of the role-filtered graph without hidden stub crates, keyed by
+// the statement / body-or-proof boxes (turning off a role can create new
+// sources) and the Stub crates box; reset in loadGraph()
+let seedTiersCache: { key: string; tiers: SeedTier[] } | null = null;
 // The depth the user actually asked for (?depth= or slider), kept separate
 // from state.filters.maxDepth: the seeded render commits the *achieved* depth
 // there, and an async re-seed (a late ?entrypoints= payload whose tier fits
@@ -1569,15 +1580,23 @@ function computeSeededExpansion(
 ): { tier: SeedTier; expansion: SeedExpansion } | null {
   if (!state.fullGraph) return null;
   // The statement / body-or-proof boxes restrict the expansion, as they do
-  // query traversal
-  const graph = roleFilteredGraph(state.fullGraph, state.filters);
-  const roleKey = `${state.filters.showStatementDeps}:${state.filters.showBodyDeps}`;
-  if (seedTiersCache?.roleKey !== roleKey) {
-    seedTiersCache = { roleKey, tiers: computeSeedTiers(graph) };
+  // query traversal. Hidden stub crates are left out so they do not use up
+  // the render budget.
+  const graph = withoutStubCrates(roleFilteredGraph(state.fullGraph, state.filters), state.filters);
+  const { showStatementDeps, showBodyDeps, showStubCrates } = state.filters;
+  const key = `${showStatementDeps}:${showBodyDeps}:${showStubCrates}`;
+  if (seedTiersCache?.key !== key) {
+    seedTiersCache = { key, tiers: computeSeedTiers(graph) };
   }
-  const tiers: SeedTier[] = entrypointsParam && activeLayer === 'code'
+  const allTiers: SeedTier[] = entrypointsParam && activeLayer === 'code'
     ? [{ name: 'blueprint-param', seeds: entrypointsParam.seeds }, ...seedTiersCache.tiers]
     : seedTiersCache.tiers;
+  // ?entrypoints= seeds come from the full graph: drop the ones that are
+  // hidden stub-crate nodes, and skip a tier with no seed left
+  const inGraph = new Set(graph.nodes.map(n => n.id));
+  const tiers = allTiers
+    .map(tier => ({ ...tier, seeds: tier.seeds.filter(id => inGraph.has(id)) }))
+    .filter(tier => tier.seeds.length > 0);
   const budget = { maxNodes: LARGE_GRAPH_NODE_THRESHOLD, maxLinks: LARGE_GRAPH_LINK_THRESHOLD };
   for (const tier of tiers) {
     const expansion = expandFromSeeds(graph, tier.seeds, requestedDepth, budget);
@@ -1882,6 +1901,13 @@ function updateSourceTypeFilterVisibility(): void {
   const hasLibsignal = nodes.some(n => n.is_libsignal);
   const hasExternal = nodes.some(n => !n.is_libsignal);
   container.style.display = hasLibsignal && hasExternal ? '' : 'none';
+}
+
+/** Show the Stub crates filter only when the graph has a stub crate. */
+function updateStubCratesFilterVisibility(): void {
+  const container = document.getElementById('stub-crates-container');
+  if (!container) return;
+  container.style.display = state.fullGraph?.nodes.some(n => n.in_stub_crate) ? '' : 'none';
 }
 
 /**
@@ -2192,11 +2218,12 @@ function copyGraph(graph: D3Graph): D3Graph {
 
 /**
  * Set crate_name on every node with language-aware extraction (Lean:
- * two-level module path, Rust/Verus: top-level crate).
+ * two-level module path, Rust/Verus: top-level crate), then mark stub crates.
  */
 function fillCrateNames(graph: D3Graph): void {
   const language = detectProjectLanguage(graph);
   for (const node of graph.nodes) node.crate_name = extractCrateName(node, language);
+  markStubCrates(graph);
 }
 
 /**
@@ -2230,6 +2257,7 @@ function showLayer(layer: Layer): void {
   // Detect project language and update UI accordingly
   state.projectLanguage = detectProjectLanguage(state.fullGraph);
   updateSourceTypeFilterVisibility();
+  updateStubCratesFilterVisibility();
   renderLanguageFilters();
   renderKindFilters(state.projectLanguage);
   renderCallTypeFilters(state.projectLanguage);
@@ -3193,13 +3221,17 @@ let crateDropdownKey = '';
 function populateCrateDropdowns(): void {
   if (!state.fullGraph) return;
 
-  const key = `${graphLoadGeneration}\0${selectedSourceCrate}\0${selectedTargetCrate}`;
+  const key = dropdownKey();
   if (key === crateDropdownKey) return;
 
   ensureCrateGraphBuilt();
 
+  // Hidden stub crates are left out, except a selected one, so the controls
+  // still match the boundary query
   const allCrateNames = new Set<string>();
   for (const node of state.fullGraph.nodes) {
+    if (node.in_stub_crate && !state.filters.showStubCrates
+        && node.crate_name !== selectedSourceCrate && node.crate_name !== selectedTargetCrate) continue;
     if (node.crate_name && node.crate_name !== 'unknown') {
       allCrateNames.add(node.crate_name);
     }
@@ -3236,7 +3268,11 @@ function populateCrateDropdowns(): void {
     selectedTargetCrate = fill(tgtSel, targetList, selectedTargetCrate);
   }
 
-  crateDropdownKey = `${graphLoadGeneration}\0${selectedSourceCrate}\0${selectedTargetCrate}`;
+  crateDropdownKey = dropdownKey();
+}
+
+function dropdownKey(): string {
+  return [graphLoadGeneration, selectedSourceCrate, selectedTargetCrate, state.filters.showStubCrates].join('\0');
 }
 
 /**

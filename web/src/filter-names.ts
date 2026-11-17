@@ -6,7 +6,7 @@
 
 const FILTER_NAMES: Record<string, string> = {
   showExecFunctions: 'Exec', showProofFunctions: 'Proof', showSpecFunctions: 'Spec',
-  showAxioms: 'Axiom', showTypes: 'Type', showProjections: 'Projection', showInstances: 'Instance',
+  showAxioms: 'Axiom', showTypes: 'Type', showProjections: 'Projection', showInstances: 'Instance', showStubCrates: 'Stub crates',
   showRustNodes: 'Rust', showLeanNodes: 'Lean', showLibsignal: 'libsignal', showNonLibsignal: 'non-libsignal',
   showVerifiedNodes: 'Verified', showFailedNodes: 'Failed', showUnverifiedNodes: 'Unverified',
   exactStatuses: 'status', excludeNamePatterns: 'name exclusion', excludePathPatterns: 'path exclusion',

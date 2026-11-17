@@ -77,6 +77,8 @@ export interface DisplayPredicates {
   exactStatuses: VerificationStatus[] | null;
   showRustNodes: boolean;
   showLeanNodes: boolean;
+  /** When false, nodes kept only by links to hidden stub crates stay drawn. */
+  showStubCrates: boolean;
 }
 
 export interface FocusConfig {
@@ -444,6 +446,27 @@ export function roleFilteredGraph(
   return { ...graph, links: graph.links.filter(l => linkRoleShown(l, filter)) };
 }
 
+/**
+ * The graph without stub-crate nodes and their links, unless the Stub crates
+ * filter shows them. Like the kind filters, the Stub crates filter restricts
+ * traversal: a path through a stub-crate node is cut while it is hidden.
+ */
+export function withoutStubCrates(
+  graph: D3Graph,
+  filter: Pick<FilterOptions, 'showStubCrates'>,
+): D3Graph {
+  if (filter.showStubCrates || !graph.nodes.some(n => n.in_stub_crate)) return graph;
+  const stubIds = new Set(graph.nodes.filter(n => n.in_stub_crate).map(n => n.id));
+  return {
+    ...graph,
+    nodes: graph.nodes.filter(n => !stubIds.has(n.id)),
+    links: graph.links.filter(l => {
+      const { sourceId, targetId } = getLinkId(l);
+      return !stubIds.has(sourceId) && !stubIds.has(targetId);
+    }),
+  };
+}
+
 /** Whether a link's type and role pass the filter. */
 export function linkTypeShown(link: D3Link, filter: LinkTypeFilter): boolean {
   const t = link.type || 'inner';
@@ -483,6 +506,23 @@ export function depthFilterLinks(
 }
 
 /** Remove nodes that have no edges, unless they're in the keepSet. */
+/**
+ * Nodes outside stub crates with a link, of a shown type, to or from a
+ * stub-crate node.
+ */
+function callersOfHiddenStubs(graph: D3Graph, filter: LinkTypeFilter): Set<string> {
+  const ids = new Set<string>();
+  if (!graph.nodes.some(n => n.in_stub_crate)) return ids;
+  const stub = new Set(graph.nodes.filter(n => n.in_stub_crate).map(n => n.id));
+  for (const link of graph.links) {
+    const { sourceId, targetId } = getLinkId(link);
+    if (stub.has(sourceId) === stub.has(targetId)) continue;
+    if (!linkTypeShown(link, filter)) continue;
+    ids.add(stub.has(sourceId) ? targetId : sourceId);
+  }
+  return ids;
+}
+
 export function removeIsolated(
   nodes: D3Node[],
   links: D3Link[],
@@ -574,8 +614,8 @@ function buildMatcher(queryStr: string): NodeMatcher {
 
 /**
  * Node predicate for the seeded initial view: every display-affecting filter
- * that is not query intent (hidden nodes, kind flags, exclude patterns, build
- * artifacts, libsignal origin, verification status). Lives here so it shares
+ * that is not query intent (hidden nodes, kind flags, stub crates, exclude
+ * patterns, build artifacts, libsignal origin, verification status). Lives here so it shares
  * the pipeline's helpers and cannot drift from them.
  */
 export function compileSeededDisplayPredicate(
@@ -589,6 +629,7 @@ export function compileSeededDisplayPredicate(
   return (node: D3Node) => {
     if (filters.hiddenNodes.has(node.id)) return false;
     if (!passesKind(node.kind || 'exec')) return false;
+    if (node.in_stub_crate && !filters.showStubCrates) return false;
     if (nodeMatchesExcludeNamePattern(node, excludeName)) return false;
     if (nodeMatchesExcludePathPattern(node, excludePath)) return false;
     if (nodeIsFromBuildArtifact(node)) return false;
@@ -624,7 +665,8 @@ export function compileQuery(
 
   // -- Traversal predicates --
   const traversalPredicates: TraversalPredicates = {
-    kindFilter: (node: D3Node) => passesKind(node.kind || 'exec'),
+    kindFilter: (node: D3Node) =>
+      passesKind(node.kind || 'exec') && (filters.showStubCrates || !node.in_stub_crate),
     excludeNamePatterns: parseExcludePatterns(filters.excludeNamePatterns),
     excludePathPatterns: parseExcludePatterns(filters.excludePathPatterns),
     includeFilePatterns: useFileAsResultFilter ? [] : parsedFilePatterns,
@@ -644,6 +686,7 @@ export function compileQuery(
     exactStatuses: filters.exactStatuses,
     showRustNodes: filters.showRustNodes ?? true,
     showLeanNodes: filters.showLeanNodes ?? true,
+    showStubCrates: filters.showStubCrates,
   };
 
   const focusConfig: FocusConfig = isFocusIntent(intent)
@@ -965,6 +1008,11 @@ export function executeQuery(
       ...focusConfig.focusNodeIds, ...anchorIds,
       ...resultNodes.filter(n => n.language === BLUEPRINT_LANGUAGE).map(n => n.id),
     ]);
+    // A node whose shown links all went to hidden stub crates is still a
+    // node of the project: hiding its external calls must not hide it
+    if (!displayPredicates.showStubCrates) {
+      for (const id of callersOfHiddenStubs(fullGraph, linkTypeFilter)) keepSet.add(id);
+    }
     resultNodes = removeIsolated(resultNodes, resultLinks, keepSet);
   }
 
