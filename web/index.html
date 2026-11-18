@@ -89,6 +89,14 @@
             </label>
           </div>
 
+          <div class="filter-group" id="test-only-container" style="display:none">
+            <h3>Tests</h3>
+            <label class="checkbox-label" title="Functions compiled only in test builds: their #[cfg] gate, or that of a module around them, needs cfg(test)">
+              <input type="checkbox" id="show-test-only" />
+              <span>Test-only code</span>
+            </label>
+          </div>
+
           <div class="filter-group" id="call-types-container">
             <h3>Call Types</h3>
           </div>

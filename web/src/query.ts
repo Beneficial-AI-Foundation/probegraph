@@ -77,8 +77,9 @@ export interface DisplayPredicates {
   exactStatuses: VerificationStatus[] | null;
   showRustNodes: boolean;
   showLeanNodes: boolean;
-  /** When false, nodes kept only by links to hidden stub crates stay drawn. */
+  /** Opt-in boxes: nodes kept only by links to nodes they hide stay drawn. */
   showStubCrates: boolean;
+  showTestOnly: boolean;
 }
 
 export interface FocusConfig {
@@ -446,23 +447,32 @@ export function roleFilteredGraph(
   return { ...graph, links: graph.links.filter(l => linkRoleShown(l, filter)) };
 }
 
+/** The boxes that hide a class of nodes until the user opts in. */
+export type OptInFilter = Pick<FilterOptions, 'showStubCrates' | 'showTestOnly'>;
+
 /**
- * The graph without stub-crate nodes and their links, unless the Stub crates
- * filter shows them. Like the kind filters, the Stub crates filter restricts
- * traversal: a path through a stub-crate node is cut while it is hidden.
+ * Whether an opt-in box hides the node: a stub-crate node while Stub crates
+ * is off, or test-only code while Test-only code is off.
  */
-export function withoutStubCrates(
-  graph: D3Graph,
-  filter: Pick<FilterOptions, 'showStubCrates'>,
-): D3Graph {
-  if (filter.showStubCrates || !graph.nodes.some(n => n.in_stub_crate)) return graph;
-  const stubIds = new Set(graph.nodes.filter(n => n.in_stub_crate).map(n => n.id));
+export function optInHidden(node: D3Node, filter: OptInFilter): boolean {
+  return (node.in_stub_crate === true && !filter.showStubCrates)
+    || (node.is_test_only === true && !filter.showTestOnly);
+}
+
+/**
+ * The graph without the nodes an opt-in box hides, and without their links.
+ * Like the kind filters, these boxes restrict traversal: a path through a
+ * hidden node is cut.
+ */
+export function withoutOptInHidden(graph: D3Graph, filter: OptInFilter): D3Graph {
+  const hiddenIds = new Set(graph.nodes.filter(n => optInHidden(n, filter)).map(n => n.id));
+  if (hiddenIds.size === 0) return graph;
   return {
     ...graph,
-    nodes: graph.nodes.filter(n => !stubIds.has(n.id)),
+    nodes: graph.nodes.filter(n => !hiddenIds.has(n.id)),
     links: graph.links.filter(l => {
       const { sourceId, targetId } = getLinkId(l);
-      return !stubIds.has(sourceId) && !stubIds.has(targetId);
+      return !hiddenIds.has(sourceId) && !hiddenIds.has(targetId);
     }),
   };
 }
@@ -505,24 +515,26 @@ export function depthFilterLinks(
   });
 }
 
-/** Remove nodes that have no edges, unless they're in the keepSet. */
 /**
- * Nodes outside stub crates with a link, of a shown type, to or from a
- * stub-crate node.
+ * Shown nodes with a link, of a shown type, to or from a node an opt-in box
+ * hides.
  */
-function callersOfHiddenStubs(graph: D3Graph, filter: LinkTypeFilter): Set<string> {
+function neighborsOfOptInHidden(
+  graph: D3Graph, linkFilter: LinkTypeFilter, optIn: OptInFilter,
+): Set<string> {
   const ids = new Set<string>();
-  if (!graph.nodes.some(n => n.in_stub_crate)) return ids;
-  const stub = new Set(graph.nodes.filter(n => n.in_stub_crate).map(n => n.id));
+  const hidden = new Set(graph.nodes.filter(n => optInHidden(n, optIn)).map(n => n.id));
+  if (hidden.size === 0) return ids;
   for (const link of graph.links) {
     const { sourceId, targetId } = getLinkId(link);
-    if (stub.has(sourceId) === stub.has(targetId)) continue;
-    if (!linkTypeShown(link, filter)) continue;
-    ids.add(stub.has(sourceId) ? targetId : sourceId);
+    if (hidden.has(sourceId) === hidden.has(targetId)) continue;
+    if (!linkTypeShown(link, linkFilter)) continue;
+    ids.add(hidden.has(sourceId) ? targetId : sourceId);
   }
   return ids;
 }
 
+/** Remove nodes that have no edges, unless they're in the keepSet. */
 export function removeIsolated(
   nodes: D3Node[],
   links: D3Link[],
@@ -614,8 +626,8 @@ function buildMatcher(queryStr: string): NodeMatcher {
 
 /**
  * Node predicate for the seeded initial view: every display-affecting filter
- * that is not query intent (hidden nodes, kind flags, stub crates, exclude
- * patterns, build artifacts, libsignal origin, verification status). Lives here so it shares
+ * that is not query intent (hidden nodes, kind flags, stub crates, test-only
+ * code, exclude patterns, build artifacts, libsignal origin, verification status). Lives here so it shares
  * the pipeline's helpers and cannot drift from them.
  */
 export function compileSeededDisplayPredicate(
@@ -629,7 +641,7 @@ export function compileSeededDisplayPredicate(
   return (node: D3Node) => {
     if (filters.hiddenNodes.has(node.id)) return false;
     if (!passesKind(node.kind || 'exec')) return false;
-    if (node.in_stub_crate && !filters.showStubCrates) return false;
+    if (optInHidden(node, filters)) return false;
     if (nodeMatchesExcludeNamePattern(node, excludeName)) return false;
     if (nodeMatchesExcludePathPattern(node, excludePath)) return false;
     if (nodeIsFromBuildArtifact(node)) return false;
@@ -666,7 +678,7 @@ export function compileQuery(
   // -- Traversal predicates --
   const traversalPredicates: TraversalPredicates = {
     kindFilter: (node: D3Node) =>
-      passesKind(node.kind || 'exec') && (filters.showStubCrates || !node.in_stub_crate),
+      passesKind(node.kind || 'exec') && !optInHidden(node, filters),
     excludeNamePatterns: parseExcludePatterns(filters.excludeNamePatterns),
     excludePathPatterns: parseExcludePatterns(filters.excludePathPatterns),
     includeFilePatterns: useFileAsResultFilter ? [] : parsedFilePatterns,
@@ -687,6 +699,7 @@ export function compileQuery(
     showRustNodes: filters.showRustNodes ?? true,
     showLeanNodes: filters.showLeanNodes ?? true,
     showStubCrates: filters.showStubCrates,
+    showTestOnly: filters.showTestOnly,
   };
 
   const focusConfig: FocusConfig = isFocusIntent(intent)
@@ -1011,10 +1024,11 @@ export function executeQuery(
       ...focusConfig.focusNodeIds, ...anchorIds,
       ...resultNodes.filter(n => n.language === BLUEPRINT_LANGUAGE).map(n => n.id),
     ]);
-    // A node whose shown links all went to hidden stub crates is still a
-    // node of the project: hiding its external calls must not hide it
-    if (!displayPredicates.showStubCrates) {
-      for (const id of callersOfHiddenStubs(fullGraph, linkTypeFilter)) keepSet.add(id);
+    // A node whose shown links all went to nodes an opt-in box hides (stub
+    // crates, tests) is still a node of the project: hiding its external
+    // calls or its tests must not hide it
+    for (const id of neighborsOfOptInHidden(fullGraph, linkTypeFilter, displayPredicates)) {
+      keepSet.add(id);
     }
     resultNodes = removeIsolated(resultNodes, resultLinks, keepSet);
   }

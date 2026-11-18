@@ -315,6 +315,13 @@ describe('URL round trip for state outside the intent', () => {
     expect(roundTrip(defaultFilters()).showStubCrates).toBe(false);
   });
 
+  it('round-trips the Test-only code filter as tests=1, off by default', () => {
+    expect(write(defaultFilters()).has('tests')).toBe(false);
+    expect(write(filtersWith({ showTestOnly: true })).get('tests')).toBe('1');
+    expect(roundTrip(filtersWith({ showTestOnly: true })).showTestOnly).toBe(true);
+    expect(roundTrip(defaultFilters()).showTestOnly).toBe(false);
+  });
+
   it('every param goes back to default when its filter does (delete before set)', () => {
     const nonDefault = filtersWith({
       intent: textIntent('foo', 'bar'),
@@ -324,7 +331,7 @@ describe('URL round trip for state outside the intent', () => {
       maxDepth: 3,
       showExecFunctions: false, showProofFunctions: false, showSpecFunctions: true,
       showAxioms: false, showTypes: true, showProjections: true, showInstances: true,
-      showStubCrates: true,
+      showStubCrates: true, showTestOnly: true,
       showInnerCalls: false, showPreconditionCalls: true, showPostconditionCalls: true,
       showMappingLinks: false, showSpecLinks: false,
       showStatementDeps: false, showBodyDeps: false,

@@ -4,7 +4,7 @@ import { readyWorkHtml, trustDetailsHtml } from './trust-details';
 import { groupDrawing, witness } from './trust-base';
 import { applyFilters, getCallers, getCallees } from './filters';
 import {
-  compileQuery, GraphQuery, NodeMatcher, filterLinksByType, linkTypeShown, roleFilteredGraph, withoutStubCrates,
+  compileQuery, GraphQuery, NodeMatcher, filterLinksByType, linkTypeShown, roleFilteredGraph, withoutOptInHidden,
   compileSeededDisplayPredicate,
 } from './query';
 import { computeSeedTiers, expandFromSeeds, SeedTier, SeedExpansion, markStubCrates } from './graph-utils';
@@ -362,6 +362,7 @@ function syncFilterUI(): void {
   setCheckbox('show-libsignal', state.filters.showLibsignal);
   setCheckbox('show-non-libsignal', state.filters.showNonLibsignal);
   setCheckbox('show-stub-crates', state.filters.showStubCrates);
+  setCheckbox('show-test-only', state.filters.showTestOnly);
   // The crate lists depend on the Stub crates box; syncIntentInputs skips
   // them in the Crate Map. Cheap when nothing changed.
   populateCrateDropdowns();
@@ -718,12 +719,12 @@ function initGuidePanel(): void {
   guidePanel = new GuidePanel(guideActions);
 }
 
-// Kind, stub crate and link type filters the Guide was last rendered with
+// Kind, opt-in (stub crates, tests) and link type filters the Guide was last rendered with
 let guideFilterKey = '';
 
 /**
  * Re-render the Guide. Its rankings and chips only name nodes and links the
- * current kind, stub crate and link type filters show; counts use the full graph.
+ * current kind, opt-in and link type filters show; counts use the full graph.
  */
 function refreshGuidePanel(opts: { onlyIfFiltersChanged?: boolean } = {}): void {
   if (!state.fullGraph || !guidePanel) return;
@@ -731,7 +732,7 @@ function refreshGuidePanel(opts: { onlyIfFiltersChanged?: boolean } = {}): void 
   const compiled = compileQuery(f, state.projectLanguage);
   const key = JSON.stringify([
     compiled.linkTypeFilter, f.showExecFunctions, f.showProofFunctions, f.showSpecFunctions,
-    f.showAxioms, f.showTypes, f.showProjections, f.showInstances, f.showStubCrates,
+    f.showAxioms, f.showTypes, f.showProjections, f.showInstances, f.showStubCrates, f.showTestOnly,
   ]);
   if (opts.onlyIfFiltersChanged && key === guideFilterKey) return;
   guideFilterKey = key;
@@ -1104,6 +1105,11 @@ function setupUIHandlers(): void {
 
   document.getElementById('show-non-libsignal')?.addEventListener('change', (e) => {
     state.filters.showNonLibsignal = (e.target as HTMLInputElement).checked;
+    applyFiltersAndUpdate();
+  });
+
+  document.getElementById('show-test-only')?.addEventListener('change', (e) => {
+    state.filters.showTestOnly = (e.target as HTMLInputElement).checked;
     applyFiltersAndUpdate();
   });
 
@@ -1650,11 +1656,11 @@ function computeSeededExpansion(
 ): { tier: SeedTier; expansion: SeedExpansion } | null {
   if (!state.fullGraph) return null;
   // The statement / body-or-proof boxes restrict the expansion, as they do
-  // query traversal. Hidden stub crates are left out so they do not use up
-  // the render budget.
-  const graph = withoutStubCrates(roleFilteredGraph(state.fullGraph, state.filters), state.filters);
-  const { showStatementDeps, showBodyDeps, showStubCrates } = state.filters;
-  const key = `${showStatementDeps}:${showBodyDeps}:${showStubCrates}`;
+  // query traversal. Nodes the opt-in boxes hide (stub crates, test-only
+  // code) are left out so they do not use up the render budget.
+  const graph = withoutOptInHidden(roleFilteredGraph(state.fullGraph, state.filters), state.filters);
+  const { showStatementDeps, showBodyDeps, showStubCrates, showTestOnly } = state.filters;
+  const key = `${showStatementDeps}:${showBodyDeps}:${showStubCrates}:${showTestOnly}`;
   if (seedTiersCache?.key !== key) {
     seedTiersCache = { key, tiers: computeSeedTiers(graph) };
   }
@@ -1662,7 +1668,7 @@ function computeSeededExpansion(
     ? [{ name: 'blueprint-param', seeds: entrypointsParam.seeds }, ...seedTiersCache.tiers]
     : seedTiersCache.tiers;
   // ?entrypoints= seeds come from the full graph: drop the ones that are
-  // hidden stub-crate nodes, and skip a tier with no seed left
+  // nodes an opt-in box hides, and skip a tier with no seed left
   const inGraph = new Set(graph.nodes.map(n => n.id));
   const tiers = allTiers
     .map(tier => ({ ...tier, seeds: tier.seeds.filter(id => inGraph.has(id)) }))
@@ -1978,6 +1984,13 @@ function updateStubCratesFilterVisibility(): void {
   const container = document.getElementById('stub-crates-container');
   if (!container) return;
   container.style.display = state.fullGraph?.nodes.some(n => n.in_stub_crate) ? '' : 'none';
+}
+
+/** Show the Test-only code filter only when the graph has test-only code. */
+function updateTestOnlyFilterVisibility(): void {
+  const container = document.getElementById('test-only-container');
+  if (!container) return;
+  container.style.display = state.fullGraph?.nodes.some(n => n.is_test_only) ? '' : 'none';
 }
 
 /**
@@ -2328,6 +2341,7 @@ function showLayer(layer: Layer): void {
   state.projectLanguage = detectProjectLanguage(state.fullGraph);
   updateSourceTypeFilterVisibility();
   updateStubCratesFilterVisibility();
+  updateTestOnlyFilterVisibility();
   renderLanguageFilters();
   renderKindFilters(state.projectLanguage);
   renderCallTypeFilters(state.projectLanguage);

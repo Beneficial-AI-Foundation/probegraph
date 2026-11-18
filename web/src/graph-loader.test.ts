@@ -20,6 +20,21 @@ const atom = (over: Partial<ProbeAtom>): ProbeAtom => ({
   ...over,
 });
 
+describe('convertAtomDictToD3Graph cfg', () => {
+  it('keeps cfg and marks test-only atoms', () => {
+    const g = convertAtomDictToD3Graph({
+      'probe:t': atom({ language: 'rust', kind: 'exec', cfg: 'all(test, feature = "std")' }),
+      'probe:n': atom({ language: 'rust', kind: 'exec', cfg: 'not(test)' }),
+      'probe:p': atom({ language: 'rust', kind: 'exec' }),
+    });
+    const node = (id: string) => g.nodes.find(n => n.id === id)!;
+    expect(node('probe:t').cfg).toBe('all(test, feature = "std")');
+    expect(node('probe:t').is_test_only).toBe(true);
+    expect(node('probe:n').is_test_only).toBeUndefined();
+    expect(node('probe:p').is_test_only).toBeUndefined();
+  });
+});
+
 describe('convertAtomDictToD3Graph trust fields', () => {
   const g = convertAtomDictToD3Graph({
     'probe:ax': atom({ kind: 'axiom', "verification-status": 'trusted', "trusted-reason": 'axiom' }),
