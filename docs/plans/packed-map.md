@@ -444,8 +444,9 @@ tree:
 
 The order of the steps: create the Hierarchy view without an apply, set
 a pending reveal id, apply once, and push the history entry. In
-`update`, the view uses the pending id once and then clears it. An
-empty graph clears it too. The new set replaces the expanded set, and the
+`update`, the view uses the pending id once and then clears it. On an
+empty graph, the expanded set becomes empty, as in step 3. Earlier
+expansions must not stay in `?expanded=`. The new set replaces the expanded set, and the
 view sends `hierarchy-expanded-changed`, so `?expanded=` holds it
 before the push.
 

@@ -110,7 +110,14 @@ export class HierarchyMapVisualization {
 
   public update(filteredGraph: D3Graph): void {
     if (!filteredGraph || filteredGraph.nodes.length === 0) {
-      this.pendingReveal = null;
+      // A reveal with nothing left to open: nothing expanded, as
+      // expandedForReveal gives for a directory that is gone. Earlier
+      // expansions must not stay in ?expanded= and reopen later.
+      if (this.pendingReveal !== null) {
+        this.pendingReveal = null;
+        this.expanded.clear();
+        this.notifyExpandedChanged();
+      }
       this.clear();
       return;
     }

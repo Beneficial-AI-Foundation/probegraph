@@ -118,6 +118,27 @@ test.describe('Packed Map: open a group in another view', () => {
     expect(new URL(page.url()).searchParams.get('expanded')).toBe('alpha,alpha/src,alpha/src/backend/serial');
   });
 
+  test('a directory that opens an empty Hierarchy drops the earlier expansions', async ({ page }) => {
+    // No links at all: the Packed Map draws both functions, the Hierarchy none
+    const lonely = {
+      nodes: ['a', 'b'].map(name => ({
+        id: `probe:solo/${name}`, display_name: name, symbol: `probe:solo/${name}`,
+        full_path: `/r/solo/src/${name}/${name}.rs`, relative_path: `src/${name}/${name}.rs`, file_name: `${name}.rs`,
+        parent_folder: name, crate_name: 'solo', is_libsignal: false, kind: 'exec', dependencies: [], dependents: [],
+      })),
+      links: [],
+      metadata: { total_nodes: 2, total_edges: 0, project_root: '/r', generated_at: '2026-01-01' },
+    };
+    await page.route('**/lonely.json', (route: Route) =>
+      route.fulfill({ contentType: 'application/json', body: JSON.stringify(lonely) }));
+    await page.goto('/probegraph/?json=lonely.json&view=packed-map&expanded=solo,solo/src/b');
+    await expect(page.locator('.pm-fn')).toHaveCount(2, { timeout: 15000 });
+    await dispatchDoubleClick(page, 'solo/src/a');
+
+    await expect(page.locator('#view-hierarchy')).toHaveClass(/active/);
+    await expect.poll(() => new URL(page.url()).searchParams.get('expanded')).toBeNull();
+  });
+
   test('a file opens the Call Graph with its declarations, apart from the same path in another crate', async ({ page }) => {
     await openMap(page);
     await dispatchDoubleClick(page, 'alpha/src/lib.rs');
