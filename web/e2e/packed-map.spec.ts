@@ -472,7 +472,8 @@ test.describe('Packed Map: open in the Call Graph', () => {
     expect(new URL(page.url()).searchParams.get('id')).toBeNull();
   });
 
-  test('double-click on a function the Call Graph draws keeps the overview, and Back returns', async ({ page }) => {
+  test('double-click queries a function the capped overview draws, and Back returns', async ({ page }) => {
+    // The overview is no query to keep, also when it draws the function
     await open(page, '', '');
     await expect.poll(async () => (await shownIds(page)).length).toBe(200);
     const ids = new Set(await shownIds(page));
@@ -483,8 +484,8 @@ test.describe('Packed Map: open in the Call Graph', () => {
 
     await expect(page.locator('#view-callgraph')).toHaveClass(/active/);
     await expect(page.locator('#node-info h3')).toHaveText(leaf.slice('probe:'.length));
-    expect(new URL(page.url()).searchParams.get('id')).toBeNull();
-    expect(await shownIds(page)).toContain(leaf);
+    await expect.poll(() => new URL(page.url()).searchParams.get('id')).toBe(leaf);
+    await expect.poll(() => shownIds(page)).toEqual(['probe:h', leaf]);
 
     await page.goBack();
     await expect(page.locator('#view-packed-map')).toHaveClass(/active/);
@@ -546,12 +547,15 @@ test.describe('Packed Map: open in the Call Graph', () => {
         body: JSON.stringify({ focus_nodes: ['probe:a'], metadata: { description: 'focus a' } }),
       });
     });
-    await open(page, '&focus=focus.json');
+    // A clicked node: the reveal keeps a query that draws the function
+    await open(page, '&sel=probe:a&focus=focus.json');
     await expect(page.locator('.pm-fn').first()).toBeVisible();
-    // b is drawn in the capped overview: the reveal keeps the query
+    // b is drawn as a callee of the clicked a: the reveal keeps the query
     await page.locator('.pm-fn[data-node-id="probe:b"]').dispatchEvent('dblclick');
     await expect(page.locator('#view-callgraph')).toHaveClass(/active/);
     await expect(page.locator('#node-info h3')).toHaveText('b');
+    expect(new URL(page.url()).searchParams.get('sel')).toBe('probe:a');
+    expect(new URL(page.url()).searchParams.get('id')).toBeNull();
 
     release();
     await page.waitForTimeout(500);

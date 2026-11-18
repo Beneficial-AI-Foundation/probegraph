@@ -124,7 +124,11 @@ draw a lower one. The render cap can leave the function out of the Call
 Graph. The search box then offers the function's query in a toast. The
 double-click sets it at once (`always` on the policy) when there is no
 query and no clicked Call Graph node (`selectedNodes`), because the
-capped overview is no query to keep. Back returns to the Packed Map.
+capped overview is no query to keep. For the same reason, it also sets
+the query when the overview draws the function (reason `shown`).
+Otherwise a function among the 200 most connected nodes opens in the
+overview, which happens often in a mixed graph with `?lean=0`. Back
+returns to the Packed Map.
 The map has no double-click zoom, so a double-click on a group circle
 acts as two clicks.
 

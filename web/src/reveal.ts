@@ -77,7 +77,8 @@ export function classifyReveal(ctx: RevealContext, id: string): RevealResult {
  * - `replace` (search): an exact intent on the node at the current depth,
  *   when the current query does not reach it. A query that reaches it
  *   stays, and a `truncated` reveal offers the replacement as an action.
- *   With `always`, a `truncated` reveal also replaces the query.
+ *   With `always`, a `truncated` or `shown` reveal also replaces the
+ *   query: the caller has no query to keep (the capped overview).
  * - `anchor` (search, "as source" / "as sink"): the node joins the current
  *   exact source or sink set, or starts one. A source set and a sink set
  *   together are the paths between them.
