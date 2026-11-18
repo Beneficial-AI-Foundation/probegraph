@@ -525,6 +525,34 @@ describe('Packed Map on a mixed Aeneas graph (probe-aeneas-packed-map.json)', ()
     );
   });
 
+  it('keeps a Rust proof out, also with Theorems on', () => {
+    expect(drawn(mixed, language, { showProofFunctions: true })).not.toContain('probe:demo/1.0/a#p()');
+  });
+
+  it('draws a Lean inner and spec link as one dependency, and keeps the mapping', () => {
+    const shown = applyFilters(mixed, defaultFilters(), language, packedView(language));
+    const ids = new Set(shown.nodes.map(n => n.id));
+    // The loader writes both an inner and a spec link between f_spec and f
+    const types = shown.links
+      .filter(l => [l.source, l.target].map(e => (typeof e === 'string' ? e : e.id)).sort().join() === 'probe:Demo.f,probe:Demo.f_spec')
+      .map(l => l.type).sort();
+    expect(types).toEqual(['inner', 'spec']);
+    expect(edgesOf(shown.links, 'probe:Demo.f', ids, mixedEdgeType)).toEqual(expect.arrayContaining([
+      { source: 'probe:Demo.f_spec', target: 'probe:Demo.f', type: 'inner' },
+      { source: rustF, target: 'probe:Demo.f', type: 'mapping' },
+    ]));
+    expect(edgesOf(shown.links, 'probe:Demo.f', ids, mixedEdgeType)).toHaveLength(2);
+  });
+
+  it('sizes a node by its distinct drawn neighbors, mappings included', () => {
+    const shown = applyFilters(mixed, defaultFilters(), language, packedView(language));
+    const degree = connectivity(shown);
+    // Rust f: caller g and its Lean translation f; the proof p is not drawn
+    expect(degree.get(rustF)).toBe(2);
+    // Lean f: f_spec (inner and spec count once) and Rust f
+    expect(degree.get('probe:Demo.f')).toBe(2);
+  });
+
   it('Rust off leaves the Lean declarations', () => {
     expect(drawn(mixed, language, { showRustNodes: false })).toEqual(
       ['bad', 'f', 'f_spec', 'gen_sorry', 'trusted_ax'],

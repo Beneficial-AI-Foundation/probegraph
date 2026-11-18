@@ -1158,7 +1158,9 @@ export class PackedMapVisualization {
     const mixed = this.language === 'mixed';
     const leanSize = 'Declaration: 1 + dependency links after the filters';
     const rustSize = 'Function: 1 + distinct callers and callees';
-    const size = lean ? leanSize : mixed ? `${rustSize}. ${leanSize}` : rustSize;
+    const size = lean
+      ? leanSize
+      : mixed ? 'Function or declaration: 1 + distinct linked nodes after the filters, Rust to Lean mappings included' : rustSize;
     const colors = lean
       ? `${swatch('transitively-verified', 'Transitively verified')}
         ${swatch('trusted', 'Trusted')}

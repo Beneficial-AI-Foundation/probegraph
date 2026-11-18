@@ -630,6 +630,22 @@ Notes from the implementation:
   fixture.
 - With Lean off, the graph is still mixed, so the empty state says
   "No Rust functions or Lean declarations match the filters."
+- A Codex review of #151 found two limits that this phase keeps:
+  - A group id can repeat across languages. A Rust crate `demo` with
+    the directory `src` and a Lean file `demo/src/F.lean` both give the
+    group id `demo/src`. Then a zoom, `?packed=` or the keyboard can go
+    to the wrong circle. The Hierarchy has the same problem today, since
+    both views use `buildHierarchyTree`. Real graphs do not show it:
+    Rust crates use lower case (`spqr`), Lean paths start in upper case
+    (`Spqr/Specs`). The fix is an id with the language in it, for both
+    views.
+  - An older mixed graph without a `language` field on its nodes is
+    `mixed` by its kinds. Its Lean declarations still stay out, because
+    the language filters and `extractCrateName` also read `language`
+    and treat a missing one as Rust. A fallback on the kind needs all
+    three to change together.
+- The size counts every distinct drawn neighbor, also across a Rust to
+  Lean `mapping` link. The mixed legend says so.
 - On `aeneas_spqr_1.6.0.json`, with the default filters and Rust off,
   the map draws 2,091 Lean declarations in 358 group circles. With Rust
   on, it draws 2,525.

@@ -11,7 +11,9 @@
  "data": {
   "probe:demo/1.0/a#f()": {
    "display-name": "f",
-   "dependencies": [],
+   "dependencies": [
+    "probe:demo/1.0/a#p()"
+   ],
    "code-module": "a",
    "code-path": "src/a.rs",
    "code-text": {
@@ -43,6 +45,22 @@
    "is-relevant": true,
    "untracked": false
   },
+  "probe:demo/1.0/a#p()": {
+   "display-name": "p",
+   "dependencies": [],
+   "code-module": "a",
+   "code-path": "src/a.rs",
+   "code-text": {
+    "lines-start": 1,
+    "lines-end": 3
+   },
+   "kind": "proof",
+   "language": "rust",
+   "is-public": true,
+   "is-relevant": true,
+   "untracked": false,
+   "verification-status": "verified"
+  },
   "probe:Demo.f": {
    "display-name": "f",
    "dependencies": [],
@@ -62,7 +80,10 @@
    "is-relevant": true,
    "term-dependencies": [],
    "type-dependencies": [],
-   "verification-status": "transitively-verified"
+   "verification-status": "transitively-verified",
+   "specs": [
+    "probe:Demo.f_spec"
+   ]
   },
   "probe:Demo.f_spec": {
    "display-name": "f_spec",

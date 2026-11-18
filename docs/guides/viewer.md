@@ -181,6 +181,9 @@ see [web/ARCHITECTURE.md](../../web/ARCHITECTURE.md#input-formats).
   - Grouping. The Rust crates and the Lean groups (two path segments,
     such as `SrcTranslated/Funs.lean` or `Spqr/Specs`) are top-level
     circles side by side.
+  - Size. 1 plus the number of distinct drawn nodes it is linked to.
+    A Rust function counts its Lean translation, and a Lean definition
+    counts its Rust source.
   - Arc. A Rust function counts if it is verified, transitively
     verified or trusted. A Lean declaration counts only if it is
     transitively verified or trusted.
@@ -196,7 +199,7 @@ see [web/ARCHITECTURE.md](../../web/ARCHITECTURE.md#input-formats).
   | Caption | Meaning |
   |---|---|
   | Rust (`exec`) functions and Lean declarations without hidden ones, as the Declaration Kind filters show | What is drawn. |
-  | Function: 1 + distinct callers and callees. Declaration: 1 + dependency links after the filters | The size of a function or declaration circle. |
+  | Function or declaration: 1 + distinct linked nodes after the filters, Rust to Lean mappings included | The size of a circle. A node linked to another by several links counts it once. |
   | Verified (Lean: not known to be free of sorry) | For Rust, the proof passed. For Lean, the declaration reaches a `sorry` or was not checked. |
   | Unverified (Lean: contains sorry) | For Lean, the declaration has a `sorry` in its own proof or body. |
   | Arc: share verified, transitively verified or trusted (Lean: transitively verified or trusted) | The green arc on a group circle. |

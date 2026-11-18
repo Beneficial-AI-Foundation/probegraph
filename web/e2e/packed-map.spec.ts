@@ -253,11 +253,11 @@ test.describe('Packed Map view', () => {
     const lean = await page.locator('.pm-fn').count();
     expect(lean).toBeGreaterThan(0);
     expect(lean).toBeLessThan(both);
-    // Every top-level group is a Lean group: two path segments
-    const tops = await page.evaluate(() => [...document.querySelectorAll('.pm-group')]
-      .map(g => g.getAttribute('data-group-id')!)
-      .filter(id => id.split('/').length === 2));
-    expect(tops.length).toBeGreaterThan(0);
+    // Only Lean declarations are left. In this fixture a Rust id has a
+    // `/` after the crate (probe:<crate>/<version>/...), a Lean id does not.
+    const ids = await page.evaluate(() => [...document.querySelectorAll('.pm-fn')]
+      .map(c => c.getAttribute('data-node-id')!));
+    expect(ids.filter(id => id.includes('/'))).toEqual([]);
 
     await page.locator('#show-lean-nodes').uncheck();
     await expect(page.locator('.pm-empty')).toHaveText('No Rust functions or Lean declarations match the filters.');
