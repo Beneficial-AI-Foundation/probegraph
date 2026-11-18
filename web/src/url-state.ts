@@ -55,7 +55,7 @@ const OWNED_PARAMS = [
   'source', 'sink', 'id', 'dir', 'label', 'boundary-source', 'boundary-target', 'focus',
   'source-id', 'sink-id', 'source-label', 'sink-label',
   'sel', 'exclude', 'files', 'depth',
-  'exec', 'proof', 'spec', 'axioms', 'types', 'proj', 'inst', 'stubs',
+  'exec', 'proof', 'spec', 'axioms', 'types', 'proj', 'inst', 'stubs', 'tests',
   'inner', 'pre', 'post', 'mapping', 'speclinks', 'statement', 'body',
   'libsignal', 'external', 'rust', 'lean',
   'verified', 'failed', 'unverified', 'status',
@@ -88,6 +88,7 @@ export function defaultFilters(): FilterOptions {
     showProjections: false,         // Hide auto-generated projections by default
     showInstances: false,           // Hide typeclass instances by default
     showStubCrates: false,          // Hide crates with no source (external call targets) by default
+    showTestOnly: false,            // Hide code compiled only in test builds by default
     showRustNodes: true,            // Show Rust/Verus nodes by default
     showLeanNodes: true,            // Show Lean nodes by default
     showVerifiedNodes: true,        // Show verified nodes by default
@@ -170,6 +171,7 @@ export function writeURLState(params: URLSearchParams, s: URLViewState): void {
   if (f.showProjections) params.set('proj', '1');
   if (f.showInstances) params.set('inst', '1');
   if (f.showStubCrates) params.set('stubs', '1');
+  if (f.showTestOnly) params.set('tests', '1');
   if (s.projectLanguage !== 'lean') {
     if (!f.showInnerCalls) params.set('inner', '0');
     if (f.showPreconditionCalls) params.set('pre', '1');
@@ -265,6 +267,7 @@ export function readURLState(
   readBool('proj', v => { filters.showProjections = v; });
   readBool('inst', v => { filters.showInstances = v; });
   readBool('stubs', v => { filters.showStubCrates = v; });
+  readBool('tests', v => { filters.showTestOnly = v; });
   readBool('inner', v => { filters.showInnerCalls = v; });
   readBool('pre', v => { filters.showPreconditionCalls = v; });
   readBool('post', v => { filters.showPostconditionCalls = v; });

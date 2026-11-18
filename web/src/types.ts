@@ -288,6 +288,10 @@ export interface D3Node {
   // a source path, e.g. an external dependency the extractor saw only as a
   // call target. Hidden unless FilterOptions.showStubCrates.
   in_stub_crate?: boolean;
+  cfg?: string;  // probe-rust `cfg`: the full #[cfg(...)] gate, enclosing mods included
+  // Derived at load time from `cfg` (isTestOnlyCfg): compiled only in test
+  // builds. Hidden unless FilterOptions.showTestOnly.
+  is_test_only?: boolean;
   is_generated?: boolean;  // probe-lean `is-lean-generated` or `is-aeneas-generated`
   // probe-lean `type-dependencies-external` IDs with no atom in the graph,
   // so no link; search indexes them as statement names
@@ -393,6 +397,7 @@ export interface FilterOptions {
   showProjections: boolean;        // Show auto-generated projections (default: false)
   showInstances: boolean;          // Show typeclass instances (default: false)
   showStubCrates: boolean;         // Show nodes of crates with no source (default: false)
+  showTestOnly: boolean;           // Show nodes compiled only in test builds (default: false)
   // Language filters (for multi-language projects)
   showRustNodes: boolean;          // Show Rust/Verus nodes (default: true)
   showLeanNodes: boolean;          // Show Lean nodes (default: true)
@@ -440,6 +445,8 @@ export interface ProbeAtom {
   "verification-status"?: string;
   /** Why a `trusted` atom is trusted: axiom, external, external-body, admit, assume-specification, auto-generated. */
   "trusted-reason"?: string;
+  /** probe-rust: the item-gating #[cfg(...)] predicate, enclosing mods included. */
+  cfg?: string;
   /** probe-verus: the atom is outside verification and carries no status. */
   untracked?: boolean;
   "specified"?: boolean;

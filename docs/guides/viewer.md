@@ -659,6 +659,29 @@ box on to see which external functions the code calls. The section appears only 
 the graph has a stub crate. A graph where no node has a source path has no
 stub crates, so nothing is hidden.
 
+**Tests** has one box, **Test-only code**, off by default. Test-only code is a
+Rust function that the compiler builds only for `cargo test`. probe-rust
+writes each function's `#[cfg(...)]` condition to the `cfg` field. This
+condition includes the conditions of the modules around the function and of
+the `mod` lines that load its file. The viewer evaluates the condition with
+`test` off and every feature and target unknown. If the result is false in
+every case, the function is test-only. For example, `test` and
+`all(test, feature = "std")` are test-only. `not(test)`,
+`feature = "test-utils"` and `any(test, feature = "x")` are not test-only,
+because the function can compile without `test`.
+
+With the box off, every view hides test-only functions and their edges. A
+function that only tests call stays visible. Like Stub crates, the box
+restricts traversal. The section appears only when the graph has test-only
+code.
+
+The box does not hide every test. It cannot see a test in a module that is
+not under `cfg(test)`, for example a `pub(crate) mod test;` line with no
+condition. It also cannot see the conditions inside `cfg_if!` or the tests
+that macros generate. Integration tests in `tests/` have no `cfg(test)`
+condition, so the box does not hide them when the graph has them. Graphs from older extractors have no
+`cfg` field, so the box does not appear for them.
+
 **Exclude by Name** and **Exclude by Path** take comma-separated globs
 (`*_comm*`, `*/specs/*`). Exclude by Path is matched against the node ID, not
 the file path, so its presets only work where IDs contain the path; probe and
@@ -857,6 +880,7 @@ non-default values are included. All parameters:
 | `rust`, `lean` | language toggles for mixed graphs (`1`/`0`) |
 | `libsignal`, `external` | source-type toggles (`1`/`0`) |
 | `stubs` | Stub crates toggle (`1` shows them; default off) |
+| `tests` | Test-only code toggle (`1` shows it; default off) |
 
 Precedence when several query parameters are present: `id`, then
 `source-id`/`sink-id`, then `focus`,

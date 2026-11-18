@@ -21,7 +21,7 @@ import {
   compileQuery,
   compileSeededDisplayPredicate,
   executeQuery,
-  withoutStubCrates,
+  withoutOptInHidden,
   TraversalPredicates,
 } from './query';
 import { D3Graph, D3Node, D3Link, FilterOptions, LinkRole } from './types';
@@ -90,6 +90,7 @@ function createFilters(overrides: Partial<FilterOptions> = {}): FilterOptions {
     showTypes: true,
     showProjections: true,
     showStubCrates: true,
+    showTestOnly: true,
     showInstances: true,
     showRustNodes: true,
     showLeanNodes: true,
@@ -823,6 +824,47 @@ describe('compileSeededDisplayPredicate', () => {
   });
 });
 
+describe('Test-only code filter', () => {
+  // t is a test that calls lib; helper is test-only and called only by t;
+  // lib is called by app and by t
+  const app = createNode({ id: 'app', display_name: 'app' });
+  const lib = createNode({ id: 'lib', display_name: 'lib' });
+  const t = { ...createNode({ id: 't', display_name: 't' }), is_test_only: true };
+  const helper = { ...createNode({ id: 'helper', display_name: 'helper' }), is_test_only: true };
+  const graph = createGraph([app, lib, t, helper],
+    [createLink('app', 'lib'), createLink('t', 'lib'), createLink('t', 'helper')]);
+  const ids = (f: FilterOptions, g = graph) =>
+    executeQuery(compileQuery(f), g).nodes.map(n => n.id).sort();
+
+  it('hides test-only nodes and their links when off', () => {
+    const result = executeQuery(compileQuery(createFilters({ showTestOnly: false })), graph);
+    expect(result.nodes.map(n => n.id).sort()).toEqual(['app', 'lib']);
+    expect(result.links.map(l => `${l.source}>${l.target}`)).toEqual(['app>lib']);
+  });
+
+  it('shows them when on', () => {
+    expect(ids(createFilters({ showTestOnly: true }))).toEqual(['app', 'helper', 'lib', 't']);
+  });
+
+  it('keeps a function whose only caller is a hidden test', () => {
+    const g = createGraph([lib, t], [createLink('t', 'lib')]);
+    expect(ids(createFilters({ showTestOnly: false }), g)).toEqual(['lib']);
+  });
+
+  it('cuts traversal through a hidden test', () => {
+    // callees of t: none while tests are hidden, since t itself is hidden
+    const f = createFilters({ showTestOnly: false, intent: textIntent('t', '') });
+    expect(executeQuery(compileQuery(f), graph).nodes).toEqual([]);
+  });
+
+  it('applies to the seeded display predicate and withoutOptInHidden', () => {
+    expect(compileSeededDisplayPredicate(createFilters({ showTestOnly: false }))(t)).toBe(false);
+    expect(compileSeededDisplayPredicate(createFilters({ showTestOnly: true }))(t)).toBe(true);
+    const hidden = withoutOptInHidden(graph, { showStubCrates: true, showTestOnly: false });
+    expect(hidden.nodes.map(n => n.id)).toEqual(['app', 'lib']);
+  });
+});
+
 describe('Stub crates filter', () => {
   // app calls lib and ext; ext is in a stub crate
   const app = createNode({ id: 'app', display_name: 'app', crate_name: 'app' });
@@ -858,11 +900,11 @@ describe('Stub crates filter', () => {
     expect(executeQuery(compileQuery(f), g).nodes).toEqual([]);
   });
 
-  it('withoutStubCrates drops stub nodes and their links only when hidden', () => {
-    const hidden = withoutStubCrates(graph, { showStubCrates: false });
+  it('withoutOptInHidden drops stub nodes and their links only when hidden', () => {
+    const hidden = withoutOptInHidden(graph, { showStubCrates: false, showTestOnly: true });
     expect(hidden.nodes.map(n => n.id)).toEqual(['app', 'lib']);
     expect(hidden.links.map(l => l.target)).toEqual(['lib']);
-    expect(withoutStubCrates(graph, { showStubCrates: true })).toBe(graph);
+    expect(withoutOptInHidden(graph, { showStubCrates: true, showTestOnly: false })).toBe(graph);
   });
 
   it('applies to the seeded display predicate', () => {

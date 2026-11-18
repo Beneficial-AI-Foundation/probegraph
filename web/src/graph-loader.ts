@@ -4,6 +4,7 @@ import {
   isSimplifiedFormat, isD3GraphFormat, isAtomDictFormat, isSchema2Envelope,
   VerificationStatus,
 } from './types';
+import { isTestOnlyCfg } from './cfg-predicate';
 
 /**
  * Convert simplified JSON format (array of nodes with deps) to D3Graph format.
@@ -345,6 +346,8 @@ function convertCodeAtoms(atoms: Record<string, ProbeAtom>): D3Graph {
       verification_status: atom["verification-status"] as VerificationStatus | undefined,
       trusted_reason: atom["trusted-reason"],
       untracked: atom.untracked === true || undefined,
+      cfg: atom.cfg,
+      is_test_only: isTestOnlyCfg(atom.cfg) || undefined,
       language: atom.language,
       mapping_id: atom["translation-name"],
       mapping_path: atom["translation-path"],
