@@ -12,12 +12,14 @@ import { CallGraphVisualization } from './graph';
 import { FileMapVisualization } from './file-map';
 import { CrateMapVisualization, buildCrateGraph } from './crate-map';
 import { HierarchyMapVisualization } from './hierarchy-map';
+import { fileGroupIdOf, type HierarchyGroup } from './hierarchy';
 import { PackedMapVisualization, hasPackedMapNodes, restrictToPackedNodes } from './packed-map';
 import { computeDerivedStatuses } from './status';
 import { parseAndNormalizeGraph, pickSourceConfig } from './graph-loader';
 import { editorSelectionIntent, relaxations, type EditorSelection, type SelectStatus } from './editor-selection';
 import {
   RevealCounter, actionLabel, classifyReveal, finishReveal, revealActions, revealMessage, searchIntent,
+  setRevealMessage, summarizeSetReveal,
   type RevealAction, type RevealContext, type RevealPolicy, type RevealResult,
 } from './reveal';
 import { showActionToast } from './action-toast';
@@ -893,7 +895,8 @@ function createVisualization(container: HTMLElement): void {
         },
         center: true,
         offer: true,
-      }));
+      }),
+      openPackedGroup);
     viz.setLanguage(state.projectLanguage);
     viz.setFocus(packedFocus);
     visualization = viz;
@@ -903,6 +906,71 @@ function createVisualization(container: HTMLElement): void {
     visualization = new CallGraphVisualization(container, state, handleStateChange, drillDownToCode);
   }
   renderDrilldownHint();
+}
+
+/**
+ * Open a view as one history entry, so Back returns to the view before.
+ * `prepare` runs on the new visualization before its one apply. The
+ * view's own URL events (hierarchy-expanded-changed) update the state
+ * during the apply, and the push writes it.
+ */
+function openView(view: ActiveView, prepare: () => void = () => {}): void {
+  flushDebouncedApply();
+  urlWritesSuppressed++;
+  try {
+    switchView(view, { apply: false });
+    prepare();
+    applyFiltersAndUpdate();
+  } finally {
+    urlWritesSuppressed--;
+  }
+  window.history.pushState({ pushed: true }, '', generateShareableURL());
+}
+
+/**
+ * Double-click (or `O`) on a Packed Map group: a crate opens the Crate
+ * Map, a directory the Hierarchy, a file the Call Graph
+ * (docs/plans/packed-map.md, Phase 5).
+ */
+function openPackedGroup(group: HierarchyGroup): void {
+  if (group.kind === 'crate') {
+    openView('crate-map');
+    // After the apply: updateNodeInfo at its end writes the details panel
+    if (visualization instanceof CrateMapVisualization) visualization.showCrate(group.id);
+  } else if (group.kind === 'dir') {
+    openView('hierarchy', () => {
+      if (visualization instanceof HierarchyMapVisualization) visualization.revealGroup(group.id);
+    });
+  } else {
+    openPackedFile(group);
+  }
+}
+
+/**
+ * The declarations of a Packed Map file in the Call Graph, with what they
+ * call. An exact intent, not `file:<path>`: text matches are not anchors,
+ * so the cleanup would drop a declaration without links, and the search
+ * box splits a path at spaces and commas. The members come from the full
+ * graph, because the group holds only what the Packed Map draws.
+ */
+function openPackedFile(group: HierarchyGroup): void {
+  const graph = state.fullGraph;
+  if (!graph) return;
+  const members = graph.nodes.filter(n => fileGroupIdOf(n) === group.id);
+  if (members.length === 0) return;
+  const path = members[0].relative_path || group.label;
+  const ids = members.map(n => n.id);
+  dropRevealEffects();
+  flushDebouncedApply();
+  setIntent(exactIntent(ids, 'callees', `file ${path}`, { type: 'search' }), {
+    history: 'push',
+    pushed: true,
+    before: () => {
+      if (activeView !== 'callgraph') switchView('callgraph', { apply: false });
+    },
+  });
+  const message = setRevealMessage(path, summarizeSetReveal(revealContext(), ids), renderCap());
+  if (message) revealToast = showActionToast(message, []);
 }
 
 /**

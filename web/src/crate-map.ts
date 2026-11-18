@@ -310,6 +310,7 @@ export class CrateMapVisualization {
 
       const group = this.g.append('g')
         .attr('class', 'cm-crate-group')
+        .attr('data-crate', cn.name)
         .attr('transform', `translate(${pos.x}, ${pos.y})`)
         .style('cursor', 'pointer');
 
@@ -1052,6 +1053,26 @@ export class CrateMapVisualization {
       }
       this.updateCrateSelectionStyle();
     }
+  }
+
+  /**
+   * Select crate `name` and show its details, as a click does, but without
+   * changing the boundary source or target (the Packed Map's double-click).
+   * Call it after the update that draws the crate. A crate that the filters
+   * left out is not selected.
+   */
+  public showCrate(name: string): void {
+    const cn = this.crateGraph?.nodes.find(n => n.name === name);
+    if (!cn) return;
+    this.selectedCrate = cn.name;
+    // The stroke that the render gives the selected crate
+    const ci = this.crateColorMap.get(cn.name) ?? 0;
+    this.g.selectAll<SVGGElement, unknown>('.cm-crate-group')
+      .filter(function () { return this.getAttribute('data-crate') === cn.name; })
+      .select('.cm-crate-box')
+      .attr('stroke', CRATE_STROKE_SELECTED[ci % CRATE_STROKE_SELECTED.length])
+      .attr('stroke-width', 3);
+    this.showCrateInfo(cn);
   }
 
   public getBoundarySource(): string | null { return this.boundarySource; }

@@ -75,6 +75,35 @@ interface BuildGroup {
 }
 
 /**
+ * The directory and file segments of a node's path below its crate. When
+ * the relative path starts with the crate label's own segments (common in
+ * Rust workspaces and Lean two-segment crate names), that prefix is
+ * stripped so the crate level is not duplicated as directories.
+ */
+function pathSegments(node: D3Node, crate: string): string[] {
+  const relPath = node.relative_path || node.file_name || '';
+  const segments = relPath.split('/').filter(Boolean);
+  const crateSegments = crate.split('/').filter(Boolean);
+  if (segments.length >= crateSegments.length
+      && crateSegments.every((s, i) => segments[i] === s)) {
+    return segments.slice(crateSegments.length);
+  }
+  return segments;
+}
+
+/**
+ * Id of the file group that holds `node` in `buildHierarchyTree`, or null
+ * when the node has no path below its crate (it sits in the crate group).
+ * Directory compression never changes a file id, so the id is the same in
+ * every tree built from a graph with this node.
+ */
+export function fileGroupIdOf(node: D3Node): string | null {
+  const crate = node.crate_name || 'unknown';
+  const segments = pathSegments(node, crate);
+  return segments.length === 0 ? null : [crate, ...segments].join('/');
+}
+
+/**
  * Build the crate → directory → file → function hierarchy from a graph.
  *
  * Grouping uses `crate_name` for the top level and the node's
@@ -100,14 +129,7 @@ export function buildHierarchyTree(
       rootMap.set(crate, crateGroup);
     }
 
-    const relPath = node.relative_path || node.file_name || '';
-    let segments = relPath.split('/').filter(Boolean);
-    const crateSegments = crate.split('/').filter(Boolean);
-    if (segments.length >= crateSegments.length
-        && crateSegments.every((s, i) => segments[i] === s)) {
-      segments = segments.slice(crateSegments.length);
-    }
-
+    const segments = pathSegments(node, crate);
     if (segments.length === 0) {
       // No usable path: attach the function directly to the crate group.
       crateGroup.nodeIds.push(node.id);
@@ -181,6 +203,32 @@ export function buildHierarchyTree(
     .map(r => finalize(r, null));
 
   return { roots, groupById };
+}
+
+/**
+ * The expanded set that shows group `id` open, with its ancestors as
+ * containers and everything else collapsed. The id comes from another tree
+ * (the Packed Map), which can compress directories differently:
+ *
+ * 1. If `tree` has the id: the id and its ancestors.
+ * 2. Else, if compression merged the directory into a deeper one: that
+ *    group (the shortest id starting with `id + '/'`) and its ancestors.
+ * 3. Else (no node of the directory is left): an empty set.
+ */
+export function expandedForReveal(tree: HierarchyTree, id: string): Set<string> {
+  let target = tree.groupById.get(id);
+  if (!target) {
+    const prefix = `${id}/`;
+    for (const [groupId, group] of tree.groupById) {
+      if (groupId.startsWith(prefix) && (!target || groupId.length < target.id.length)) target = group;
+    }
+  }
+  const chain: string[] = [];
+  for (let group = target; group; group = group.parentId ? tree.groupById.get(group.parentId) : undefined) {
+    chain.push(group.id);
+  }
+  // Outermost first, as a user expands them (and as ?expanded= reads)
+  return new Set(chain.reverse());
 }
 
 // ============================================================================

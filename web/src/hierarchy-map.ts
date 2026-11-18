@@ -5,6 +5,7 @@ import { D3Graph, GraphState } from './types';
 import {
   HierarchyTree, HierarchyGroup, CutMember,
   buildHierarchyTree, computeCut, pruneExpanded, descendantGroupIds,
+  expandedForReveal,
 } from './hierarchy';
 import { STATUS_COLORS as THEME_STATUS, edgeTypeColor, groupColors } from './theme';
 
@@ -57,6 +58,8 @@ export class HierarchyMapVisualization {
 
   private tree: HierarchyTree | null = null;
   private expanded = new Set<string>();
+  /** Group to open on the next update (revealGroup); used once. */
+  private pendingReveal: string | null = null;
   private lastFilteredGraph: D3Graph | null = null;
   private colorMap = new Map<string, number>();
 
@@ -107,6 +110,7 @@ export class HierarchyMapVisualization {
 
   public update(filteredGraph: D3Graph): void {
     if (!filteredGraph || filteredGraph.nodes.length === 0) {
+      this.pendingReveal = null;
       this.clear();
       return;
     }
@@ -114,6 +118,11 @@ export class HierarchyMapVisualization {
     this.lastFilteredGraph = filteredGraph;
     this.tree = buildHierarchyTree(filteredGraph);
     this.expanded = pruneExpanded(this.expanded, this.tree);
+    if (this.pendingReveal !== null) {
+      this.expanded = expandedForReveal(this.tree, this.pendingReveal);
+      this.pendingReveal = null;
+      this.notifyExpandedChanged();
+    }
 
     this.colorMap.clear();
     [...this.tree.roots]
@@ -154,6 +163,15 @@ export class HierarchyMapVisualization {
       this.expanded = pruneExpanded(this.expanded, this.tree);
       this.render();
     }
+  }
+
+  /**
+   * Open group `id` on the next update: it and its ancestors expanded, the
+   * rest collapsed (expandedForReveal). For the Packed Map, whose group ids
+   * can differ by directory compression.
+   */
+  public revealGroup(id: string): void {
+    this.pendingReveal = id;
   }
 
   public getExpanded(): string[] {
