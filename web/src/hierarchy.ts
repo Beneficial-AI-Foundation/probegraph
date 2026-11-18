@@ -112,12 +112,12 @@ export function fileGroupIdOf(node: D3Node): string | null {
  * Lean two-segment crate names), that prefix is stripped so the crate level
  * is not duplicated as directories.
  *
- * `isDone` picks the statuses that `verifiedCount` counts. The Packed Map
- * passes a stricter test for Lean (packedArcStatus).
+ * `isDone` picks the nodes that `verifiedCount` counts. The Packed Map
+ * passes a stricter test for Lean nodes (packedArcStatus).
  */
 export function buildHierarchyTree(
   graph: D3Graph,
-  isDone: (status: D3Node['verification_status']) => boolean = isVerifiedStatus,
+  isDone: (node: D3Node) => boolean = node => isVerifiedStatus(node.verification_status),
 ): HierarchyTree {
   const rootMap = new Map<string, BuildGroup>();
 
@@ -181,7 +181,7 @@ export function buildHierarchyTree(
     };
     for (const id of inner.nodeIds) {
       const node = nodeById.get(id);
-      if (node && isDone(node.verification_status)) group.verifiedCount++;
+      if (node && isDone(node)) group.verifiedCount++;
     }
 
     const childGroups = [...inner.children.values()]

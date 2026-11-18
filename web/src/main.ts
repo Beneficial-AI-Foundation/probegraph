@@ -770,8 +770,8 @@ function updateLanguageLabels(lang: ProjectLanguage): void {
 
 /**
  * Show the Packed Map button only for graphs with something it can draw
- * (isPackedMapCandidate: Rust code, or the declarations of a pure Lean
- * graph). The filters do not change this. If the view is active on a graph
+ * (isPackedMapCandidate: Rust code, or Lean declarations in a Lean or
+ * mixed graph). The filters do not change this. If the view is active on a graph
  * without any, fall back to the Call Graph; the caller applies the filters.
  */
 function updatePackedMapButton(): void {

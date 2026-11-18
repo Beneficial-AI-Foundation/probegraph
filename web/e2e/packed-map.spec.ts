@@ -11,6 +11,11 @@ import { test, expect, type Page, type Route } from '@playwright/test';
 
 const BASE = '/probegraph/?json=./graph_backup_dalek.json';
 const VIEW_URL = `${BASE}&view=packed-map`;
+/**
+ * The fixture is mixed: Rust `exec` functions and Lean declarations. Tests
+ * of Rust groups or of the Rust empty state turn Lean off.
+ */
+const RUST_VIEW_URL = `${VIEW_URL}&lean=0`;
 
 interface Camera { k: number; x: number; y: number }
 
@@ -236,8 +241,30 @@ test.describe('Packed Map view', () => {
     expect(outside).toBe(0);
   });
 
-  test('keyboard: Plus zooms in toward the function in the ring, Minus zooms out', async ({ page }) => {
+  test('a mixed graph draws the Lean side too, also with Rust off', async ({ page }) => {
     await page.goto(VIEW_URL);
+    await expect(page.locator('.pm-fn').first()).toBeAttached({ timeout: 30000 });
+    await expect(page.locator('.pm-legend')).toHaveAttribute('data-language', 'mixed');
+    await expect(page.locator('.pm-legend-scope')).toContainText('Lean declarations without hidden ones');
+    const both = await page.locator('.pm-fn').count();
+
+    await page.locator('#show-rust-nodes').uncheck();
+    await expect(page.locator('.pm-fn').first()).toBeAttached();
+    const lean = await page.locator('.pm-fn').count();
+    expect(lean).toBeGreaterThan(0);
+    expect(lean).toBeLessThan(both);
+    // Only Lean declarations are left. In this fixture a Rust id has a
+    // `/` after the crate (probe:<crate>/<version>/...), a Lean id does not.
+    const ids = await page.evaluate(() => [...document.querySelectorAll('.pm-fn')]
+      .map(c => c.getAttribute('data-node-id')!));
+    expect(ids.filter(id => id.includes('/'))).toEqual([]);
+
+    await page.locator('#show-lean-nodes').uncheck();
+    await expect(page.locator('.pm-empty')).toHaveText('No Rust functions or Lean declarations match the filters.');
+  });
+
+  test('keyboard: Plus zooms in toward the function in the ring, Minus zooms out', async ({ page }) => {
+    await page.goto(RUST_VIEW_URL);
     await expect(page.locator('.pm-fn').first()).toBeAttached({ timeout: 30000 });
     const map = page.locator('.packed-map-svg');
     await expect(map).toHaveAttribute('aria-label', /Plus zooms in/);
@@ -359,7 +386,7 @@ test.describe('Packed Map view', () => {
   });
 
   test('Exec unchecked gives the empty state', async ({ page }) => {
-    await page.goto(VIEW_URL);
+    await page.goto(RUST_VIEW_URL);
     await expect(page.locator('.pm-fn').first()).toBeAttached({ timeout: 30000 });
     const nested = await nestedGroupId(page);
     await page.locator(`.pm-group[data-group-id="${nested}"]`).dispatchEvent('click');
@@ -367,7 +394,8 @@ test.describe('Packed Map view', () => {
     expect(new URL(page.url()).searchParams.get('packed')).toBe(nested);
 
     await page.locator('#show-exec-functions').uncheck();
-    await expect(page.locator('.pm-empty')).toHaveText('No Rust functions match the filters.');
+    // The text follows the graph's language (mixed), not the Lean filter
+    await expect(page.locator('.pm-empty')).toHaveText('No Rust functions or Lean declarations match the filters.');
     await expect(page.locator('.pm-fn')).toHaveCount(0);
     await expect(page.locator('#view-packed-map')).toBeVisible();
     // The zoomed group is gone with the functions: the URL drops it

@@ -7,7 +7,7 @@
  */
 
 import * as d3 from 'd3';
-import { D3Graph, D3Node, GraphState, ProjectLanguage, VerificationStatus, crateMapLabel, crateNoun, isVerifiedStatus } from './types';
+import { D3Graph, D3Node, GraphState, ProjectLanguage, crateMapLabel, crateNoun, isVerifiedStatus } from './types';
 import { buildHierarchyTree, HierarchyGroup } from './hierarchy';
 import { statusColor, edgeTypeColor, STATUS_COLORS, SELECTION_COLOR } from './theme';
 import { escapeHtml } from './html';
@@ -16,18 +16,24 @@ import { escapeHtml } from './html';
 // Data model (pure, unit-tested)
 // ============================================================================
 
+/** Whether `node` is a Lean node of a mixed graph, or any node of a pure Lean graph. */
+function usesLeanRule(node: Pick<D3Node, 'language'>, language: ProjectLanguage): boolean {
+  return language === 'lean' || (language === 'mixed' && node.language === 'lean');
+}
+
 /**
  * Whether the Packed Map can draw `node` in a graph of `language`. The
  * filters do not change the answer; they apply before it.
  * - `lean`: every declaration without `is_hidden`, and a hidden one that
  *   contains a `sorry` (status `unverified`), so a `sorry` is never hidden.
+ * - `mixed`: a Lean node as in `lean`, every other node as in `verus`.
  * - `blueprint`: nothing.
- * - Every other language (`verus`, `mixed`, `unknown`): Rust code only.
+ * - Every other language (`verus`, `unknown`): Rust code only.
  *   Older graphs have no `kind`; the kind filters treat that as `exec` too
  *   (renderKindFilters).
  */
 export function isPackedMapCandidate(node: D3Node, language: ProjectLanguage): boolean {
-  if (language === 'lean') return !node.is_hidden || node.verification_status === 'unverified';
+  if (usesLeanRule(node, language)) return !node.is_hidden || node.verification_status === 'unverified';
   if (language === 'blueprint') return false;
   return (node.kind || 'exec') === 'exec';
 }
@@ -38,12 +44,14 @@ export function hasPackedMapNodes(graph: D3Graph | null, language: ProjectLangua
 }
 
 /**
- * Whether the group arc counts `status` as done. In Lean, `verified` can
- * rest on a `sorry` (or comes from `--skip-enrich`), so only
- * `transitively-verified` and `trusted` count.
+ * Whether the group arc counts `node` as done. For a Lean node, `verified`
+ * can rest on a `sorry` (or comes from `--skip-enrich`), so only
+ * `transitively-verified` and `trusted` count. In a mixed graph, each node
+ * uses the rule of its own language.
  */
-export function packedArcStatus(status: VerificationStatus | undefined, language: ProjectLanguage): boolean {
-  if (language === 'lean') return status === 'transitively-verified' || status === 'trusted';
+export function packedArcStatus(node: Pick<D3Node, 'language' | 'verification_status'>, language: ProjectLanguage): boolean {
+  const status = node.verification_status;
+  if (usesLeanRule(node, language)) return status === 'transitively-verified' || status === 'trusted';
   return isVerifiedStatus(status);
 }
 
@@ -107,7 +115,7 @@ export interface PackDatum {
  * own functions (functions with no path sit directly under their crate).
  */
 export function buildPackData(graph: D3Graph, language: ProjectLanguage = 'verus'): PackDatum {
-  const tree = buildHierarchyTree(graph, status => packedArcStatus(status, language));
+  const tree = buildHierarchyTree(graph, node => packedArcStatus(node, language));
   const degree = connectivity(graph);
   const nodeById = new Map(graph.nodes.map(n => [n.id, n]));
 
@@ -308,21 +316,26 @@ export interface PackedMapText {
 
 export function packedMapText(language: ProjectLanguage): PackedMapText {
   const lean = language === 'lean';
-  const one = lean ? 'declaration' : 'function';
-  const many = `${one}s`;
+  const mixed = language === 'mixed';
+  const one = lean ? 'declaration' : mixed ? 'function or declaration' : 'function';
+  const many = lean ? 'declarations' : mixed ? 'functions and declarations' : 'functions';
+  const leanScope = 'Lean declarations without hidden ones, as the Declaration Kind filters show';
+  const rustScope = 'Rust (<code>exec</code>) functions';
+  const leanArc = 'transitively verified or trusted';
+  const rustArc = 'verified, transitively verified or trusted';
   return {
     one,
     many,
-    scope: lean
-      ? 'Lean declarations without hidden ones, as the Declaration Kind filters show'
-      : 'Rust (<code>exec</code>) functions only',
+    scope: lean ? leanScope : mixed ? `${rustScope} and ${leanScope}` : `${rustScope} only`,
     ariaLabel: `Packed Map ${many}. Arrow keys move between ${many}, Enter or Space opens the details, `
       + `Shift+Enter opens the ${one} in the Call Graph. Plus zooms in one level toward the ${one}, `
       + 'Minus or Escape zooms out one level. O opens the zoomed group in its view.',
     openGroup: `Double-click group: open a ${crateNoun(language)} in the ${crateMapLabel(language)}, `
       + 'a directory in the Hierarchy, a file in the Call Graph',
-    empty: lean ? 'No Lean declarations match the filters.' : 'No Rust functions match the filters.',
-    arcStatuses: lean ? 'transitively verified or trusted' : 'verified, transitively verified or trusted',
+    empty: lean
+      ? 'No Lean declarations match the filters.'
+      : mixed ? 'No Rust functions or Lean declarations match the filters.' : 'No Rust functions match the filters.',
+    arcStatuses: lean ? leanArc : mixed ? `${rustArc} (Lean: ${leanArc})` : rustArc,
   };
 }
 
@@ -405,6 +418,14 @@ const EDGE_TYPES = ['inner', 'precondition', 'postcondition', 'mapping', 'spec']
 /** Lean draws every link as one dependency, in the `inner` color. */
 function leanEdgeType(): string {
   return 'inner';
+}
+
+/**
+ * A mixed graph draws a Lean `spec` link as a dependency, as Lean does, and
+ * keeps the other types. Only the Lean side of a mixed graph has `spec` links.
+ */
+export function mixedEdgeType(type: string): string {
+  return type === 'spec' ? 'inner' : type;
 }
 
 function edgeColor(type: string): string {
@@ -992,7 +1013,7 @@ export class PackedMapVisualization {
     }
     const t = d3.zoomTransform(this.svg.node()!);
     if (!this.edgeCache || this.edgeCache.fnId !== fnId || this.edgeCache.graph !== this.graph) {
-      const typeOf = this.language === 'lean' ? leanEdgeType : undefined;
+      const typeOf = this.language === 'lean' ? leanEdgeType : this.language === 'mixed' ? mixedEdgeType : undefined;
       this.edgeCache = { fnId: fnId!, graph: this.graph, edges: edgesOf(this.graph.links, fnId!, this.drawnIds, typeOf) };
     }
     const edges = this.edgeCache.edges;
@@ -1134,16 +1155,26 @@ export class PackedMapVisualization {
 
     const text = packedMapText(this.language);
     const lean = this.language === 'lean';
+    const mixed = this.language === 'mixed';
+    const leanSize = 'Declaration: 1 + dependency links after the filters';
+    const rustSize = 'Function: 1 + distinct callers and callees';
     const size = lean
-      ? 'Declaration: 1 + dependency links after the filters'
-      : 'Function: 1 + distinct callers and callees';
+      ? leanSize
+      : mixed ? 'Function or declaration: 1 + distinct linked nodes after the filters, Rust to Lean mappings included' : rustSize;
     const colors = lean
       ? `${swatch('transitively-verified', 'Transitively verified')}
         ${swatch('trusted', 'Trusted')}
         ${swatch('verified', 'Verified: not known to be free of sorry')}
         ${swatch('unverified', 'Unverified: contains sorry')}
         ${swatch('unknown', 'No status')}`
-      : `${swatch('verified', 'Verified')}
+      : mixed
+        ? `${swatch('verified', 'Verified (Lean: not known to be free of sorry)')}
+        ${swatch('transitively-verified', 'Transitively verified')}
+        ${swatch('trusted', 'Trusted')}
+        ${swatch('failed', 'Failed')}
+        ${swatch('unverified', 'Unverified (Lean: contains sorry)')}
+        ${swatch('unknown', 'No status')}`
+        : `${swatch('verified', 'Verified')}
         ${swatch('transitively-verified', 'Transitively verified')}
         ${swatch('trusted', 'Trusted')}
         ${swatch('failed', 'Failed')}
@@ -1152,7 +1183,13 @@ export class PackedMapVisualization {
     const edges = lean
       ? `<div class="hm-legend-item"><span>Dependencies of the hovered or selected declaration</span></div>
         ${edgeSwatch('inner', 'Dependency')}`
-      : `<div class="hm-legend-item"><span>Calls of the hovered or selected function</span></div>
+      : mixed
+        ? `<div class="hm-legend-item"><span>Links of the hovered or selected function or declaration</span></div>
+        ${edgeSwatch('inner', 'Body call or Lean dependency')}
+        ${edgeSwatch('precondition', 'Requires')}
+        ${edgeSwatch('postcondition', 'Ensures')}
+        ${edgeSwatch('mapping', 'Rust to Lean mapping')}`
+        : `<div class="hm-legend-item"><span>Calls of the hovered or selected function</span></div>
         ${edgeSwatch('inner', 'Body call')}
         ${edgeSwatch('precondition', 'Requires')}
         ${edgeSwatch('postcondition', 'Ensures')}`;

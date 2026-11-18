@@ -1,0 +1,221 @@
+{
+ "schema": "probe-aeneas/extract",
+ "schema-version": "3.0",
+ "tool": {
+  "name": "probe-aeneas",
+  "version": "0.22.0",
+  "command": "extract"
+ },
+ "inputs": [],
+ "timestamp": "2026-11-18T00:00:00Z",
+ "data": {
+  "probe:demo/1.0/a#f()": {
+   "display-name": "f",
+   "dependencies": [
+    "probe:demo/1.0/a#p()"
+   ],
+   "code-module": "a",
+   "code-path": "src/a.rs",
+   "code-text": {
+    "lines-start": 1,
+    "lines-end": 3
+   },
+   "kind": "exec",
+   "language": "rust",
+   "is-public": true,
+   "is-relevant": true,
+   "untracked": false,
+   "verification-status": "transitively-verified",
+   "translation-name": "probe:Demo.f"
+  },
+  "probe:demo/1.0/a#g()": {
+   "display-name": "g",
+   "dependencies": [
+    "probe:demo/1.0/a#f()"
+   ],
+   "code-module": "a",
+   "code-path": "src/a.rs",
+   "code-text": {
+    "lines-start": 1,
+    "lines-end": 3
+   },
+   "kind": "exec",
+   "language": "rust",
+   "is-public": true,
+   "is-relevant": true,
+   "untracked": false
+  },
+  "probe:demo/1.0/a#p()": {
+   "display-name": "p",
+   "dependencies": [],
+   "code-module": "a",
+   "code-path": "src/a.rs",
+   "code-text": {
+    "lines-start": 1,
+    "lines-end": 3
+   },
+   "kind": "proof",
+   "language": "rust",
+   "is-public": true,
+   "is-relevant": true,
+   "untracked": false,
+   "verification-status": "verified"
+  },
+  "probe:Demo.f": {
+   "display-name": "f",
+   "dependencies": [],
+   "code-module": "SrcTranslated.Funs",
+   "code-path": "SrcTranslated/Funs.lean",
+   "code-text": {
+    "lines-start": 1,
+    "lines-end": 3
+   },
+   "kind": "def",
+   "language": "lean",
+   "is-aeneas-generated": false,
+   "is-hidden": false,
+   "is-ignored": false,
+   "is-in-package": true,
+   "is-lean-generated": false,
+   "is-relevant": true,
+   "term-dependencies": [],
+   "type-dependencies": [],
+   "verification-status": "transitively-verified",
+   "specs": [
+    "probe:Demo.f_spec"
+   ]
+  },
+  "probe:Demo.f_spec": {
+   "display-name": "f_spec",
+   "dependencies": [
+    "probe:Demo.f",
+    "probe:Demo.bad"
+   ],
+   "code-module": "Demo.Specs.F",
+   "code-path": "Demo/Specs/F.lean",
+   "code-text": {
+    "lines-start": 1,
+    "lines-end": 3
+   },
+   "kind": "theorem",
+   "language": "lean",
+   "is-aeneas-generated": false,
+   "is-hidden": false,
+   "is-ignored": false,
+   "is-in-package": true,
+   "is-lean-generated": false,
+   "is-relevant": true,
+   "term-dependencies": [
+    "probe:Demo.f",
+    "probe:Demo.bad"
+   ],
+   "type-dependencies": [],
+   "verification-status": "verified"
+  },
+  "probe:Demo.bad": {
+   "display-name": "bad",
+   "dependencies": [],
+   "code-module": "Demo.Specs.Bad",
+   "code-path": "Demo/Specs/Bad.lean",
+   "code-text": {
+    "lines-start": 1,
+    "lines-end": 3
+   },
+   "kind": "theorem",
+   "language": "lean",
+   "is-aeneas-generated": false,
+   "is-hidden": false,
+   "is-ignored": false,
+   "is-in-package": true,
+   "is-lean-generated": false,
+   "is-relevant": true,
+   "term-dependencies": [],
+   "type-dependencies": [],
+   "verification-status": "unverified"
+  },
+  "probe:Demo.trusted_ax": {
+   "display-name": "trusted_ax",
+   "dependencies": [],
+   "code-module": "Demo.Specs.Bad",
+   "code-path": "Demo/Specs/Bad.lean",
+   "code-text": {
+    "lines-start": 1,
+    "lines-end": 3
+   },
+   "kind": "axiom",
+   "language": "lean",
+   "is-aeneas-generated": false,
+   "is-hidden": false,
+   "is-ignored": false,
+   "is-in-package": true,
+   "is-lean-generated": false,
+   "is-relevant": true,
+   "term-dependencies": [],
+   "type-dependencies": [],
+   "verification-status": "trusted"
+  },
+  "probe:Demo.f_gen": {
+   "display-name": "f_gen",
+   "dependencies": [],
+   "code-module": "SrcTranslated.Funs",
+   "code-path": "SrcTranslated/Funs.lean",
+   "code-text": {
+    "lines-start": 1,
+    "lines-end": 3
+   },
+   "kind": "theorem",
+   "language": "lean",
+   "is-aeneas-generated": true,
+   "is-hidden": true,
+   "is-ignored": false,
+   "is-in-package": true,
+   "is-lean-generated": false,
+   "is-relevant": true,
+   "term-dependencies": [],
+   "type-dependencies": [],
+   "verification-status": "transitively-verified"
+  },
+  "probe:Demo.gen_sorry": {
+   "display-name": "gen_sorry",
+   "dependencies": [],
+   "code-module": "SrcTranslated.Funs",
+   "code-path": "SrcTranslated/Funs.lean",
+   "code-text": {
+    "lines-start": 1,
+    "lines-end": 3
+   },
+   "kind": "theorem",
+   "language": "lean",
+   "is-aeneas-generated": true,
+   "is-hidden": true,
+   "is-ignored": false,
+   "is-in-package": true,
+   "is-lean-generated": false,
+   "is-relevant": true,
+   "term-dependencies": [],
+   "type-dependencies": [],
+   "verification-status": "unverified"
+  },
+  "probe:Demo.f_proj": {
+   "display-name": "f_proj",
+   "dependencies": [],
+   "code-module": "SrcTranslated.Funs",
+   "code-path": "SrcTranslated/Funs.lean",
+   "code-text": {
+    "lines-start": 1,
+    "lines-end": 3
+   },
+   "kind": "projection",
+   "language": "lean",
+   "is-aeneas-generated": false,
+   "is-hidden": true,
+   "is-ignored": false,
+   "is-in-package": true,
+   "is-lean-generated": false,
+   "is-relevant": true,
+   "term-dependencies": [],
+   "type-dependencies": [],
+   "verification-status": "transitively-verified"
+  }
+ }
+}

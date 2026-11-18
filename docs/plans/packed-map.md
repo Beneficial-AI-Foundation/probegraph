@@ -227,7 +227,7 @@ Which nodes can be drawn. One helper, `isPackedMapCandidate(node,
 language)`, holds the rule. It does not look at the filters:
 
 - `verus`, `unknown` and `mixed`: `exec` only, as today. A mixed graph
-  keeps its Lean side out of the view (see "Later: mixed projects").
+  keeps its Lean side out of the view. Phase 6 changes this.
 - `lean`: every declaration without `is_hidden`. A hidden declaration
   with the status `unverified` (it contains a `sorry`) is a candidate
   too, so a `sorry` is never hidden.
@@ -566,11 +566,95 @@ Notes from the implementation:
   fixture crates come from the node ids (`probe:<crate>/...`), as
   `extractCrateName` reads them.
 
+### Phase 6: the Lean side of a mixed graph
+
+Status (2026-11-18): implemented, issue #150. Notes at the end of this
+section.
+
+Problem. A graph with Rust and Lean nodes is `mixed`. An Aeneas
+extract is an example: `aeneas_spqr_1.6.0.json` has 684 Rust `exec`
+nodes and 2,830 Lean declarations. Phase 4 kept the Lean side of a
+mixed graph out of the Packed Map. If the user turns off Rust in the
+filters, the map is empty, but the Call Graph shows the Lean
+declarations.
+
+Goal. In a mixed graph, the Packed Map draws both sides. Each node uses
+the rule of its own language. One top-level circle per language stays
+under "Later: mixed projects".
+
+Which nodes can be drawn. A node with `language: lean` uses the Lean
+rule: no hidden declarations, except a hidden one that contains a
+`sorry`. The user decided on 2026-11-18 to keep hidden declarations out
+here too, because they are generated (Aeneas theorems, projections,
+instances). Every other node uses the Rust rule: `exec` only.
+
+Arc. The arc counts a node as done by the rule of its own language. A
+Lean `verified` declaration can rest on a `sorry`, so it does not count
+(see Phase 4). A Rust `verified` function counts. `buildHierarchyTree`
+therefore takes a test on the node, not on the status alone.
+
+Grouping. No change. For a Lean node in a mixed graph,
+`extractCrateName` already takes two path segments. The top-level
+circles `SrcTranslated/Funs.lean` and `Spqr/Specs` sit next to the Rust
+crates.
+
+Edges. A Lean dependency can be an `inner` and a `spec` link between
+the same two nodes. A pure Lean map draws both as one dependency. A
+mixed map does the same for `spec`, and keeps the other types: Rust
+body calls, requires and ensures, and the Rust↔Lean `mapping` links.
+Only the loader's Lean spec step writes `spec` links in a mixed graph.
+
+Text. The words are "functions and declarations". The legend gives
+both meanings of `verified` and `unverified`, and both arc rules.
+
+Changes:
+
+1. `isPackedMapCandidate` and `packedArcStatus` look at the node's
+   language in a mixed graph.
+2. `buildHierarchyTree` takes a node test. The Hierarchy keeps its
+   default.
+3. The text, the legend and the edge type map for `mixed`.
+4. Unit tests: a mixed fixture with a Rust `exec` and proof, a visible
+   and a hidden Lean theorem, a hidden one with a `sorry`, and a Lean
+   `verified` declaration. They name the drawn nodes with the default
+   filters and with Rust off, and test the arc counts.
+5. `docs/guides/viewer.md`: what a mixed graph shows, and the legend
+   captions.
+
+Notes from the implementation:
+
+- The e2e fixture `graph_backup_dalek.json` is mixed: 603 Rust `exec`
+  functions and about 1,500 Lean declarations. Two tests in
+  `e2e/packed-map.spec.ts` assume Rust groups, so they now open the view
+  with `lean=0`. A new test turns off Rust and then Lean on that
+  fixture.
+- With Lean off, the graph is still mixed, so the empty state says
+  "No Rust functions or Lean declarations match the filters."
+- A Codex review of #151 found two limits that this phase keeps:
+  - A group id can repeat across languages. A Rust crate `demo` with
+    the directory `src` and a Lean file `demo/src/F.lean` both give the
+    group id `demo/src`. Then a zoom, `?packed=` or the keyboard can go
+    to the wrong circle. The Hierarchy has the same problem today, since
+    both views use `buildHierarchyTree`. Real graphs do not show it:
+    Rust crates use lower case (`spqr`), Lean paths start in upper case
+    (`Spqr/Specs`). The fix is an id with the language in it, for both
+    views.
+  - An older mixed graph without a `language` field on its nodes is
+    `mixed` by its kinds. Its Lean declarations still stay out, because
+    the language filters and `extractCrateName` also read `language`
+    and treat a missing one as Rust. A fallback on the kind needs all
+    three to change together.
+- The size counts every distinct drawn neighbor, also across a Rust to
+  Lean `mapping` link. The mixed legend says so.
+- On `aeneas_spqr_1.6.0.json`, with the default filters and Rust off,
+  the map draws 2,091 Lean declarations in 358 group circles. With Rust
+  on, it draws 2,525.
+
 ### Later: mixed projects
 
 A mixed graph can get one top-level circle per language, like the
 Rust world and Lean world boxes in the File Map (#142). This is not
-part of Phase 4.
+part of Phase 4 or Phase 6.
 
 ### Later: lines of code
 

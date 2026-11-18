@@ -1,23 +1,30 @@
 # Packed Map Algorithm
 
-The Packed Map is a circle packing of the Rust code. Crates, directories and
-files are nested circles, and the smallest circles are `exec` functions. A
-function circle is sized by its connectivity and filled with its
-verification status. Implementation: `web/src/packed-map.ts`. The design
+The Packed Map is a circle packing of the code. Crates, directories and
+files are nested circles. The smallest circles are Rust `exec` functions
+or Lean declarations. A circle is sized by its connectivity and filled
+with its verification status. Implementation: `web/src/packed-map.ts`. The design
 decisions are in [docs/plans/packed-map.md](../../../docs/plans/packed-map.md).
 
 ## Input
 
 The filtered graph $G = (V, E)$ from the query pipeline. When the Packed Map
-is the active view, `applyFiltersAndUpdate` (`main.ts`) applies
-`restrictToPackedNodes` after the filters. This step keeps the nodes with
-`(kind || 'exec') === 'exec'` and the links between them. Older graphs have
-no `kind`, so their nodes count as `exec`. The stats and the node details
-therefore count the drawn functions only.
+is the active view, the filter step (`applyFilters`, `filters.ts`) applies
+`restrictToPackedNodes`. This step keeps the candidates and the links
+between them. `isPackedMapCandidate(node, language)` picks the candidates:
 
-A graph can have no `exec` node, for example a pure Lean graph or the
-blueprint layer. If so, the button is hidden and the view falls back to the
-Call Graph. The
+- A Rust node, in a `verus`, `unknown` or `mixed` graph: `(kind || 'exec')
+  === 'exec'`. Older graphs have no `kind`, so their nodes count as `exec`.
+- A Lean node, in a `lean` graph or a node with `language: lean` in a
+  `mixed` graph: a node without `is_hidden`, or a hidden node with the
+  status `unverified` (it contains a `sorry`).
+- Nothing on the blueprint layer.
+
+The stats and the node details therefore count the drawn nodes only.
+
+If a graph has no candidate, for example the blueprint layer, the button
+is hidden and the view falls back to the Call Graph. The filters do not
+change this test. The
 Packed Map draws every function, but like the Crate Map and the Hierarchy it
 is in `isAggregatedView`: the large-graph gate and the 200-node result limit
 do not apply. In the Phase 1 measurement, a graph with 9,737 nodes (5,454
@@ -68,9 +75,12 @@ builds a new layout, because the ids can stay while statuses change.
 - **Group circle**: a neutral grey fill whose alpha is
   $\min(0.05 + 0.035\,d,\ 0.25)$ at depth $d$, so deeper groups are darker.
 - **Verified arc**: a 3 px arc outside each group circle, from 12 o'clock
-  clockwise, over $2\pi \cdot n_\text{verified} / n$. The verified
-  statuses are verified, transitively verified and trusted, as in the
-  Hierarchy rollup.
+  clockwise, over $2\pi \cdot n_\text{verified} / n$
+  (`packedArcStatus`). For a Rust node, the verified statuses are
+  verified, transitively verified and trusted, as in the Hierarchy
+  rollup. For a Lean node, only transitively verified and trusted count,
+  because a Lean `verified` declaration can rest on a `sorry`. In a
+  mixed graph, each node uses the rule of its own language.
 
 ## Camera
 
@@ -113,6 +123,11 @@ No edges are drawn by default. For the hovered function, or else the
 selected one, `edgesOf` collects its calls to and from other drawn
 functions, one per source, target and type. The list is cached for the
 function and the graph, so a zoom event only computes the curves.
+
+A type map runs first. A `lean` graph draws every link as `inner`, so a
+Lean dependency is one edge. A `mixed` graph draws a `spec` link as
+`inner` (`mixedEdgeType`) and keeps the other types, also `mapping`.
+Only the Lean side of a mixed graph has `spec` links.
 
 Each call is a quadratic Bézier between the two centers, with the control
 point at the midpoint moved sideways by `bend` times the distance
