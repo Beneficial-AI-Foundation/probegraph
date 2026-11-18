@@ -94,9 +94,9 @@ see [web/ARCHITECTURE.md](../../web/ARCHITECTURE.md#input-formats).
   Call Graph. This works like a row of the search box: if the current
   query already reaches the function, the query stays. If not, the Call
   Graph shows the function, its callers and its callees at the current
-  depth. With no query and no clicked nodes in the Call Graph, it also
-  shows them when the function is not among the drawn nodes of a large
-  graph. Browser back returns to the Packed Map. If the filters leave no
+  depth. With no query and no clicked nodes in the Call Graph, it always
+  shows them, also when the overview of the most connected nodes already
+  draws the function. Browser back returns to the Packed Map. If the filters leave no
   function, the view says "No Rust functions match the filters."
   Double-click a group circle to open it in another view. The first click
   of the double-click zooms to the group, so Browser back returns to the

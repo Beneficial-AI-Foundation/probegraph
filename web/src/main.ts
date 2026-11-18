@@ -4144,7 +4144,9 @@ function applySearchPolicy(
 ): boolean {
   if (policy.kind === 'replace') {
     const { reason } = classifyReveal(revealContext(), id);
-    if (reason !== 'outside-intent' && !(policy.always && reason === 'truncated')) return false;
+    const replaces = reason === 'outside-intent'
+      || (policy.always && (reason === 'truncated' || reason === 'shown'));
+    if (!replaces) return false;
   }
   const intent = searchIntent(state.filters.intent, id, label, policy);
   if (intent === state.filters.intent) return false;
