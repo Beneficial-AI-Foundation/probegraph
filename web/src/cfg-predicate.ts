@@ -48,9 +48,10 @@ function tokenize(s: string): Token[] | null {
       i = end + close.length;
       continue;
     }
-    const m = /^[A-Za-z_][A-Za-z0-9_]*/.exec(s.slice(i));
+    // An identifier, or a raw identifier r#name, which means the same as name
+    const m = /^(?:r#)?([A-Za-z_][A-Za-z0-9_]*)/.exec(s.slice(i));
     if (!m) return null;
-    tokens.push({ t: 'ident', v: m[0] });
+    tokens.push({ t: 'ident', v: m[1] });
     i += m[0].length;
   }
   return tokens;
