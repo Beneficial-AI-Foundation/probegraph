@@ -341,9 +341,15 @@ Measurements (2026-11-17, item 9). Graph: spqr `lean_extract.json`,
 loaded from a local route. Browser: headless Chromium 145
 (Playwright 1.58.2, "Desktop Chrome" profile, 1280 × 800 view). Machine:
 Intel Core Ultra 9 185H (22 threads), 60 GB RAM, Linux. Each step runs in
-the page and stops after two animation frames, so a step cannot be
-shorter than about 33 ms at 60 Hz. The numbers are medians over 5 page
-loads (15 runs for selection and wheel).
+the page and stops after two animation frames. The wait for the two
+frames has no fixed length. When the page is idle, headless Chromium does
+not hold frames to a 60 Hz clock, and an empty step took 2.6 to 17 ms. The
+numbers are medians over 5 page loads (15 runs for selection and wheel).
+
+The resize step dispatches a `resize` event after the view already has the
+new size. The redraw in the event handler takes 0.6 ms. The rest of the
+time is the wait for the two frames. The first measurement gave a median
+of 5 ms, and a second run on 2026-11-18 gave the numbers in the table.
 
 | Step | Median | Max | Limit |
 |---|---|---|---|
@@ -351,7 +357,7 @@ loads (15 runs for selection and wheel).
 | Click selection | 31 ms | 40 ms | 50 ms |
 | Wheel zoom step | 31 ms | 31 ms | 50 ms |
 | Filter change (Theorems off) | 37 ms | 39 ms | none |
-| Resize (1280 × 800 to 1000 × 700) | 5 ms | 6 ms | 50 ms |
+| Resize (1280 × 800 to 1000 × 700) | 14 ms | 17 ms | 50 ms |
 
 The default filters draw 2,034 declarations in 369 group circles, with
 6,790 links. With Theorems off, 1,209 declarations are left. No step is
