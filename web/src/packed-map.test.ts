@@ -3,7 +3,8 @@
  * rule, the graph restriction, connectivity, the pack input tree, the
  * camera fit, the label rules, the edges and the keyboard order. The Lean
  * tests (Phase 4) run the filter step on the synthetic fixture
- * test-data/probe-lean-packed-map.json.
+ * test-data/probe-lean-packed-map.json, and the mixed tests (Phase 6) on
+ * test-data/probe-aeneas-packed-map.json.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -13,7 +14,7 @@ import * as d3 from 'd3';
 import {
   isPackedMapCandidate, hasPackedMapNodes, restrictToPackedNodes, connectivity, buildPackData, PackDatum,
   fitCamera, visibleGroupLabels, fitLabel, edgesOf, nextFocusIndex, edgeCurve, edgeBends, functionOrder, zoomInTarget, minZoomScale,
-  packedArcStatus, packedMapText,
+  packedArcStatus, packedMapText, mixedEdgeType,
 } from './packed-map';
 import { D3Graph, D3Node, D3Link, FilterOptions, ProjectLanguage, detectProjectLanguage, extractCrateName } from './types';
 import { parseAndNormalizeGraph } from './graph-loader';
@@ -508,31 +509,88 @@ describe('Packed Map on a pure Lean graph (probe-lean-packed-map.json)', () => {
   });
 });
 
+describe('Packed Map on a mixed Aeneas graph (probe-aeneas-packed-map.json)', () => {
+  const { graph: mixed, language } = loadFixture('probe-aeneas-packed-map.json');
+  const rustF = 'probe:demo/1.0/a#f()';
+  const rustG = 'probe:demo/1.0/a#g()';
+
+  it('detects a mixed graph and shows the button', () => {
+    expect(language).toBe('mixed');
+    expect(hasPackedMapNodes(mixed, language)).toBe(true);
+  });
+
+  it('draws Rust exec functions and visible Lean declarations, and a hidden sorry', () => {
+    expect(drawn(mixed, language)).toEqual(
+      ['bad', 'f', 'f_spec', 'gen_sorry', 'trusted_ax', rustF, rustG].sort(),
+    );
+  });
+
+  it('Rust off leaves the Lean declarations', () => {
+    expect(drawn(mixed, language, { showRustNodes: false })).toEqual(
+      ['bad', 'f', 'f_spec', 'gen_sorry', 'trusted_ax'],
+    );
+  });
+
+  it('Lean off leaves the Rust functions', () => {
+    expect(drawn(mixed, language, { showLeanNodes: false })).toEqual([rustF, rustG].sort());
+  });
+
+  it('groups Lean files by two path segments next to the Rust crate', () => {
+    const shown = applyFilters(mixed, defaultFilters(), language, packedView(language));
+    const top = (buildPackData(shown, language).children ?? []).map(c => c.label).sort();
+    expect(top).toEqual(['Demo/Specs', 'SrcTranslated/Funs.lean', 'demo']);
+  });
+
+  it('the arc uses the rule of each node\'s language', () => {
+    const shown = applyFilters(mixed, defaultFilters(), language, packedView(language));
+    const root = buildPackData(shown, language);
+    const counts = (label: string) => {
+      const g = (root.children ?? []).find(c => c.label === label)!.group!;
+      return [g.verifiedCount, g.fnCount];
+    };
+    // Rust: f is transitively verified, g has no status
+    expect(counts('demo')).toEqual([1, 2]);
+    // Lean f is transitively verified; gen_sorry is unverified
+    expect(counts('SrcTranslated/Funs.lean')).toEqual([1, 2]);
+    // f_spec is verified (reaches a sorry) and does not count; trusted_ax counts; bad does not
+    expect(counts('Demo/Specs')).toEqual([1, 3]);
+  });
+});
+
 describe('packedArcStatus', () => {
+  const st = (verification_status: D3Node['verification_status'], language?: string) => ({ verification_status, language });
+
   it('Lean counts transitively-verified and trusted only', () => {
-    expect(packedArcStatus('transitively-verified', 'lean')).toBe(true);
-    expect(packedArcStatus('trusted', 'lean')).toBe(true);
-    expect(packedArcStatus('verified', 'lean')).toBe(false);
-    expect(packedArcStatus('unverified', 'lean')).toBe(false);
-    expect(packedArcStatus(undefined, 'lean')).toBe(false);
+    expect(packedArcStatus(st('transitively-verified'), 'lean')).toBe(true);
+    expect(packedArcStatus(st('trusted'), 'lean')).toBe(true);
+    expect(packedArcStatus(st('verified'), 'lean')).toBe(false);
+    expect(packedArcStatus(st('unverified'), 'lean')).toBe(false);
+    expect(packedArcStatus(st(undefined), 'lean')).toBe(false);
   });
 
   it('Verus counts verified too, as before', () => {
-    expect(packedArcStatus('verified', 'verus')).toBe(true);
-    expect(packedArcStatus('transitively-verified', 'verus')).toBe(true);
-    expect(packedArcStatus('trusted', 'verus')).toBe(true);
-    expect(packedArcStatus('failed', 'verus')).toBe(false);
+    expect(packedArcStatus(st('verified'), 'verus')).toBe(true);
+    expect(packedArcStatus(st('transitively-verified'), 'verus')).toBe(true);
+    expect(packedArcStatus(st('trusted'), 'verus')).toBe(true);
+    expect(packedArcStatus(st('failed'), 'verus')).toBe(false);
+  });
+
+  it('a mixed graph uses the rule of the node\'s language', () => {
+    expect(packedArcStatus(st('verified', 'rust'), 'mixed')).toBe(true);
+    expect(packedArcStatus(st('verified', 'lean'), 'mixed')).toBe(false);
+    expect(packedArcStatus(st('trusted', 'lean'), 'mixed')).toBe(true);
   });
 });
 
 describe('packedMapText', () => {
-  it('uses "declarations" for Lean and "functions" otherwise', () => {
+  it('uses "declarations" for Lean, both words for mixed, and "functions" otherwise', () => {
     expect(packedMapText('lean').many).toBe('declarations');
     expect(packedMapText('lean').empty).toBe('No Lean declarations match the filters.');
     expect(packedMapText('lean').ariaLabel).toContain('Packed Map declarations');
     expect(packedMapText('verus').many).toBe('functions');
     expect(packedMapText('verus').empty).toBe('No Rust functions match the filters.');
-    expect(packedMapText('mixed').many).toBe('functions');
+    expect(packedMapText('mixed').many).toBe('functions and declarations');
+    expect(packedMapText('mixed').empty).toBe('No Rust functions or Lean declarations match the filters.');
   });
 });
 
@@ -545,6 +603,13 @@ describe('edgesOf with a type map', () => {
     const ids = new Set(['t', 'd']);
     expect(edgesOf(links, 't', ids)).toHaveLength(2);
     expect(edgesOf(links, 't', ids, () => 'inner')).toEqual([{ source: 't', target: 'd', type: 'inner' }]);
+  });
+});
+
+describe('mixedEdgeType', () => {
+  it('draws a Lean spec link as a dependency and keeps the other types', () => {
+    expect(mixedEdgeType('spec')).toBe('inner');
+    for (const t of ['inner', 'precondition', 'postcondition', 'mapping']) expect(mixedEdgeType(t)).toBe(t);
   });
 });
 

@@ -60,10 +60,9 @@ see [web/ARCHITECTURE.md](../../web/ARCHITECTURE.md#input-formats).
 - **Packed Map (testing)** — a bird's-eye view of the code, drawn as
   a circle packing (the nested-circle layout of `d3.pack`). Crates,
   directories and files are nested circles, and the smallest circles are
-  functions. In a Rust project, and in a project with both Rust and Lean
-  code, only `exec` functions are drawn: proofs, specs and Lean
-  declarations are left out. A pure Lean project draws its declarations
-  (see below). The stats count the drawn circles only. If the graph has
+  functions. In a Rust project, only `exec` functions are drawn: proofs
+  and specs are left out. A pure Lean project draws its declarations, and
+  a project with both Rust and Lean code draws both (see below). The stats count the drawn circles only. If the graph has
   nothing to draw (the blueprint layer, for example), the button is
   hidden. The filters do not hide the button. Without a query, the map is
   an inventory: it draws every function that the filters show, also one
@@ -172,6 +171,37 @@ see [web/ARCHITECTURE.md](../../web/ARCHITECTURE.md#input-formats).
   | No status | probe-lean gave no status. |
   | Arc: share transitively verified or trusted | The green arc on a group circle. |
   | Dependency | A dependency link of the hovered or selected declaration. |
+
+  In a project with both Rust and Lean code, such as an Aeneas extract,
+  the Packed Map draws the Rust `exec` functions and the Lean
+  declarations. The Lean declarations follow the rules above: hidden
+  ones stay out, except a hidden one that contains a `sorry`. To see
+  only one side, turn off Rust or Lean in the filters.
+
+  - Grouping. The Rust crates and the Lean groups (two path segments,
+    such as `SrcTranslated/Funs.lean` or `Spqr/Specs`) are top-level
+    circles side by side.
+  - Arc. A Rust function counts if it is verified, transitively
+    verified or trusted. A Lean declaration counts only if it is
+    transitively verified or trusted.
+  - Edges. Hover or select a node to draw its links to the other drawn
+    nodes: Rust calls, Lean dependencies, and the purple Rust to Lean
+    mapping links.
+  - If the filters leave nothing, the view says "No Rust functions or
+    Lean declarations match the filters."
+
+  The legend has these captions for a mixed project, next to the Rust
+  ones:
+
+  | Caption | Meaning |
+  |---|---|
+  | Rust (`exec`) functions and Lean declarations without hidden ones, as the Declaration Kind filters show | What is drawn. |
+  | Function: 1 + distinct callers and callees. Declaration: 1 + dependency links after the filters | The size of a function or declaration circle. |
+  | Verified (Lean: not known to be free of sorry) | For Rust, the proof passed. For Lean, the declaration reaches a `sorry` or was not checked. |
+  | Unverified (Lean: contains sorry) | For Lean, the declaration has a `sorry` in its own proof or body. |
+  | Arc: share verified, transitively verified or trusted (Lean: transitively verified or trusted) | The green arc on a group circle. |
+  | Body call or Lean dependency | A Rust body call, or a Lean dependency link. |
+  | Rust to Lean mapping | A link from a Rust function to its Lean translation. |
 
 Crate Map and Hierarchy aggregate the whole graph into groups. The Packed
 Map draws every function (or Lean declaration) of the graph. The large-graph limits below don't
