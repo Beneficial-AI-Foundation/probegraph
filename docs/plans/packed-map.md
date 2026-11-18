@@ -363,6 +363,208 @@ The default filters draw 2,034 declarations in 369 group circles, with
 6,790 links. With Theorems off, 1,209 declarations are left. No step is
 over its limit, so Phase 3 (canvas) is not needed for spqr.
 
+### Phase 5: open a group in another view
+
+Status (2026-11-18): implemented on branch `web/packed-map-open-groups`.
+Revised the same day after two Codex review rounds. The notes from the
+implementation are at the end of this section.
+
+Goal: a double-click on a group circle opens the group in the view that
+shows that kind of group best. Today a double-click on a function opens
+it in the Call Graph. A double-click on a group acts as two clicks (see
+"Open in the Call Graph").
+
+| Circle | Opens | What the user sees |
+|---|---|---|
+| Crate | Crate Map | The crate selected, with its details |
+| Directory | Hierarchy | The directory and its parents expanded, the rest collapsed |
+| File | Call Graph | The file's declarations and what they call |
+| Function | Call Graph | No change |
+
+Why a file opens the Call Graph and not the File Map. The File Map
+draws every file at once, to show how files depend on each other. A
+jump to one file box there is a search result, not an open. A file
+circle stands for the functions inside it, and the Call Graph shows
+those functions and their calls. The rule for the user is then short:
+crates and directories open the structure views, and files and
+functions open the Call Graph.
+
+Double-click targeting. A click on a group starts a 600 ms zoom to it.
+The second click of a double-click can therefore land on a different
+circle, because the circles move under the pointer. The Call Graph has
+the same problem and solves it in `graph.ts`: it matches a double-click
+to the node of its first click, in the capture phase. The Packed Map
+does the same for groups and functions. A capture `click` listener on
+the svg clears the match on every first click (`event.detail <= 1`).
+The click handler of a circle then records its group or function. It
+does so only on a first click (`event.detail <= 1`), as
+`handleNodeClick` in `graph.ts` does. If a target is recorded, the capture listener stops the
+second click (`event.detail >= 2`) before it reaches a circle or the
+background. Without this, the second click can zoom to another group
+or zoom out, and `packed-focus-changed` writes that group into
+`?packed=` before the open. Back then returns to the wrong group. A
+capture `dblclick` listener opens the recorded target and stops the
+event. With no recorded target, it opens the circle under the pointer.
+This happens after a first click on the background, or for a
+`dblclick` that a test dispatches. The first click still zooms and writes `?packed=`, so Back
+returns to the map zoomed on the group, which is where the user was.
+
+Crate. The crate circle id is the `crate_name`, the same name the Crate
+Map uses for its nodes. A new `CrateMapVisualization.showCrate(name)`
+selects the crate and shows its details. The handler calls it after
+`applyFiltersAndUpdate`, because `updateNodeInfo` at the end of the
+apply writes the details panel again. `showCrate` does not change the
+boundary source or target, and the handler does not clear them: the
+boundary in the URL stays as it was. The selection is not in the URL,
+like the details panel of the other views ("Not restored" in
+`readURLState`). So after Back and Forward, or a reload, the Crate Map
+opens without a selection. If the filters leave the crate out, the view
+opens without a selection. On a Lean graph the circle is a namespace
+(the first two segments of the path) and the button reads "Namespace
+Map". A Lean file two levels deep is a top-level circle of kind
+`crate` (Phase 4, "Grouping"), so it opens the Namespace Map too.
+
+Directory. Group ids are path ids (`buildHierarchyTree`: the crate name
+plus the uncompressed path segments), so the Packed Map and the
+Hierarchy agree on them. A compressed chain takes the id of its deepest
+directory. The Hierarchy usually has more nodes than the Packed Map,
+and more nodes can only give less compression. But the Hierarchy drops nodes with no
+links (`removeIsolated`), and the Packed Map keeps them. With fewer
+nodes, the Hierarchy can merge the directory into a deeper one, so its
+id can be missing there. A pure helper `expandedForReveal(tree, id)` in
+`src/hierarchy.ts` returns the expanded set, in the Hierarchy's own
+tree:
+
+1. If the tree has the id, the id and every ancestor group.
+2. Otherwise, the group with the shortest id that starts with
+   `id + '/'`, and every ancestor group. Compression merged the
+   directory into this group.
+3. Otherwise (the directory has no node left in the Hierarchy), an
+   empty set.
+
+The order of the steps: create the Hierarchy view without an apply, set
+a pending reveal id, apply once, and push the history entry. In
+`update`, the view uses the pending id once and then clears it. An
+empty graph clears it too. The new set replaces the expanded set, and the
+view sends `hierarchy-expanded-changed`, so `?expanded=` holds it
+before the push.
+
+File. The file's declarations come from the full graph, not from the
+group's `nodeIds`: the group has only the candidates that the Packed
+Map draws. A helper `fileGroupIdOf(node)`, shared with
+`buildHierarchyTree`, gives the group id of the file of a node. The
+members are the nodes of the full graph with the same id. This keeps
+two crates with the same `src/lib.rs` apart, because the id starts with
+the crate.
+
+The double-click sets an exact intent (`exactIntent`) with the member
+ids, direction `callees`, and the label `file <path>`. A text query
+`file:<path>` does not work here, for three reasons:
+
+- Text matches are not anchors (`anchorIds` in `src/intent.ts`). The
+  cleanup step removes a declaration with no visible link. A file with
+  only such declarations therefore opens empty.
+- The search box splits words at spaces and alternatives at commas
+  (`parseWords`), so a path with a space or a comma does not survive.
+- A value with a `/` matches every path that ends with it
+  (`pathPatternToRegex`), and `crate:` is a substring match.
+
+The cost is the URL. An exact intent writes every id into it
+(`url-state.ts`), so a large file gives a long URL. Files in the
+current test graphs have at most a few hundred declarations. If the URLs
+get too long, a compact file intent (crate plus path in the URL) can
+replace this later.
+
+The Call Graph shows the declarations that the current filters allow.
+The double-click does not change the filters. For example, Verus spec
+functions stay hidden with the default filters. The render cap still
+applies. `revealNode` handles one node, so its toast does not cover a
+file. The file open follows `showTrustPath` in `src/main.ts`, which
+opens a set of ids in the same way. After the apply, one toast gives
+the count of members that are not drawn, for each reason: the filters
+or the render cap.
+
+History. Every open pushes one history entry, as the function open does
+today. Back returns to the Packed Map with the camera on the same group
+(`?packed=`). The file open goes through `setIntent` with
+`history: 'push'`, `pushed: true`, and `before: () =>
+switchView('callgraph', { apply: false })`, as `showTrustPath` does.
+The crate and directory opens do not change the query. They
+use a new helper, `openView(view, prepare)`: it raises
+`urlWritesSuppressed`, switches the view without an apply, runs
+`prepare` (the pending reveal), applies once, lowers the counter, and
+makes one `pushState`.
+
+Keyboard. Group circles take no focus (Phase 2 notes). `O` opens the
+zoomed group (the one in `?packed=`) in its view. With no zoomed group,
+`O` does nothing. With a modifier key (Ctrl, Alt, Meta), `O` does
+nothing, so browser shortcuts still work. Shift+Enter keeps opening the
+function in the focus ring. The `aria-label` of the map and the legend
+hint list the new key.
+
+Known limits, not fixed here:
+
+- `?expanded=` joins ids with commas and splits them at commas, so a
+  directory name with a comma does not survive a reload. This bug
+  exists today for every Hierarchy expansion.
+- The Hierarchy has no render cap. A directory with thousands of direct
+  children is slow to lay out. A manual expand has the same cost today.
+
+Changes:
+
+1. `src/packed-map.ts`: first-click matching for double-clicks, a
+   `dblclick` path for group circles, and the `O` key. A second
+   callback, `onOpenGroup(group: HierarchyGroup)`, next to `onOpen`.
+   The legend hint: "Double-click: open a crate in the Crate Map, a
+   directory in the Hierarchy, a file or function in the Call Graph".
+2. `src/main.ts`: the `onOpenGroup` handler with the three cases above,
+   and `openView` with one `pushState`.
+3. `src/hierarchy.ts`: `expandedForReveal` and `fileGroupIdOf`.
+   `src/hierarchy-map.ts`: the pending reveal.
+4. `src/crate-map.ts`: `showCrate(name)`.
+5. Unit tests:
+   - `expandedForReveal`: id found, id merged by compression, id gone.
+     Make sure that the cut of `computeCut` has the ancestors as
+     containers, with their other children collapsed.
+   - `fileGroupIdOf` and the members of a file: two crates with the
+     same `src/lib.rs`, and a path with a space and a comma.
+   - A file with a declaration that has no links: the declaration stays
+     in the query result.
+6. Playwright tests, with real pointer clicks (`dblclick` on a
+   position), not `dispatchEvent`:
+   - Double-click a directory: the Hierarchy has it expanded, and
+     `?expanded=` holds it. Back returns to the map on the same group.
+     Forward shows the same expansion.
+   - Double-click a file: the Source shows `file <path>`. Back returns
+     to the map.
+   - Double-click a crate: the Crate Map has the crate selected.
+   - Double-click a group while its zoom runs: the group opens, not a
+     circle that moved under the pointer. Back returns to the map with
+     `?packed=` on that group.
+   - `O` on a zoomed group opens it. `O` with no zoomed group does
+     nothing. Shift+Enter still opens a function.
+   - Lean (spqr fixture): a two-segment file circle opens the Namespace
+     Map.
+7. `docs/guides/viewer.md`: the double-click per circle kind, the `O`
+   key, and what the Call Graph shows for a file (the declarations the
+   filters allow, and what they call).
+
+Notes from the implementation:
+
+- The toast does not run `classifyReveal` per member, because that runs
+  a full query for each hidden member. `summarizeSetReveal` in
+  `src/reveal.ts` runs the query once. A member in the query result
+  that is not drawn counts for the render cap. Any other member that is
+  not drawn counts for the filters. An exact intent anchors every
+  member, so only a filter can keep one out of the result.
+- `expandedForReveal` lists the groups outermost first, so `?expanded=`
+  reads in the order that a user expands them.
+- The crate in the Crate Map gets the stroke that the render gives a
+  selected crate. The crate boxes now have a `data-crate` attribute.
+- The e2e tests are in `e2e/packed-map-open-groups.spec.ts`. The
+  fixture crates come from the node ids (`probe:<crate>/...`), as
+  `extractCrateName` reads them.
+
 ### Later: mixed projects
 
 A mixed graph can get one top-level circle per language, like the
@@ -409,3 +611,11 @@ Answered by the user on 2026-11-17:
   already separate top-level circles with their own labels (see
   "Grouping" in Phase 4). A different look per side belongs to "Later: mixed
   projects".
+
+Answered by the user on 2026-11-18:
+
+- A double-click on a crate circle opens the Crate Map, and on a
+  directory circle the Hierarchy (Phase 5).
+- A double-click on a file circle opens the Call Graph, not the File
+  Map. The File Map shows how files depend on each other, and a file
+  circle stands for the functions inside it.
