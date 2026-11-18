@@ -44,6 +44,13 @@ describe('isTestOnlyCfg', () => {
     expect(isTestOnlyCfg('all(test, feature = r#"open")')).toBe(false);
   });
 
+  it('reads raw identifiers as plain ones', () => {
+    expect(isTestOnlyCfg('all(test, r#unix)')).toBe(true);
+    expect(isTestOnlyCfg('r#test')).toBe(true);
+    expect(isTestOnlyCfg('r#not(test)')).toBe(false);
+    expect(isTestOnlyCfg('all(test, r#)')).toBe(false);
+  });
+
   it('reads escaped quotes inside strings', () => {
     expect(isTestOnlyCfg('all(test, feature = "a\\"b")')).toBe(true);
   });
