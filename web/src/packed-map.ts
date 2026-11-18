@@ -7,7 +7,7 @@
  */
 
 import * as d3 from 'd3';
-import { D3Graph, D3Node, GraphState, ProjectLanguage, VerificationStatus, isVerifiedStatus } from './types';
+import { D3Graph, D3Node, GraphState, ProjectLanguage, VerificationStatus, crateMapLabel, crateNoun, isVerifiedStatus } from './types';
 import { buildHierarchyTree, HierarchyGroup } from './hierarchy';
 import { statusColor, edgeTypeColor, STATUS_COLORS, SELECTION_COLOR } from './theme';
 import { escapeHtml } from './html';
@@ -298,6 +298,8 @@ export interface PackedMapText {
   scope: string;
   /** The svg aria label. */
   ariaLabel: string;
+  /** The legend hint for a double-click on a group. */
+  openGroup: string;
   /** The empty state. */
   empty: string;
   /** The statuses the group arc counts, for the legend and the tooltips. */
@@ -316,7 +318,9 @@ export function packedMapText(language: ProjectLanguage): PackedMapText {
       : 'Rust (<code>exec</code>) functions only',
     ariaLabel: `Packed Map ${many}. Arrow keys move between ${many}, Enter or Space opens the details, `
       + `Shift+Enter opens the ${one} in the Call Graph. Plus zooms in one level toward the ${one}, `
-      + 'Minus or Escape zooms out one level.',
+      + 'Minus or Escape zooms out one level. O opens the zoomed group in its view.',
+    openGroup: `Double-click group: open a ${crateNoun(language)} in the ${crateMapLabel(language)}, `
+      + 'a directory in the Hierarchy, a file in the Call Graph',
     empty: lean ? 'No Lean declarations match the filters.' : 'No Rust functions match the filters.',
     arcStatuses: lean ? 'transitively verified or trusted' : 'verified, transitively verified or trusted',
   };
@@ -454,6 +458,14 @@ export class PackedMapVisualization {
   private focusIndex = -1;
   /** Opens a function in the Call Graph (double-click, Shift+Enter). */
   private onOpen: (node: D3Node) => void;
+  /** Opens a group in the view for its kind (double-click, `O`). */
+  private onOpenGroup: (group: HierarchyGroup) => void;
+  /**
+   * The circle of the first click of a possible double-click; null after
+   * any other first click. The double-click opens it, not the circle under
+   * the pointer, which the first click's zoom can move.
+   */
+  private firstClick: PackNode | null = null;
   /** Language of the loaded graph: picks the words, the arc rule and the edge types. */
   private language: ProjectLanguage = 'verus';
 
@@ -462,11 +474,13 @@ export class PackedMapVisualization {
     state: GraphState,
     onStateChange: (state: GraphState, selectionChanged?: boolean) => void,
     onOpen: (node: D3Node) => void = () => {},
+    onOpenGroup: (group: HierarchyGroup) => void = () => {},
   ) {
     this.container = container;
     this.state = state;
     this.onStateChange = onStateChange;
     this.onOpen = onOpen;
+    this.onOpenGroup = onOpenGroup;
 
     const rect = container.getBoundingClientRect();
     this.width = rect.width || 800;
@@ -514,6 +528,29 @@ export class PackedMapVisualization {
     this.svg.on('click', (event: MouseEvent) => {
       if (event.target === this.svg.node()) this.zoomOut();
     });
+
+    // A double-click opens the circle of its first click (`firstClick`,
+    // set by the circle handlers), as in graph.ts. The second click does
+    // nothing: it can land on another circle or the background, which
+    // would move the camera and write that group into ?packed= before the
+    // open, so Back would return to the wrong group.
+    const svgNode = this.svg.node()!;
+    svgNode.addEventListener('click', (event) => {
+      if (event.detail <= 1) this.firstClick = null;
+      else if (this.firstClick) event.stopImmediatePropagation();
+    }, true);
+    svgNode.addEventListener('dblclick', (event) => {
+      // With no first click on a circle (a first click on the background,
+      // or a dispatched event), the circle under the pointer. Group
+      // children share the group's datum.
+      const target = this.firstClick
+        ?? ((event.target as Element | null)?.closest('.pm-fn, .pm-group') as { __data__?: PackNode } | null)?.__data__
+        ?? null;
+      this.firstClick = null;
+      if (!target) return;
+      event.stopImmediatePropagation();
+      this.open(target);
+    }, true);
 
     this.g = this.svg.append('g').attr('class', 'pm-camera');
     this.overlay = this.svg.append('g').attr('class', 'pm-overlay').attr('pointer-events', 'none');
@@ -607,6 +644,7 @@ export class PackedMapVisualization {
 
   public clear(): void {
     this.svg.interrupt();
+    this.firstClick = null;
     this.g.selectAll('*').remove();
     this.overlay.selectAll('.pm-edges > *, .pm-labels > *').remove();
     this.layoutKey = null;
@@ -778,6 +816,8 @@ export class PackedMapVisualization {
     this.updateScaleExtent();
     // The old circles are gone without a mouseleave: the new ones set the hover
     this.hoverId = null;
+    // The old circles are gone, so a double-click cannot open them
+    this.firstClick = null;
 
     const groupSel = this.g.append('g').attr('class', 'pm-groups')
       .selectAll<SVGGElement, PackNode>('g')
@@ -789,6 +829,7 @@ export class PackedMapVisualization {
       .style('cursor', 'zoom-in')
       .on('click', (event: MouseEvent, d) => {
         event.stopPropagation();
+        if (event.detail <= 1) this.firstClick = d;
         this.zoomToGroup(d);
       });
 
@@ -833,12 +874,9 @@ export class PackedMapVisualization {
       .style('cursor', 'pointer')
       .on('click', (event: MouseEvent, d) => {
         event.stopPropagation();
+        if (event.detail <= 1) this.firstClick = d;
         this.focusIndex = this.fnNodes.indexOf(d);
         this.select(d);
-      })
-      .on('dblclick', (event: MouseEvent, d) => {
-        event.stopPropagation();
-        this.onOpen(d.data.node!);
       })
       .on('mouseenter', (_event: MouseEvent, d) => {
         this.hoverId = d.data.node!.id;
@@ -862,6 +900,12 @@ export class PackedMapVisualization {
 
     // A new layout: the old camera points at nothing meaningful
     this.applyFocus();
+  }
+
+  /** Opens a function in the Call Graph, or a group in the view for its kind. */
+  private open(d: PackNode): void {
+    if (d.data.kind === 'fn') this.onOpen(d.data.node!);
+    else if (d.data.group) this.onOpenGroup(d.data.group);
   }
 
   private select(d: PackNode): void {
@@ -988,6 +1032,12 @@ export class PackedMapVisualization {
     if (event.key === '-' || event.key === '_') {
       event.preventDefault();
       this.zoomOut();
+      return;
+    }
+    if ((event.key === 'o' || event.key === 'O') && !event.ctrlKey && !event.altKey && !event.metaKey) {
+      event.preventDefault();
+      const zoomed = this.focusId ? this.groupById.get(this.focusId) : undefined;
+      if (zoomed) this.open(zoomed);
       return;
     }
     if (event.key === 'Enter' && event.shiftKey) {
@@ -1133,10 +1183,12 @@ export class PackedMapVisualization {
         ${hint('Esc or click background: zoom out one level')}
         ${hint(`Click ${text.one}: details panel`)}
         ${hint(`Double-click ${text.one}: open in Call Graph`)}
+        ${hint(text.openGroup)}
         ${hint('Wheel and drag: zoom and pan')}
         ${hint(`Tab, then arrow keys: move between ${text.many}`)}
         ${hint('Enter or Space: details panel')}
         ${hint('Shift+Enter: open in Call Graph')}
+        ${hint('O: open the zoomed group in its view')}
         ${hint(`Plus: zoom in toward the ${text.one} in the ring`)}
         ${hint('Minus or Esc: zoom out one level')}
       </div>

@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
   RevealCounter, classifyReveal, finishReveal, revealActions, revealMessage, searchIntent, withAnchor,
+  setRevealMessage, summarizeSetReveal,
   type RevealContext, type RevealSteps,
 } from './reveal';
 import { applyFilters } from './filters';
@@ -282,5 +283,39 @@ describe('finishReveal', () => {
     const centred: string[] = [];
     expect(await finishReveal(counter, token, steps('A', centred))).toBe(false);
     expect(centred).toEqual([]);
+  });
+});
+
+describe('summarizeSetReveal', () => {
+  const ids = [INIT_A, 'probe:oppUniKemCKA.StA', 'probe:oppUniKemCKA.StateA'];
+  const fileIntent = exactIntent(ids, 'callees', 'file', { type: 'search' });
+
+  it('counts nothing when every node is drawn', () => {
+    expect(summarizeSetReveal(context({}, undefined, fileIntent), ids))
+      .toEqual({ total: 3, filtered: 0, truncated: 0 });
+  });
+
+  it('counts a node that a filter hides', () => {
+    // StateA is a structure: the Types filter hides it, anchor or not
+    expect(summarizeSetReveal(context({ showTypes: false }, undefined, fileIntent), ids))
+      .toEqual({ total: 3, filtered: 1, truncated: 0 });
+  });
+
+  it('counts a node in the query result that the render cap dropped', () => {
+    expect(summarizeSetReveal(context({}, [INIT_A, 'probe:oppUniKemCKA.StA'], fileIntent), [...ids, INIT_A]))
+      .toEqual({ total: 3, filtered: 0, truncated: 1 });
+  });
+});
+
+describe('setRevealMessage', () => {
+  it('names the count and each reason', () => {
+    expect(setRevealMessage('src/a.rs', { total: 10, filtered: 3, truncated: 2 }, 200))
+      .toBe('5 of 10 declarations in src/a.rs are not drawn: 3 hidden by the filters, 2 beyond the 200-node render limit');
+    expect(setRevealMessage('src/a.rs', { total: 10, filtered: 1, truncated: 0 }, 200))
+      .toBe('1 of 10 declarations in src/a.rs are not drawn: 1 hidden by the filters');
+  });
+
+  it('is empty when every node is drawn', () => {
+    expect(setRevealMessage('src/a.rs', { total: 4, filtered: 0, truncated: 0 }, 200)).toBe('');
   });
 });

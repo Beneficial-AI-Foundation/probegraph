@@ -7,7 +7,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   buildHierarchyTree, computeCut, pruneExpanded, descendantGroupIds,
-  HierarchyGroup,
+  expandedForReveal, fileGroupIdOf, HierarchyGroup,
 } from './hierarchy';
 import { D3Graph, D3Node, D3Link, VerificationStatus } from './types';
 
@@ -225,5 +225,71 @@ describe('computeCut', () => {
     const cut = computeCut(tree, graph, new Set(['alpha/src/a.rs']));
     expect(cut.members.map(m => m.id).sort()).toEqual(['alpha', 'beta']);
     expect(cut.containers).toHaveLength(0);
+  });
+});
+
+describe('fileGroupIdOf', () => {
+  it('gives the id of the file group in the tree', () => {
+    const node = createNode('a', 'alpha', 'src/backend/serial/field.rs');
+    const tree = buildHierarchyTree(createGraph([node], []));
+    const id = fileGroupIdOf(node);
+    expect(id).toBe('alpha/src/backend/serial/field.rs');
+    expect(tree.groupById.get(id!)?.nodeIds).toEqual(['a']);
+  });
+
+  it('keeps two crates with the same relative path apart', () => {
+    const a = createNode('a', 'alpha', 'src/lib.rs');
+    const b = createNode('b', 'beta', 'src/lib.rs');
+    expect(fileGroupIdOf(a)).toBe('alpha/src/lib.rs');
+    expect(fileGroupIdOf(b)).toBe('beta/src/lib.rs');
+  });
+
+  it('strips the crate prefix and keeps spaces and commas', () => {
+    expect(fileGroupIdOf(createNode('a', 'ArkLib/Data', 'ArkLib/Data/Poly/my file,v2.lean')))
+      .toBe('ArkLib/Data/Poly/my file,v2.lean');
+  });
+
+  it('is null for a node without a path below its crate', () => {
+    // A Lean file two levels deep is its own crate group
+    expect(fileGroupIdOf(createNode('a', 'Spqr/Types.lean', 'Spqr/Types.lean'))).toBeNull();
+    expect(fileGroupIdOf({ ...createNode('b', 'alpha', ''), file_name: '' })).toBeNull();
+  });
+});
+
+describe('expandedForReveal', () => {
+  const graph = createGraph([
+    createNode('a', 'alpha', 'src/backend/serial/field.rs'),
+    createNode('b', 'alpha', 'src/lib.rs'),
+    createNode('c', 'beta', 'src/b.rs'),
+  ], []);
+  const tree = buildHierarchyTree(graph);
+
+  it('expands a group found in the tree and its ancestors', () => {
+    const expanded = expandedForReveal(tree, 'alpha/src/backend/serial');
+    expect([...expanded].sort()).toEqual(['alpha', 'alpha/src', 'alpha/src/backend/serial']);
+    // The cut shows the directory's file, with its sibling and the other crate collapsed
+    const cut = computeCut(tree, graph, expanded);
+    expect(cut.containers.map(c => c.group.id)).toEqual(['alpha', 'alpha/src', 'alpha/src/backend/serial']);
+    expect(cut.members.map(m => m.id).sort())
+      .toEqual(['alpha/src/backend/serial/field.rs', 'alpha/src/lib.rs', 'beta']);
+  });
+
+  it('expands the group that compression merged the directory into', () => {
+    // 'alpha/src/backend' is merged into 'alpha/src/backend/serial' here
+    expect(tree.groupById.has('alpha/src/backend')).toBe(false);
+    const expanded = expandedForReveal(tree, 'alpha/src/backend');
+    expect([...expanded].sort()).toEqual(['alpha', 'alpha/src', 'alpha/src/backend/serial']);
+  });
+
+  it('does not take a sibling whose name starts with the id', () => {
+    const t = buildHierarchyTree(createGraph([
+      createNode('a', 'alpha', 'src/backend2/x.rs'),
+      createNode('b', 'alpha', 'src/lib.rs'),
+    ], []));
+    expect(expandedForReveal(t, 'alpha/src/backend').size).toBe(0);
+  });
+
+  it('is empty for a directory with no node left', () => {
+    expect(expandedForReveal(tree, 'alpha/tests').size).toBe(0);
   });
 });

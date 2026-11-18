@@ -263,3 +263,38 @@ export async function finishReveal(counter: RevealCounter, token: number, steps:
   if (wanted()) await steps.center();
   return true;
 }
+
+/** How many nodes of a set the Call Graph leaves out, and why. */
+export interface SetRevealSummary {
+  total: number;
+  /** Not in the query result: a node filter or a hidden node removes it */
+  filtered: number;
+  /** In the query result, dropped by the render cap */
+  truncated: number;
+}
+
+/**
+ * Why nodes of `ids` are not drawn, with one query run for the whole set
+ * (classifyReveal runs one or two per node). Meant for an intent that
+ * anchors every id, such as the exact intent of a Packed Map file: an
+ * anchor that passes the filters is in the query result.
+ */
+export function summarizeSetReveal(ctx: RevealContext, ids: readonly string[]): SetRevealSummary {
+  const unique = [...new Set(ids)];
+  const notDrawn = unique.filter(id => !ctx.rendered.has(id));
+  if (notDrawn.length === 0) return { total: unique.length, filtered: 0, truncated: 0 };
+  const result = new Set(executeQuery(compileQuery(ctx.filters, ctx.language), ctx.graph).nodes.map(n => n.id));
+  let truncated = 0;
+  for (const id of notDrawn) if (result.has(id)) truncated++;
+  return { total: unique.length, filtered: notDrawn.length - truncated, truncated };
+}
+
+/** The toast for a set reveal; empty when every node is drawn. */
+export function setRevealMessage(label: string, summary: SetRevealSummary, cap: number): string {
+  const missing = summary.filtered + summary.truncated;
+  if (missing === 0) return '';
+  const reasons: string[] = [];
+  if (summary.filtered > 0) reasons.push(`${summary.filtered} hidden by the filters`);
+  if (summary.truncated > 0) reasons.push(`${summary.truncated} beyond the ${cap}-node render limit`);
+  return `${missing} of ${summary.total} declarations in ${label} are not drawn: ${reasons.join(', ')}`;
+}

@@ -99,6 +99,29 @@ see [web/ARCHITECTURE.md](../../web/ARCHITECTURE.md#input-formats).
   shows them when the function is not among the drawn nodes of a large
   graph. Browser back returns to the Packed Map. If the filters leave no
   function, the view says "No Rust functions match the filters."
+  Double-click a group circle to open it in another view. The first click
+  of the double-click zooms to the group, so Browser back returns to the
+  Packed Map zoomed on that group. The zoom can move another circle under
+  the pointer. The double-click still opens the group of the first click.
+  To use the keyboard, zoom to the group with Plus, then press O.
+
+  | Circle | Opens | What you see |
+  |---|---|---|
+  | Crate (namespace in a Lean project) | Crate Map (Namespace Map) | The crate selected, with its details. The selection is not kept in the URL |
+  | Directory | Hierarchy | The directory and its parent groups expanded, everything else collapsed |
+  | File | Call Graph | The declarations of the file and what they call, at the current depth |
+
+  For a file, the Source shows `file <path>`. The query holds the ids of
+  the declarations of that file in that crate. A file with the same path
+  in another crate stays out. The current filters apply: for example,
+  Verus spec functions stay hidden by default. If the filters or the
+  render limit leave declarations of the file out, a message gives the
+  count for each reason. In a Lean project, a file two levels deep is a
+  top-level circle (see Grouping below), so it opens the Namespace Map.
+  The Hierarchy leaves out functions with no links, and the Packed Map
+  draws them. So the Hierarchy can merge a directory into a deeper one
+  that the Packed Map shows apart. In that case, the double-click expands
+  the merged directory.
 
   In a pure Lean project, the Packed Map draws declarations instead of
   functions. The legend, the tooltips and the screen reader text say
