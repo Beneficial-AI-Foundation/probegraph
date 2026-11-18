@@ -168,7 +168,7 @@ function minimizeCrossings(
   }
 }
 
-interface LayoutInfo {
+export interface LayoutInfo {
   depths: Map<string, number>;
   maxDepth: number;
   maxLayerWidth: number;
@@ -176,14 +176,12 @@ interface LayoutInfo {
 }
 
 /**
- * Assign initial positions based on topological or traversal-provided depth.
- * Uses barycenter heuristic to minimize edge crossings within each layer.
+ * Group the nodes into layers by topological or traversal-provided depth,
+ * and order each layer with the barycenter heuristic to reduce crossings.
  */
-function assignTopologicalPositions(
+function groupIntoLayers(
   nodes: D3Node[],
   links: D3Link[],
-  width: number,
-  height: number,
   precomputedDepths?: Map<string, number>
 ): LayoutInfo {
   const depths = precomputedDepths ?? computeTopologicalDepth(nodes, links);
@@ -211,22 +209,279 @@ function assignTopologicalPositions(
     maxLayerWidth = Math.max(maxLayerWidth, layer.length);
   }
 
-  const padding = 100;
-  const usableWidth = width - 2 * padding;
-  const usableHeight = height - 2 * padding;
-  const xSpacing = maxDepth > 0 ? usableWidth / maxDepth : usableWidth / 2;
+  return { depths, maxDepth, maxLayerWidth, nodesByDepth };
+}
 
-  for (const [depth, nodesAtDepth] of nodesByDepth) {
-    const x = padding + depth * xSpacing;
-    const ySpacing = usableHeight / (nodesAtDepth.length + 1);
+/** Space between layers and between nodes in one layer, before the fit. */
+const LAYER_SPACING = 200;
+const ROW_SPACING = 60;
+/** Space from the drawing to the edge of the layout area. */
+const LAYOUT_PADDING = 100;
+/** Extra space between two bands of a folded layout, for the labels. */
+const BAND_GAP = 100;
+/** The margin computeFitTransform adds around the nodes. */
+const FIT_MARGIN = 60;
+/** Average width of one character of a 10px sans-serif label. */
+const LABEL_CHAR_WIDTH = 6;
+/** Space kept between a label and the edge of the view. */
+const LABEL_PAD = 20;
+/** Space kept between the labels of two neighboring layers. */
+const LABEL_GAP = 10;
+/** Smallest sideways bend of a link whose two ends share a column. */
+const LINK_BEND = 60;
 
-    nodesAtDepth.forEach((node, index) => {
-      node.x = x;
-      node.y = padding + (index + 1) * ySpacing;
+/** Estimated half width of a label, which is centered on its node. */
+function labelHalfWidth(name: string | undefined): number {
+  return (name?.length ?? 0) * LABEL_CHAR_WIDTH / 2;
+}
+
+/**
+ * How far a label of half width `half` (plus a small pad) reaches past the
+ * fit margin on each side of its node.
+ */
+function labelOverhang(half: number, margin: number = FIT_MARGIN): number {
+  return Math.max(0, half + LABEL_PAD - margin);
+}
+
+/**
+ * How the layers are folded: `bands` rows of at most `layersPerBand` layers.
+ * One band is the plain left-to-right layout.
+ */
+export interface LayerFold {
+  bands: number;
+  layersPerBand: number;
+}
+
+/** Height of each band's nodes: (its widest layer - 1) rows. */
+function bandNodeHeights(layerSizes: number[], layersPerBand: number): number[] {
+  const heights: number[] = [];
+  for (let first = 0; first < layerSizes.length; first += layersPerBand) {
+    const widest = Math.max(1, ...layerSizes.slice(first, first + layersPerBand));
+    heights.push((widest - 1) * ROW_SPACING);
+  }
+  return heights;
+}
+
+/** Column of layer `depth` in a fold: odd bands run right to left. */
+function foldColumn(depth: number, layersPerBand: number): number {
+  const band = Math.floor(depth / layersPerBand);
+  const step = depth % layersPerBand;
+  return band % 2 === 0 ? step : layersPerBand - 1 - step;
+}
+
+/**
+ * Space between the columns of a fold: LAYER_SPACING, or more where the
+ * labels of two neighboring layers in one band (`halves[d]`, the half width
+ * of the widest label at depth `d`) would overlap.
+ */
+function foldSpacing(halves: number[], layersPerBand: number): number {
+  let spacing = LAYER_SPACING;
+  for (let d = 0; d + 1 < halves.length; d++) {
+    if ((d + 1) % layersPerBand === 0) continue; // d ends its band
+    spacing = Math.max(spacing, halves[d] + halves[d + 1] + LABEL_GAP);
+  }
+  return spacing;
+}
+
+/**
+ * Space between the layers of a single band. The band spreads over the view
+ * as far as the labels allow, but no closer than foldSpacing, so labels do
+ * not overlap and a band that cannot fit keeps that spacing. The box is the
+ * one computeFitTransform measures: for every pair of layers d > e, layer
+ * d's right label edge minus layer e's left one, (d - e) * spacing +
+ * overhang[d] + overhang[e], must fit in the view.
+ */
+function singleBandSpacing(halves: number[], width: number): number {
+  const maxDepth = halves.length - 1;
+  const least = foldSpacing(halves, halves.length);
+  if (maxDepth < 1) return least;
+  let spacing = (width - 2 * LAYOUT_PADDING) / maxDepth;
+  // Many layers: the band is too wide for the view anyway, and the loop
+  // below stays short (a band that fits has few layers)
+  if (!(spacing > least)) return least;
+  const overhangs = halves.map(half => labelOverhang(half));
+  const room = width - 2 * FIT_MARGIN;
+  for (let d = 0; d <= maxDepth; d++) {
+    for (let e = 0; e <= maxDepth; e++) {
+      const rest = room - overhangs[d] - overhangs[e];
+      if (d > e) spacing = Math.min(spacing, rest / (d - e));
+      // A label wider than the layers it spans: no spacing fits
+      else if ((d - e) * least > rest) return least;
+    }
+  }
+  return Math.max(least, spacing);
+}
+
+/**
+ * Pick the fold that gives the largest fit scale (capped at 1, as in
+ * computeFitTransform), so a long chain does not shrink to a line. Tries
+ * every band length. `layerSizes[d]` is the number of nodes at depth `d`,
+ * and `halves[d]` the half width of the widest label at depth `d`. Each
+ * fold is scored with the spacing layerPositions gives it (see foldSpacing
+ * and singleBandSpacing). Ties go to fewer bands.
+ *
+ * Exported for testing.
+ */
+export function chooseFold(
+  layerSizes: number[],
+  width: number,
+  height: number,
+  halves: number[] = [],
+): LayerFold {
+  const layerCount = Math.max(layerSizes.length, 1);
+  const half = Array.from({ length: layerCount }, (_, depth) => halves[depth] ?? 0);
+  const overhangs = half.map(h => labelOverhang(h));
+  const oneBandSpacing = singleBandSpacing(half, width);
+  // Scoring a fold reads every layer, so score the folds in order of an
+  // upper bound on their scale (no labels, no tall layers) and stop at the
+  // first bound below the best scale found
+  const candidates: Array<LayerFold & { bound: number }> = [];
+  for (let layersPerBand = layerCount; layersPerBand >= 1; layersPerBand--) {
+    const bands = Math.ceil(layerCount / layersPerBand);
+    const w = (layersPerBand - 1) * LAYER_SPACING + 2 * FIT_MARGIN;
+    const h = (bands - 1) * BAND_GAP + 2 * FIT_MARGIN;
+    candidates.push({ bands, layersPerBand, bound: Math.min(1, width / w, height / h) });
+  }
+  candidates.sort((a, b) => b.bound - a.bound);
+  let best: LayerFold = { bands: 1, layersPerBand: layerCount };
+  let bestScale = -1;
+  for (const { bands, layersPerBand, bound } of candidates) {
+    if (bound < bestScale - 1e-9) break;
+    const heights = bandNodeHeights(layerSizes, layersPerBand);
+    const spacing = bands === 1 ? oneBandSpacing : foldSpacing(half, layersPerBand);
+    // Columns 0 and layersPerBand - 1 are always used; labels can reach past
+    let left = 0;
+    let right = (layersPerBand - 1) * spacing;
+    overhangs.forEach((overhang, depth) => {
+      const x = foldColumn(depth, layersPerBand) * spacing;
+      left = Math.min(left, x - overhang);
+      right = Math.max(right, x + overhang);
+    });
+    const w = right - left + 2 * FIT_MARGIN;
+    const h = heights.reduce((a, b) => a + b, 0) + (bands - 1) * BAND_GAP + 2 * FIT_MARGIN;
+    const scale = Math.min(1, width / w, height / h);
+    // On a tie, fewer bands, then longer bands, as before the sort
+    const tie = Math.abs(scale - bestScale) <= 1e-9
+      && (bands < best.bands || (bands === best.bands && layersPerBand > best.layersPerBand));
+    if (scale > bestScale + 1e-9 || tie) {
+      best = { bands, layersPerBand };
+      bestScale = scale;
+    }
+  }
+  return best;
+}
+
+/** Number of nodes at each depth, 0 to maxDepth. */
+export function layerSizes(layout: LayoutInfo): number[] {
+  const sizes = new Array<number>(layout.maxDepth + 1).fill(0);
+  for (const [depth, layer] of layout.nodesByDepth) sizes[depth] = layer.length;
+  return sizes;
+}
+
+/** Half width of the widest label at each depth, 0 to maxDepth. */
+export function layerLabelHalves(layout: LayoutInfo): number[] {
+  const halves = new Array<number>(layout.maxDepth + 1).fill(0);
+  for (const [depth, layer] of layout.nodesByDepth) {
+    for (const node of layer) {
+      halves[depth] = Math.max(halves[depth], labelHalfWidth(node.display_name));
+    }
+  }
+  return halves;
+}
+
+/**
+ * Target position of every node: layer `d` at column `d` from the left, the
+ * nodes of a layer spread down. A folded layout puts the layers in bands
+ * from top to bottom, each as tall as its widest layer. Odd bands run right
+ * to left (a snake), so the link from one band to the next stays short.
+ *
+ * Exported for testing.
+ */
+export function layerPositions(
+  layout: LayoutInfo,
+  width: number,
+  height: number,
+  fold: LayerFold = chooseFold(layerSizes(layout), width, height, layerLabelHalves(layout)),
+): Map<string, { x: number; y: number }> {
+  const positions = new Map<string, { x: number; y: number }>();
+  if (fold.bands === 1) {
+    // Spread over the view as far as the labels allow, and down over the
+    // view or over a larger area when the view is too short
+    const xSpacing = singleBandSpacing(layerLabelHalves(layout), width);
+    const layoutHeight = Math.max(height, layout.maxLayerWidth * ROW_SPACING + 2 * LAYOUT_PADDING);
+    const usableHeight = layoutHeight - 2 * LAYOUT_PADDING;
+    for (const [depth, layer] of layout.nodesByDepth) {
+      const ySpacing = usableHeight / (layer.length + 1);
+      layer.forEach((node, index) => {
+        positions.set(node.id, {
+          x: LAYOUT_PADDING + depth * xSpacing,
+          y: LAYOUT_PADDING + (index + 1) * ySpacing,
+        });
+      });
+    }
+    return positions;
+  }
+  const heights = bandNodeHeights(layerSizes(layout), fold.layersPerBand);
+  const spacing = foldSpacing(layerLabelHalves(layout), fold.layersPerBand);
+  const tops: number[] = [];
+  let top = LAYOUT_PADDING;
+  for (const h of heights) {
+    tops.push(top);
+    top += h + BAND_GAP;
+  }
+  for (const [depth, layer] of layout.nodesByDepth) {
+    const band = Math.floor(depth / fold.layersPerBand);
+    const column = foldColumn(depth, fold.layersPerBand);
+    // Center the layer in its band
+    const first = tops[band] + (heights[band] - (layer.length - 1) * ROW_SPACING) / 2;
+    layer.forEach((node, index) => {
+      positions.set(node.id, {
+        x: LAYOUT_PADDING + column * spacing,
+        y: first + index * ROW_SPACING,
+      });
     });
   }
+  return positions;
+}
 
-  return { depths, maxDepth, maxLayerWidth, nodesByDepth };
+/**
+ * Sideways bend of each link whose two ends have the same target x, such as
+ * the link from one band to the next. Drawn straight, such a link would run
+ * through the other nodes of that column. The bend points away from the
+ * middle of the layout. It grows with the square root of the link length:
+ * a curve leaves its node close to the column, and the larger bend keeps
+ * about 30 px from the nearest node in the column at any length. Links not
+ * in the map are not bent.
+ *
+ * Exported for testing.
+ */
+export function linkBends(
+  links: D3Link[],
+  positions: Map<string, { x: number; y: number }>,
+): Map<D3Link, number> {
+  const xs = [...positions.values()].map(p => p.x);
+  const middle = (Math.min(...xs) + Math.max(...xs)) / 2;
+  const bends = new Map<D3Link, number>();
+  for (const link of links) {
+    const source = positions.get(typeof link.source === 'string' ? link.source : link.source.id);
+    const target = positions.get(typeof link.target === 'string' ? link.target : link.target.id);
+    if (source && target && source.x === target.x) {
+      const bend = Math.max(LINK_BEND, 2.5 * Math.sqrt(Math.abs(target.y - source.y)));
+      bends.set(link, source.x >= middle ? bend : -bend);
+    }
+  }
+  return bends;
+}
+
+/**
+ * SVG path of a link: a curve that leaves and enters its nodes
+ * horizontally, pushed `bend` to the side.
+ *
+ * Exported for testing.
+ */
+export function linkPath(sx: number, sy: number, tx: number, ty: number, bend: number = 0): string {
+  const dx = tx - sx;
+  return `M${sx},${sy} C${sx + dx * 0.4 + bend},${sy} ${tx - dx * 0.4 + bend},${ty} ${tx},${ty}`;
 }
 
 /** Camera transform produced by the fit-to-view computation. */
@@ -242,26 +497,29 @@ export interface FitTransform {
  * instead of shrinking to dots. When the true fit scale falls below
  * minScale, the transform centers on `focus` (if given) at minScale so the
  * relevant node is in view even though the whole graph is not.
+ * The box includes an estimate of each `display_name` label, which is
+ * centered on its node and can be wider than the margin.
  * Returns null when there are no positioned nodes or the viewport is empty.
  *
  * Exported for testing (the renderer applies the result via d3.zoom).
  */
 export function computeFitTransform(
-  nodes: Array<{ x?: number; y?: number }>,
+  nodes: Array<{ x?: number; y?: number; display_name?: string }>,
   width: number,
   height: number,
   focus?: { x?: number; y?: number } | null,
   minScale: number = 0.4,
   maxScale: number = 1,
-  margin: number = 60
+  margin: number = FIT_MARGIN
 ): FitTransform | null {
   const positioned = nodes.filter(n => n.x !== undefined && n.y !== undefined);
   if (positioned.length === 0 || width <= 0 || height <= 0) return null;
 
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   for (const n of positioned) {
-    if (n.x! < minX) minX = n.x!;
-    if (n.x! > maxX) maxX = n.x!;
+    const half = labelOverhang(labelHalfWidth(n.display_name), margin);
+    if (n.x! - half < minX) minX = n.x! - half;
+    if (n.x! + half > maxX) maxX = n.x! + half;
     if (n.y! < minY) minY = n.y!;
     if (n.y! > maxY) maxY = n.y!;
   }
@@ -423,44 +681,14 @@ export class CallGraphVisualization {
     // source/sink queries), otherwise fall back to topological BFS.
     const precomputedDepths = filteredGraph.nodeDepths;
 
-    // Assign initial positions with barycenter crossing minimization
-    const layout = assignTopologicalPositions(
-      nodes, links, this.width, this.height, precomputedDepths
-    );
-
-    // Adaptive canvas: expand the effective layout area for large graphs
-    const effectiveWidth = Math.max(this.width, layout.maxDepth * 200 + 200);
-    const effectiveHeight = Math.max(this.height, layout.maxLayerWidth * 60 + 200);
-
-    // Recompute positions if the effective area changed
-    if (effectiveWidth !== this.width || effectiveHeight !== this.height) {
-      const padding = 100;
-      const usableW = effectiveWidth - 2 * padding;
-      const usableH = effectiveHeight - 2 * padding;
-      const xSp = layout.maxDepth > 0 ? usableW / layout.maxDepth : usableW / 2;
-
-      for (const [depth, layer] of layout.nodesByDepth) {
-        const x = padding + depth * xSp;
-        const ySp = usableH / (layer.length + 1);
-        layer.forEach((node, i) => {
-          node.x = x;
-          node.y = padding + (i + 1) * ySp;
-        });
-      }
-    }
-
-    // Compute target X positions for the x-force
-    const padding = 100;
-    const layoutWidth = Math.max(effectiveWidth, this.width);
-    const usableWidth = layoutWidth - 2 * padding;
-    const xSpacing = layout.maxDepth > 0 ? usableWidth / layout.maxDepth : usableWidth / 2;
-
-    const targetX = new Map<string, number>();
-    const targetY = new Map<string, number>();
+    // Group into layers with barycenter crossing minimization, then place
+    const layout = groupIntoLayers(nodes, links, precomputedDepths);
+    const fold = chooseFold(layerSizes(layout), this.width, this.height, layerLabelHalves(layout));
+    const positions = layerPositions(layout, this.width, this.height, fold);
     for (const node of nodes) {
-      const depth = layout.depths.get(node.id) ?? 0;
-      targetX.set(node.id, padding + depth * xSpacing);
-      targetY.set(node.id, node.y!);
+      const p = positions.get(node.id)!;
+      node.x = p.x;
+      node.y = p.y;
     }
 
     // Adaptive force parameters based on graph size
@@ -468,9 +696,11 @@ export class CallGraphVisualization {
     const charge = Math.max(-600, Math.min(-150, -150 - nodeCount * 3));
     const linkDist = Math.max(60, Math.min(200, 60 + layout.maxLayerWidth * 8));
     const collisionRadius = 25 + Math.min(nodeCount * 0.3, 20);
-    const yStrength = layout.maxLayerWidth > 0
-      ? 0.03 + 0.02 * (layout.maxLayerWidth / Math.max(nodeCount, 1))
-      : 0.05;
+    // Bands of a folded layout must keep apart, so pull harder to the row
+    const yStrength = fold.bands > 1 ? 0.8
+      : layout.maxLayerWidth > 0
+        ? 0.03 + 0.02 * (layout.maxLayerWidth / Math.max(nodeCount, 1))
+        : 0.05;
 
     // Create force simulation with layered layout
     this.simulation = d3
@@ -479,13 +709,24 @@ export class CallGraphVisualization {
         'link',
         d3.forceLink<D3Node, D3Link>(links)
           .id(d => d.id)
-          .distance(linkDist)
-          .strength(0.5)
+          // A link pulls its ends together, but not until their labels
+          // overlap (and never closer than their layers)
+          .distance(l => {
+            const source = l.source as D3Node;
+            const target = l.target as D3Node;
+            const apart = Math.abs(positions.get(source.id)!.x - positions.get(target.id)!.x);
+            const labels = labelHalfWidth(source.display_name) + labelHalfWidth(target.display_name) + LABEL_GAP;
+            return Math.max(linkDist, Math.min(apart, labels));
+          })
+          // In a folded layout the link force would pull the layers of a band
+          // together until their labels overlap
+          .strength(fold.bands > 1 ? 0.05 : 0.5)
       )
       .force('charge', d3.forceManyBody().strength(charge))
-      .force('x', d3.forceX<D3Node>(d => targetX.get(d.id) || layoutWidth / 2).strength(0.8))
-      .force('y', d3.forceY<D3Node>(d => targetY.get(d.id) || effectiveHeight / 2).strength(yStrength))
+      .force('x', d3.forceX<D3Node>(d => positions.get(d.id)!.x).strength(0.8))
+      .force('y', d3.forceY<D3Node>(d => positions.get(d.id)!.y).strength(yStrength))
       .force('collision', d3.forceCollide().radius(collisionRadius));
+    const bends = linkBends(links, positions);
 
     // Update links (curved <path> elements instead of straight <line>)
     this.linkElements = this.g
@@ -567,12 +808,9 @@ export class CallGraphVisualization {
     // Update positions on each tick
     this.simulation.on('tick', () => {
       this.linkElements?.attr('d', (d) => {
-        const sx = (d.source as D3Node).x!;
-        const sy = (d.source as D3Node).y!;
-        const tx = (d.target as D3Node).x!;
-        const ty = (d.target as D3Node).y!;
-        const dx = tx - sx;
-        return `M${sx},${sy} C${sx + dx * 0.4},${sy} ${tx - dx * 0.4},${ty} ${tx},${ty}`;
+        const source = d.source as D3Node;
+        const target = d.target as D3Node;
+        return linkPath(source.x!, source.y!, target.x!, target.y!, bends.get(d));
       });
 
       this.nodeElements
@@ -836,15 +1074,9 @@ export class CallGraphVisualization {
   public resize(width: number, height: number): void {
     this.width = width;
     this.height = height;
+    // The layout keeps its per-node targets: a pull to the middle would
+    // merge the layers and the bands of a folded layout
     this.svg.attr('viewBox', `0 0 ${width} ${height}`);
-    
-    if (this.simulation) {
-      // Update the y-centering force for new height
-      this.simulation
-        .force('y', d3.forceY(height / 2).strength(0.05))
-        .alpha(0.3)
-        .restart();
-    }
   }
 }
 

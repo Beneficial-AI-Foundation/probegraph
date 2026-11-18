@@ -2,10 +2,16 @@
  * Unit tests for the fit-to-view camera computation (graph.ts):
  * fitting small graphs, the minimum-scale floor on large graphs, and the
  * focus-node fallback when the whole graph cannot fit at a readable scale.
+ * Also the layer layout: folding long layouts into bands, and bending the
+ * links whose two ends share a column.
  */
 
 import { describe, it, expect } from 'vitest';
-import { computeCenterTransform, computeFitTransform } from './graph';
+import {
+  chooseFold, computeCenterTransform, computeFitTransform, layerLabelHalves, layerPositions, linkBends, linkPath,
+  LayerFold, LayoutInfo,
+} from './graph';
+import { D3Link, D3Node } from './types';
 
 const WIDTH = 1000;
 const HEIGHT = 800;
@@ -94,6 +100,137 @@ describe('computeFitTransform', () => {
     expect(t.x + t.k * 150).toBeCloseTo(WIDTH / 2);
     expect(t.y + t.k * 150).toBeCloseTo(HEIGHT / 2);
   });
+
+  it('keeps long labels at the edge inside the view', () => {
+    const nodes = [{ x: 0, y: 0 }, { x: 800, y: 0 }];
+    const named = nodes.map(n => ({ ...n, display_name: 'a'.repeat(40) }));
+    const plain = computeFitTransform(nodes, WIDTH, HEIGHT)!;
+    const t = computeFitTransform(named, WIDTH, HEIGHT)!;
+    expect(t.k).toBeLessThan(plain.k);
+    // Half of a 40-character label is 120, so the labels run from -120 to 920
+    expect(t.x + t.k * -120).toBeCloseTo(t.k * 20);
+    expect(t.x + t.k * 920).toBeCloseTo(WIDTH - t.k * 20);
+  });
+});
+
+/** A layout with `sizes[d]` nodes at depth d, named `d.i`. */
+function layoutOf(sizes: number[]): LayoutInfo {
+  const nodesByDepth = new Map<number, D3Node[]>();
+  const depths = new Map<string, number>();
+  sizes.forEach((size, depth) => {
+    const layer = Array.from({ length: size }, (_, i) => ({ id: `${depth}.${i}` }) as D3Node);
+    layer.forEach(n => depths.set(n.id, depth));
+    nodesByDepth.set(depth, layer);
+  });
+  return { depths, maxDepth: sizes.length - 1, maxLayerWidth: Math.max(...sizes), nodesByDepth };
+}
+
+/** layoutOf with a label of `length(depth)` characters on every node. */
+function labeled(sizes: number[], length: (depth: number) => number): LayoutInfo {
+  const layout = layoutOf(sizes);
+  for (const [depth, layer] of layout.nodesByDepth) {
+    for (const n of layer) n.display_name = 'a'.repeat(length(depth));
+  }
+  return layout;
+}
+
+/** Fold chosen for `layout` in a width x height view, with its positions. */
+function place(layout: LayoutInfo, width: number, height: number, fold?: LayerFold) {
+  const chosen = fold ?? chooseFold(
+    [...layout.nodesByDepth.values()].map(l => l.length), width, height, layerLabelHalves(layout));
+  const p = layerPositions(layout, width, height, chosen);
+  const nodes = [...layout.nodesByDepth.values()].flat();
+  const x = nodes.map(n => p.get(n.id)!.x);
+  const scale = computeFitTransform(nodes.map(n => ({ ...p.get(n.id)!, display_name: n.display_name })), width, height)!.k;
+  return { fold: chosen, x, scale };
+}
+
+describe('chooseFold', () => {
+  it('keeps a layout that fits in one band', () => {
+    expect(chooseFold([1, 1, 1], 800, 600).bands).toBe(1);
+    // Two tall layers: folding would only make it taller
+    expect(chooseFold([3, 21], 800, 600).bands).toBe(1);
+  });
+
+  it('folds a long chain until it fits at full scale', () => {
+    // 15 layers at 200 apart need 2920 wide; four bands of four fit in 800
+    expect(chooseFold(new Array(15).fill(1), 800, 618)).toEqual({ bands: 4, layersPerBand: 4 });
+  });
+
+  it('tries band lengths that no band count gives directly', () => {
+    // Bands of 6 put the two tall layers in one band and fit at full scale.
+    // Bands of 4 or 5 split them (scale 0.88); ceil(15 / bands) never gives 6
+    const sizes = [1, 1, 1, 1, 8, 8, 1, 1, 1, 1, 1, 1, 1, 1, 1];
+    expect(chooseFold(sizes, 1120, 740)).toEqual({ bands: 3, layersPerBand: 6 });
+  });
+
+  it('counts the labels that reach past the margin', () => {
+    // 30-character labels (half width 90) reach 50 past the margin on each
+    // side: bands of four need 820 wide, so five bands of three fit in 800
+    const chain = new Array(15).fill(1);
+    expect(chooseFold(chain, 800, 618, new Array(15).fill(90))).toEqual({ bands: 5, layersPerBand: 3 });
+  });
+});
+
+describe('layerPositions', () => {
+  it('spreads one band over the view as before', () => {
+    const p = layerPositions(layoutOf([1, 2]), 800, 600, { bands: 1, layersPerBand: 2 });
+    expect(p.get('0.0')).toEqual({ x: 100, y: 300 });
+    expect(p.get('1.0')).toEqual({ x: 700, y: 100 + 400 / 3 });
+    expect(p.get('1.1')).toEqual({ x: 700, y: 100 + 800 / 3 });
+  });
+
+  it('keeps the labels of a single band inside the view', () => {
+    // Two 50-character labels reach 110 past the margin; spread from 100 to
+    // 900 they needed 1140 wide (scale 0.88). 660 apart they fit
+    expect(place(labeled([1, 1], () => 50), 1000, 800)).toEqual({
+      fold: { bands: 1, layersPerBand: 2 }, x: [100, 760], scale: 1,
+    });
+  });
+
+  it('narrows a single band only until the labels would overlap', () => {
+    // Two 100-character labels (600 wide) need 610 between their nodes;
+    // one band that far apart does not fit, so they stack
+    const { fold, scale } = place(labeled([1, 1], () => 100), 1000, 800);
+    expect(fold).toEqual({ bands: 2, layersPerBand: 1 });
+    expect(scale).toBe(1);
+    expect(place(labeled([1, 1], () => 100), 1000, 800, { bands: 1, layersPerBand: 2 }).x).toEqual([100, 710]);
+  });
+
+  it('stacks the layers when a long label leaves no room beside it', () => {
+    // A 160-character label is 960 wide: next to any other layer it needs
+    // more than the 1000 view, alone in its column it fits
+    const { fold, scale } = place(labeled([1, 1, 1, 1], depth => (depth === 1 ? 160 : 1)), 1000, 800);
+    expect(fold).toEqual({ bands: 4, layersPerBand: 1 });
+    expect(scale).toBe(1);
+  });
+
+  it('moves the columns of a fold apart for long labels', () => {
+    // 40-character labels are 240 wide, so the columns are 250 apart
+    const { fold, x, scale } = place(labeled(new Array(15).fill(1), () => 40), 800, 618);
+    expect(fold).toEqual({ bands: 5, layersPerBand: 3 });
+    expect(x.slice(0, 6)).toEqual([100, 350, 600, 600, 350, 100]);
+    expect(scale).toBe(1);
+  });
+
+  it('places a single layer', () => {
+    expect(chooseFold([2], 800, 600)).toEqual({ bands: 1, layersPerBand: 1 });
+    const p = layerPositions(layoutOf([2]), 800, 600, { bands: 1, layersPerBand: 1 });
+    expect(p.get('0.0')!.x).toBe(100);
+  });
+
+  it('runs odd bands right to left, each as tall as its widest layer', () => {
+    const p = layerPositions(layoutOf([1, 3, 1, 1, 1, 1]), 800, 600, { bands: 2, layersPerBand: 3 });
+    const x = (id: string) => p.get(id)!.x;
+    const y = (id: string) => p.get(id)!.y;
+    expect([x('0.0'), x('1.0'), x('2.0')]).toEqual([100, 300, 500]);
+    expect([x('3.0'), x('4.0'), x('5.0')]).toEqual([500, 300, 100]);
+    // Band 0 has three rows; its one-node layers sit on the middle row
+    expect([y('1.0'), y('1.1'), y('1.2')]).toEqual([100, 160, 220]);
+    expect(y('0.0')).toBe(160);
+    // Band 1 starts one gap below band 0's last row
+    expect(y('3.0')).toBe(220 + 100);
+  });
 });
 
 describe('computeCenterTransform', () => {
@@ -107,5 +244,45 @@ describe('computeCenterTransform', () => {
   it('returns null for a node without a position or an empty viewport', () => {
     expect(computeCenterTransform({}, WIDTH, HEIGHT)).toBeNull();
     expect(computeCenterTransform({ x: 0, y: 0 }, WIDTH, 0)).toBeNull();
+  });
+});
+
+describe('linkBends', () => {
+  const at = (x: number, y: number) => ({ x, y });
+
+  it('bends links in one column away from the middle, and no others', () => {
+    const positions = new Map([
+      ['a', at(100, 100)], ['b', at(100, 200)], ['c', at(500, 100)], ['d', at(500, 200)],
+    ]);
+    const links: D3Link[] = [
+      { source: 'a', target: 'b', type: 'inner' },
+      { source: 'c', target: 'd', type: 'inner' },
+      { source: 'a', target: 'c', type: 'inner' },
+    ];
+    const bends = linkBends(links, positions);
+    expect(bends.get(links[0])).toBe(-60);
+    expect(bends.get(links[1])).toBe(60);
+    expect(bends.has(links[2])).toBe(false);
+  });
+
+  it('bends a long link far enough to miss the next node in the column', () => {
+    const positions = new Map([['a', at(100, 100)], ['b', at(100, 160)], ['c', at(100, 10100)]]);
+    const link: D3Link = { source: 'a', target: 'c', type: 'inner' };
+    const bend = linkBends([link], positions).get(link)!;
+    // Closest point of the curve (both control points `bend` to the side) to b
+    let closest = Infinity;
+    for (let t = 0; t <= 1; t += 1e-4) {
+      const x = 100 + 3 * t * (1 - t) * bend;
+      const y = 100 + 10000 * (3 * t * t - 2 * t * t * t);
+      closest = Math.min(closest, Math.hypot(x - 100, y - 160));
+    }
+    expect(closest).toBeGreaterThan(25);
+  });
+});
+
+describe('linkPath', () => {
+  it('pushes both control points sideways by the bend', () => {
+    expect(linkPath(0, 0, 100, 50)).toBe('M0,0 C40,0 60,50 100,50');
+    expect(linkPath(700, 100, 700, 320, 60)).toBe('M700,100 C760,100 760,320 700,320');
   });
 });
