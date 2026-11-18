@@ -131,9 +131,26 @@ export function applyFilters(
   fullGraph: D3Graph,
   filters: FilterOptions,
   projectLanguage: ProjectLanguage = 'unknown',
+  view?: ViewRestriction,
 ): D3Graph {
   const compiled = compileQuery(filters, projectLanguage);
-  return executeQuery(compiled, fullGraph);
+  if (!view) return executeQuery(compiled, fullGraph);
+  // Without a query, the view is an inventory: no removeIsolated cleanup,
+  // so the order of the restriction does not matter. With a query, the
+  // cleanup runs first: a restriction first could drop a text match whose
+  // only links go to nodes the view does not draw.
+  const noQuery = compiled.query.type === 'noTraversal';
+  return view.restrict(executeQuery(compiled, fullGraph, { keepIsolated: noQuery && view.inventory }));
+}
+
+/**
+ * A view that draws only part of the filtered graph (the Packed Map).
+ * `restrict` keeps that part and the links between its nodes.
+ * `inventory`: without a query, also keep the nodes that have no links.
+ */
+export interface ViewRestriction {
+  restrict: (graph: D3Graph) => D3Graph;
+  inventory: boolean;
 }
 
 /**

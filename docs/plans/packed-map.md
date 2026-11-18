@@ -197,6 +197,178 @@ Draw the function circles on a canvas under the SVG. Keep SVG for group
 circles, labels and edges. Hit tests use the pack coordinates
 (`d3.quadtree`).
 
+### Phase 4: pure Lean projects
+
+Status (2026-11-17): implemented, issue #146. Revised the same day after
+two Codex review rounds. The measurements are below, after Changes.
+
+Goal: show the Packed Map for a pure Lean graph as an inventory: every
+eligible declaration gets a circle, also one with no links. Today the
+button is hidden there, because a Lean graph has no `exec` node.
+
+Test data. `SparsePostQuantumRatchet-verify/.verilib/probes/lean_extract.json`
+(probe-lean 0.19.0, Oct 20) has 2,830 declarations in 286 files. The
+file stays outside the repo (7.7 MB). It has no `sorry`, so it cannot
+test the status rules. Unit tests use a new small synthetic fixture
+(Changes, item 6). `probe-lean-extract-cut.json` has no theorems, no
+axioms and no `sorry`, so it is not enough.
+
+Grouping. `buildHierarchyTree` groups by `crate_name`. For Lean,
+`extractCrateName` takes the first two segments of the file path, not
+the Lean namespace. A file two levels deep is therefore a top-level
+circle of its own, and its declarations sit directly inside it, with no
+file circle. In spqr the top-level circles are `SrcTranslated/Funs.lean`
+(847 drawn declarations), `Spqr/Specs` (737),
+`SrcTranslated/FunsExternal.lean` (174), `Spqr/Math` (138),
+`SrcTranslated/Types.lean` (53) and five smaller ones. Phase 4 keeps
+this grouping, and the viewer guide describes it.
+
+Which nodes can be drawn. One helper, `isPackedMapCandidate(node,
+language)`, holds the rule. It does not look at the filters:
+
+- `verus`, `unknown` and `mixed`: `exec` only, as today. A mixed graph
+  keeps its Lean side out of the view (see "Later: mixed projects").
+- `lean`: every declaration without `is_hidden`. A hidden declaration
+  with the status `unverified` (it contains a `sorry`) is a candidate
+  too, so a `sorry` is never hidden.
+- `blueprint`: none, so the button stays hidden on the blueprint layer.
+
+The button and the Back fallback use the same test: the graph has at
+least one candidate. The filters do not change the test. A Lean graph
+with only structures is an example. With the Types filter off, no
+candidate is left. In that case the view shows the empty state, and the
+button stays.
+
+In spqr all 659 hidden nodes are generated (389 Aeneas theorems, 244
+projections, 26 instances), and none of them reaches a `sorry`.
+
+Where the rule applies. In the filter step. The order depends on the
+query:
+
+- Without a query, the Declaration Kind filters apply first, then
+  `isPackedMapCandidate` removes the other nodes and their links. The
+  cleanup removes isolated nodes (`removeIsolated` in `src/query.ts`).
+  It does not run for the Packed Map here. Every remaining node is
+  drawn, also one with no links. This makes the map an
+  inventory.
+- With a query, the order stays as today: first the cleanup, then the
+  restriction. If the restriction comes first, a text query can lose a
+  match. An example is an `exec` function whose only link goes to a
+  proof: the restriction removes the link, and the cleanup then removes
+  the function. Text matches are not anchors (`anchorIds` in
+  `src/intent.ts` keeps only exact ids), so nothing protects them.
+
+This also changes the Rust Packed Map. Today it loses the `exec`
+functions that have no links after the filters. After Phase 4 it draws
+them. This is a fix: the map is meant to show the whole project.
+
+Color. probe-lean sets the status in `taintVerdict` (probe-lean
+`Transitive.lean`). A declaration that contains a `sorry` is
+`unverified`. A declaration that reaches a `sorry` is `verified`. A
+member of the trust set is `trusted`, unless its statement reaches a
+`sorry`. All other declarations are `transitively-verified`. The fill
+of a function circle shows these values, as today.
+
+The group arc must not count a Lean `verified` declaration as done,
+because it can rest on a `sorry`. Today the arc uses `isVerifiedStatus`,
+which counts `verified`. For a Lean graph the arc counts only
+`transitively-verified` and `trusted`. For Verus the arc stays as it
+is. The legend says which statuses the arc counts, and that in Lean
+`verified` means "not known to be free of `sorry`". This wording covers
+two cases. With enrichment, `verified` means the declaration reaches a
+`sorry`, and probe-lean adds `"status-origin": "kernel-taint"`. With
+`--skip-enrich`, `applyTaintStatus` writes `verified` also for a clean
+declaration (`upgrade := false` in probe-lean `Extract.lean`). The
+loader drops `status-origin` today, so the viewer cannot tell the two
+cases apart. To keep it is a later change. The spqr graph has 2,699
+`transitively-verified` and 131 `trusted` declarations, so its map is
+mostly one color, and the trusted declarations stand out.
+
+Size. The size is the number of distinct neighbors over the links that
+are left after the filters, as for Rust. For Lean these are dependency
+links: statement dependencies, body or proof dependencies, or both. The
+loader marks a dependency of both kinds as `both`. The legend says
+"size: dependency links after the filters". The numbers come from the
+loaded and filtered graph, not from the raw JSON file. Codex measured
+6,790 links, a median of 4 and a maximum of 205 on spqr.
+
+Text. The legend and the aria label are built once, in the constructor,
+and a new graph only calls `clear()`. If the language changes while the
+view is open, the view must build the legend and the aria label again,
+as the File Map does. For Lean, the text says "declarations" and
+"Lean declarations without hidden ones, as the Declaration Kind filters
+show". The edge legend shows one entry, "Dependency".
+
+Changes:
+
+1. `isPackedMapCandidate(node, language)` replaces `isPackedMapNode`.
+   `hasPackedMapNodes` and `restrictToPackedNodes` take the language.
+2. The restriction moves into the filter step, in the order given in
+   "Where the rule applies". A filter option skips the cleanup for the
+   Packed Map without a query. The current call in
+   `applyFiltersAndUpdate` goes away.
+3. A Lean arc that counts only `transitively-verified` and `trusted`.
+4. If the language changes, the view updates the legend, the aria
+   label, the empty state, the tooltips and the live region.
+5. The edge legend for Lean.
+6. A synthetic Lean fixture. It has a hidden theorem, a hidden theorem
+   that contains a `sorry`, and a visible theorem that reaches it. It
+   also has a trusted definition and a trust-set member whose
+   statement reaches a `sorry`, so it is not `trusted`. It has a clean
+   `verified` theorem as `--skip-enrich` writes it. It has an axiom, a
+   structure and an isolated definition. Its files are two levels deep and deeper. A
+   Rust case has an `exec` function whose only link goes to a proof,
+   found by a text query.
+7. Unit tests on the fixture. They name the exact nodes that are drawn
+   with the default filters, with Definitions off, with Theorems off,
+   and with Types on. They test the arc counts, the grouping of both
+   file depths, and that the Verus rule is unchanged except for
+   isolated `exec` functions.
+8. Playwright: a Lean graph shows the button and draws the expected
+   circles. A Lean graph with only structures shows the button and the
+   empty state. Verus, then Lean, then Verus with the view open gives
+   the right legend each time. Reload and Back keep the view. The
+   blueprint layer hides the button.
+9. Measure on spqr: first draw, a click selection, a wheel zoom step, a
+   filter change and a resize. Write down the browser and the machine.
+   The limits are 1 s for the first draw and 50 ms for a selection, a
+   zoom step or a resize. If a step goes over its limit, Phase 3
+   (canvas) comes next.
+10. `docs/guides/viewer.md`: what a Lean graph shows, the grouping by
+    file path, the arc rule, and the legend captions.
+
+Measurements (2026-11-17, item 9). Graph: spqr `lean_extract.json`,
+loaded from a local route. Browser: headless Chromium 145
+(Playwright 1.58.2, "Desktop Chrome" profile, 1280 × 800 view). Machine:
+Intel Core Ultra 9 185H (22 threads), 60 GB RAM, Linux. Each step runs in
+the page and stops after two animation frames. The wait for the two
+frames has no fixed length. When the page is idle, headless Chromium does
+not hold frames to a 60 Hz clock, and an empty step took 2.6 to 17 ms. The
+numbers are medians over 5 page loads (15 runs for selection and wheel).
+
+The resize step dispatches a `resize` event after the view already has the
+new size. The redraw in the event handler takes 0.6 ms. The rest of the
+time is the wait for the two frames. The first measurement gave a median
+of 5 ms, and a second run on 2026-11-18 gave the numbers in the table.
+
+| Step | Median | Max | Limit |
+|---|---|---|---|
+| First draw (click the button after the load: filter step, pack, render) | 66 ms | 76 ms | 1 s |
+| Click selection | 31 ms | 40 ms | 50 ms |
+| Wheel zoom step | 31 ms | 31 ms | 50 ms |
+| Filter change (Theorems off) | 37 ms | 39 ms | none |
+| Resize (1280 × 800 to 1000 × 700) | 14 ms | 17 ms | 50 ms |
+
+The default filters draw 2,034 declarations in 369 group circles, with
+6,790 links. With Theorems off, 1,209 declarations are left. No step is
+over its limit, so Phase 3 (canvas) is not needed for spqr.
+
+### Later: mixed projects
+
+A mixed graph can get one top-level circle per language, like the
+Rust world and Lean world boxes in the File Map (#142). This is not
+part of Phase 4.
+
 ### Later: lines of code
 
 A switch to size functions by source lines. Only probe atoms give real
@@ -219,6 +391,21 @@ Answered by the user on 2026-11-16:
   because only probe graphs have usable line ranges.
 - The button and the view are named "Packed Map".
 - The view shows Rust code (`exec` atoms) only. Proofs, specs and
-  theorems get no shape or ring, because they are not drawn.
+  theorems get no shape or ring, because they are not drawn. On
+  2026-11-17 the user asked for pure Lean projects too, see Phase 4.
 - Hierarchy stays. If the Packed Map makes it redundant, remove it in a
   later change.
+
+Answered by the user on 2026-11-17:
+
+- The Lean view draws theorems by default, through the Theorem filter.
+  Codex counted 810 theorems in the 1,959 nodes that the filters leave
+  in spqr today. In Lean a `sorry` sits almost always in a theorem, so
+  the theorems carry the verification status. The user can turn them
+  off with the Theorem filter.
+- On an Aeneas project, the plain grouping is enough for Phase 4. Each
+  `SrcTranslated` file, such as `SrcTranslated/Funs.lean`, holds
+  translated Rust code. `Spqr/Specs` holds the proofs. These are
+  already separate top-level circles with their own labels (see
+  "Grouping" in Phase 4). A different look per side belongs to "Later: mixed
+  projects".

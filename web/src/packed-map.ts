@@ -1,12 +1,13 @@
 /**
- * Packed Map view: a bird's-eye view of the Rust code. Crates, directories
- * and files are nested circles (d3.pack); the smallest circles are `exec`
- * functions, sized by connectivity and filled with their verification
- * status. Plan: docs/plans/packed-map.md.
+ * Packed Map view: a bird's-eye view of the code. Crates, directories and
+ * files are nested circles (d3.pack); the smallest circles are Rust `exec`
+ * functions, or Lean declarations in a pure Lean graph, sized by
+ * connectivity and filled with their verification status. Plan:
+ * docs/plans/packed-map.md.
  */
 
 import * as d3 from 'd3';
-import { D3Graph, D3Node, GraphState } from './types';
+import { D3Graph, D3Node, GraphState, ProjectLanguage, VerificationStatus, isVerifiedStatus } from './types';
 import { buildHierarchyTree, HierarchyGroup } from './hierarchy';
 import { statusColor, edgeTypeColor, STATUS_COLORS, SELECTION_COLOR } from './theme';
 import { escapeHtml } from './html';
@@ -16,16 +17,34 @@ import { escapeHtml } from './html';
 // ============================================================================
 
 /**
- * Whether the Packed Map draws `node`: Rust code only. Older graphs have no
- * `kind`; the kind filters treat that as `exec` too (renderKindFilters).
+ * Whether the Packed Map can draw `node` in a graph of `language`. The
+ * filters do not change the answer; they apply before it.
+ * - `lean`: every declaration without `is_hidden`, and a hidden one that
+ *   contains a `sorry` (status `unverified`), so a `sorry` is never hidden.
+ * - `blueprint`: nothing.
+ * - Every other language (`verus`, `mixed`, `unknown`): Rust code only.
+ *   Older graphs have no `kind`; the kind filters treat that as `exec` too
+ *   (renderKindFilters).
  */
-export function isPackedMapNode(node: D3Node): boolean {
+export function isPackedMapCandidate(node: D3Node, language: ProjectLanguage): boolean {
+  if (language === 'lean') return !node.is_hidden || node.verification_status === 'unverified';
+  if (language === 'blueprint') return false;
   return (node.kind || 'exec') === 'exec';
 }
 
-/** Whether `graph` has anything the Packed Map can draw. */
-export function hasPackedMapNodes(graph: D3Graph | null): boolean {
-  return !!graph && graph.nodes.some(isPackedMapNode);
+/** Whether `graph` has anything the Packed Map can draw. The button and the Back fallback use it. */
+export function hasPackedMapNodes(graph: D3Graph | null, language: ProjectLanguage): boolean {
+  return !!graph && graph.nodes.some(n => isPackedMapCandidate(n, language));
+}
+
+/**
+ * Whether the group arc counts `status` as done. In Lean, `verified` can
+ * rest on a `sorry` (or comes from `--skip-enrich`), so only
+ * `transitively-verified` and `trusted` count.
+ */
+export function packedArcStatus(status: VerificationStatus | undefined, language: ProjectLanguage): boolean {
+  if (language === 'lean') return status === 'transitively-verified' || status === 'trusted';
+  return isVerifiedStatus(status);
 }
 
 function endpointId(end: string | D3Node): string {
@@ -33,12 +52,12 @@ function endpointId(end: string | D3Node): string {
 }
 
 /**
- * The Packed Map's part of a filtered graph: its `exec` nodes and the links
- * between them. Applied in the filter step, so stats and node details count
- * what the view draws.
+ * The Packed Map's part of a filtered graph: its candidates and the links
+ * between them. Applied in the filter step (applyFilters), so stats and
+ * node details count what the view draws.
  */
-export function restrictToPackedNodes(graph: D3Graph): D3Graph {
-  const nodes = graph.nodes.filter(isPackedMapNode);
+export function restrictToPackedNodes(graph: D3Graph, language: ProjectLanguage): D3Graph {
+  const nodes = graph.nodes.filter(n => isPackedMapCandidate(n, language));
   if (nodes.length === graph.nodes.length) return graph;
   const ids = new Set(nodes.map(n => n.id));
   const links = graph.links.filter(l => ids.has(endpointId(l.source)) && ids.has(endpointId(l.target)));
@@ -87,8 +106,8 @@ export interface PackDatum {
  * file → function tree. Every group contributes its child groups and its
  * own functions (functions with no path sit directly under their crate).
  */
-export function buildPackData(graph: D3Graph): PackDatum {
-  const tree = buildHierarchyTree(graph);
+export function buildPackData(graph: D3Graph, language: ProjectLanguage = 'verus'): PackDatum {
+  const tree = buildHierarchyTree(graph, status => packedArcStatus(status, language));
   const degree = connectivity(graph);
   const nodeById = new Map(graph.nodes.map(n => [n.id, n]));
 
@@ -183,11 +202,14 @@ export interface PackedEdge { source: string; target: string; type: string }
 /**
  * The calls of `fnId` to and from other drawn functions, one per source,
  * target and type. Self-calls and calls to functions not in `drawn` are left out.
+ * `typeOf` maps a link type to the drawn type: Lean draws every link as
+ * one dependency (`inner`), so an `inner` and a `spec` link become one edge.
  */
 export function edgesOf(
   links: ReadonlyArray<{ source: string | D3Node; target: string | D3Node; type: string }>,
   fnId: string,
   drawn: ReadonlySet<string>,
+  typeOf: (type: string) => string = type => type,
 ): PackedEdge[] {
   const seen = new Set<string>();
   const out: PackedEdge[] = [];
@@ -196,10 +218,11 @@ export function edgesOf(
     const target = endpointId(l.target);
     if (source === target || (source !== fnId && target !== fnId)) continue;
     if (!drawn.has(source) || !drawn.has(target)) continue;
-    const key = `${source}\0${target}\0${l.type}`;
+    const type = typeOf(l.type);
+    const key = `${source}\0${target}\0${type}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    out.push({ source, target, type: l.type });
+    out.push({ source, target, type });
   }
   return out;
 }
@@ -263,6 +286,40 @@ export function edgeBends(edges: ReadonlyArray<PackedEdge>, base = 0.2, step = 0
     seen.set(key, i + 1);
     return base + step * i;
   });
+}
+
+/** The words the view uses for its leaves, per language. */
+export interface PackedMapText {
+  /** Singular noun: "function" or "declaration". */
+  one: string;
+  /** Plural noun: "functions" or "declarations". */
+  many: string;
+  /** What the view draws, for the legend. */
+  scope: string;
+  /** The svg aria label. */
+  ariaLabel: string;
+  /** The empty state. */
+  empty: string;
+  /** The statuses the group arc counts, for the legend and the tooltips. */
+  arcStatuses: string;
+}
+
+export function packedMapText(language: ProjectLanguage): PackedMapText {
+  const lean = language === 'lean';
+  const one = lean ? 'declaration' : 'function';
+  const many = `${one}s`;
+  return {
+    one,
+    many,
+    scope: lean
+      ? 'Lean declarations without hidden ones, as the Declaration Kind filters show'
+      : 'Rust (<code>exec</code>) functions only',
+    ariaLabel: `Packed Map ${many}. Arrow keys move between ${many}, Enter or Space opens the details, `
+      + `Shift+Enter opens the ${one} in the Call Graph. Plus zooms in one level toward the ${one}, `
+      + 'Minus or Escape zooms out one level.',
+    empty: lean ? 'No Lean declarations match the filters.' : 'No Rust functions match the filters.',
+    arcStatuses: lean ? 'transitively verified or trusted' : 'verified, transitively verified or trusted',
+  };
 }
 
 // ============================================================================
@@ -341,6 +398,11 @@ const MAX_ZOOM = 10000;
 const PLAIN_EDGE_COLOR = '#666';
 const EDGE_TYPES = ['inner', 'precondition', 'postcondition', 'mapping', 'spec'];
 
+/** Lean draws every link as one dependency, in the `inner` color. */
+function leanEdgeType(): string {
+  return 'inner';
+}
+
 function edgeColor(type: string): string {
   return edgeTypeColor(type, PLAIN_EDGE_COLOR);
 }
@@ -392,6 +454,8 @@ export class PackedMapVisualization {
   private focusIndex = -1;
   /** Opens a function in the Call Graph (double-click, Shift+Enter). */
   private onOpen: (node: D3Node) => void;
+  /** Language of the loaded graph: picks the words, the arc rule and the edge types. */
+  private language: ProjectLanguage = 'verus';
 
   constructor(
     container: HTMLElement,
@@ -417,7 +481,7 @@ export class PackedMapVisualization {
       // One tab stop for the whole map; arrow keys move between functions
       .attr('tabindex', 0)
       .attr('role', 'listbox')
-      .attr('aria-label', 'Packed Map functions. Arrow keys move between functions, Enter or Space opens the details, Shift+Enter opens the function in the Call Graph. Plus zooms in one level toward the function, Minus or Escape zooms out one level.')
+      .attr('aria-label', packedMapText(this.language).ariaLabel)
       .on('keydown', (event: KeyboardEvent) => this.handleMapKeyDown(event))
       .on('focus', () => this.renderFocus())
       .on('blur', () => this.renderFocus());
@@ -500,6 +564,25 @@ export class PackedMapVisualization {
     this.renderSelection();
     // Also on a reused layout: the keyboard ring and the active option follow the update
     this.renderFocus();
+  }
+
+  /**
+   * The language of the graph to draw. Call it before `update` when a graph
+   * loads. A change rebuilds the legend, the aria label and the empty
+   * state, clears the live region, and forces a new layout, which rebuilds
+   * the tooltips and the group arcs.
+   */
+  public setLanguage(language: ProjectLanguage): void {
+    if (language === this.language) return;
+    this.language = language;
+    const text = packedMapText(language);
+    this.svg.attr('aria-label', text.ariaLabel);
+    this.renderLegend();
+    const empty = this.container.querySelector('.pm-empty');
+    if (empty) empty.textContent = text.empty;
+    this.announce('');
+    this.layoutKey = null;
+    this.edgeCache = null;
   }
 
   public destroy(): void {
@@ -588,7 +671,7 @@ export class PackedMapVisualization {
     if (changed) {
       this.notifyFocusChanged();
       this.announce(node
-        ? `Zoomed to ${node.data.kind} ${node.data.label}, ${node.data.group!.fnCount} functions`
+        ? `Zoomed to ${node.data.kind} ${node.data.label}, ${node.data.group!.fnCount} ${packedMapText(this.language).many}`
         : 'Zoomed out to the whole project');
     }
   }
@@ -670,7 +753,7 @@ export class PackedMapVisualization {
       this.svg.attr('viewBox', `0 0 ${this.width} ${this.height}`);
     }
 
-    const root = d3.hierarchy(buildPackData(graph))
+    const root = d3.hierarchy(buildPackData(graph, this.language))
       .sum(d => d.kind === 'fn' ? d.value : 0)
       .sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
     const packed: PackNode = d3.pack<PackDatum>()
@@ -727,10 +810,11 @@ export class PackedMapVisualization {
       .attr('d', arc)
       .attr('fill', STATUS_COLORS['verified']);
 
+    const text = packedMapText(this.language);
     groupSel.append('title')
       .text(d => {
         const grp = d.data.group!;
-        return `${grp.label}\n${grp.fnCount} functions, ${grp.verifiedCount} verified, transitively verified or trusted`;
+        return `${grp.label}\n${grp.fnCount} ${text.many}, ${grp.verifiedCount} ${text.arcStatuses}`;
       });
 
     this.g.append('g').attr('class', 'pm-fns')
@@ -864,7 +948,8 @@ export class PackedMapVisualization {
     }
     const t = d3.zoomTransform(this.svg.node()!);
     if (!this.edgeCache || this.edgeCache.fnId !== fnId || this.edgeCache.graph !== this.graph) {
-      this.edgeCache = { fnId: fnId!, graph: this.graph, edges: edgesOf(this.graph.links, fnId!, this.drawnIds) };
+      const typeOf = this.language === 'lean' ? leanEdgeType : undefined;
+      this.edgeCache = { fnId: fnId!, graph: this.graph, edges: edgesOf(this.graph.links, fnId!, this.drawnIds, typeOf) };
     }
     const edges = this.edgeCache.edges;
 
@@ -970,7 +1055,7 @@ export class PackedMapVisualization {
     if (this.container.querySelector('.pm-empty')) return;
     const div = document.createElement('div');
     div.className = 'pm-empty';
-    div.textContent = 'No Rust functions match the filters.';
+    div.textContent = packedMapText(this.language).empty;
     this.container.appendChild(div);
   }
 
@@ -997,44 +1082,62 @@ export class PackedMapVisualization {
     const hint = (text: string) =>
       `<div class="hm-legend-item"><span style="font-size:0.75rem; color:var(--pg-text-muted);">${escapeHtml(text)}</span></div>`;
 
+    const text = packedMapText(this.language);
+    const lean = this.language === 'lean';
+    const size = lean
+      ? 'Declaration: 1 + dependency links after the filters'
+      : 'Function: 1 + distinct callers and callees';
+    const colors = lean
+      ? `${swatch('transitively-verified', 'Transitively verified')}
+        ${swatch('trusted', 'Trusted')}
+        ${swatch('verified', 'Verified: not known to be free of sorry')}
+        ${swatch('unverified', 'Unverified: contains sorry')}
+        ${swatch('unknown', 'No status')}`
+      : `${swatch('verified', 'Verified')}
+        ${swatch('transitively-verified', 'Transitively verified')}
+        ${swatch('trusted', 'Trusted')}
+        ${swatch('failed', 'Failed')}
+        ${swatch('unverified', 'Unverified')}
+        ${swatch('unknown', 'No status')}`;
+    const edges = lean
+      ? `<div class="hm-legend-item"><span>Dependencies of the hovered or selected declaration</span></div>
+        ${edgeSwatch('inner', 'Dependency')}`
+      : `<div class="hm-legend-item"><span>Calls of the hovered or selected function</span></div>
+        ${edgeSwatch('inner', 'Body call')}
+        ${edgeSwatch('precondition', 'Requires')}
+        ${edgeSwatch('postcondition', 'Ensures')}`;
+
     const legend = document.createElement('div');
     legend.className = 'hm-legend pm-legend';
+    legend.dataset.language = this.language;
     legend.innerHTML = `
       <button type="button" class="hm-legend-header legend-toggle pm-legend-toggle" aria-expanded="${this.legendVisible}">
         <strong>Packed Map</strong> <span class="hm-legend-arrow" aria-hidden="true">${this.legendVisible ? '▼' : '▶'}</span>
       </button>
       <div class="hm-legend-body" style="display:${this.legendVisible ? 'block' : 'none'}">
         <div class="hm-legend-item"><span>Circle packing: nested circles</span></div>
-        <div class="hm-legend-item"><span>Rust (<code>exec</code>) functions only</span></div>
+        <div class="hm-legend-item pm-legend-scope"><span>${text.scope}</span></div>
         <div class="hm-legend-section"><strong>Size</strong></div>
-        <div class="hm-legend-item"><span>Function: 1 + distinct callers and callees</span></div>
-        <div class="hm-legend-item"><span>Group: summed size of the functions inside</span></div>
+        <div class="hm-legend-item"><span>${size}</span></div>
+        <div class="hm-legend-item"><span>Group: summed size of the ${text.many} inside</span></div>
         <div class="hm-legend-section"><strong>Color</strong></div>
-        ${swatch('verified', 'Verified')}
-        ${swatch('transitively-verified', 'Transitively verified')}
-        ${swatch('trusted', 'Trusted')}
-        ${swatch('failed', 'Failed')}
-        ${swatch('unverified', 'Unverified')}
-        ${swatch('unknown', 'No status')}
-        <div class="hm-legend-item">
+        ${colors}
+        <div class="hm-legend-item pm-legend-arc">
           <svg width="16" height="16"><circle cx="8" cy="8" r="5.5" fill="none" stroke="${STATUS_COLORS['verified']}" stroke-width="3" stroke-dasharray="20 100"/></svg>
-          <span>Arc: share verified, transitively verified or trusted</span>
+          <span>Arc: share ${text.arcStatuses}</span>
         </div>
         <div class="hm-legend-section"><strong>Edges</strong></div>
-        <div class="hm-legend-item"><span>Calls of the hovered or selected function</span></div>
-        ${edgeSwatch('inner', 'Body call')}
-        ${edgeSwatch('precondition', 'Requires')}
-        ${edgeSwatch('postcondition', 'Ensures')}
+        ${edges}
         <div class="hm-legend-section"><strong>Interactions</strong></div>
         ${hint('Click group: zoom to it')}
         ${hint('Esc or click background: zoom out one level')}
-        ${hint('Click function: details panel')}
-        ${hint('Double-click function: open in Call Graph')}
+        ${hint(`Click ${text.one}: details panel`)}
+        ${hint(`Double-click ${text.one}: open in Call Graph`)}
         ${hint('Wheel and drag: zoom and pan')}
-        ${hint('Tab, then arrow keys: move between functions')}
+        ${hint(`Tab, then arrow keys: move between ${text.many}`)}
         ${hint('Enter or Space: details panel')}
         ${hint('Shift+Enter: open in Call Graph')}
-        ${hint('Plus: zoom in toward the function in the ring')}
+        ${hint(`Plus: zoom in toward the ${text.one} in the ring`)}
         ${hint('Minus or Esc: zoom out one level')}
       </div>
     `;

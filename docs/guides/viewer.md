@@ -57,13 +57,18 @@ see [web/ARCHITECTURE.md](../../web/ARCHITECTURE.md#input-formats).
   everything. Click a function for its details. Group boxes show rollup
   counts and a verified-fraction bar, and edges are aggregated between the
   visible boxes. The expanded groups are kept in `?expanded=`.
-- **Packed Map (testing)** — a bird's-eye view of the Rust code, drawn as
+- **Packed Map (testing)** — a bird's-eye view of the code, drawn as
   a circle packing (the nested-circle layout of `d3.pack`). Crates,
   directories and files are nested circles, and the smallest circles are
-  functions. Only `exec` functions are drawn: proofs and specs are left
-  out, and the stats count the drawn functions only. If the graph has no
-  `exec` functions (a Lean graph, or the blueprint layer), the button is
-  hidden. The size of a function circle is 1 plus its number of distinct
+  functions. In a Rust project, and in a project with both Rust and Lean
+  code, only `exec` functions are drawn: proofs, specs and Lean
+  declarations are left out. A pure Lean project draws its declarations
+  (see below). The stats count the drawn circles only. If the graph has
+  nothing to draw (the blueprint layer, for example), the button is
+  hidden. The filters do not hide the button. Without a query, the map is
+  an inventory: it draws every function that the filters show, also one
+  with no links left. With a query, it draws the functions in the query
+  result. The size of a function circle is 1 plus its number of distinct
   callers and callees among the drawn functions. A group circle encloses
   its functions, so it grows with their summed size. The fill of a
   function circle is its verification status. The green arc on a group
@@ -93,10 +98,60 @@ see [web/ARCHITECTURE.md](../../web/ARCHITECTURE.md#input-formats).
   depth. With no query and no clicked nodes in the Call Graph, it also
   shows them when the function is not among the drawn nodes of a large
   graph. Browser back returns to the Packed Map. If the filters leave no
-  Rust function, the view says so.
+  function, the view says "No Rust functions match the filters."
+
+  In a pure Lean project, the Packed Map draws declarations instead of
+  functions. The legend, the tooltips and the screen reader text say
+  "declarations".
+
+  - Which declarations. Every declaration that the Declaration Kind
+    filters show, except hidden ones. A hidden declaration is one that
+    probe-lean marks `is-hidden`, such as a generated Aeneas theorem, a
+    projection or an instance. A hidden declaration that contains a
+    `sorry` (status `unverified`) is drawn too, so a `sorry` is never
+    hidden. Theorems are drawn by default. Turn off the Theorem filter to
+    leave them out. Structures are drawn only with the Types filter on.
+    If the filters leave no declaration, the view says "No Lean
+    declarations match the filters." The button stays.
+  - Grouping. The top-level circles use the first two segments of the
+    file path, as the Namespace Map does. A file two levels deep, such as
+    `SrcTranslated/Funs.lean`, is a top-level circle of its own, and its
+    declarations sit directly inside it. A deeper file, such as
+    `Spqr/Specs/Braid/Scka/EpochUniqueness/KeyFloor.lean`, is a file
+    circle inside the circle of `Spqr/Specs`, with directory circles for
+    the rest of the path.
+  - Size. 1 plus the number of distinct declarations it is linked to by
+    dependency links, after the filters. A dependency link is a
+    statement dependency, a body or proof dependency, or both.
+  - Color. The fill shows the probe-lean status. `transitively-verified`
+    means that the declaration does not reach a `sorry`. `trusted` means
+    that it is in the trust set. `unverified` means that it contains a
+    `sorry`. `verified` means that the declaration is not known to be free
+    of `sorry`: it reaches a `sorry`, or probe-lean ran with
+    `--skip-enrich` and did not check.
+  - Arc. The green arc on a group circle counts only
+    `transitively-verified` and `trusted` declarations. It does not count
+    `verified`, because such a declaration can rest on a `sorry`.
+  - Edges. Hover or select a declaration to draw its dependency links to
+    the other drawn declarations, in one color.
+
+  The legend has these captions for a Lean project:
+
+  | Caption | Meaning |
+  |---|---|
+  | Lean declarations without hidden ones, as the Declaration Kind filters show | Which declarations are drawn. |
+  | Declaration: 1 + dependency links after the filters | The size of a declaration circle. |
+  | Group: summed size of the declarations inside | The size of a group circle. |
+  | Transitively verified | Does not reach a `sorry`. |
+  | Trusted | In the trust set. |
+  | Verified: not known to be free of sorry | Reaches a `sorry`, or was not checked (`--skip-enrich`). |
+  | Unverified: contains sorry | Has a `sorry` in its own proof or body. |
+  | No status | probe-lean gave no status. |
+  | Arc: share transitively verified or trusted | The green arc on a group circle. |
+  | Dependency | A dependency link of the hovered or selected declaration. |
 
 Crate Map and Hierarchy aggregate the whole graph into groups. The Packed
-Map draws every function of the graph. The large-graph limits below don't
+Map draws every function (or Lean declaration) of the graph. The large-graph limits below don't
 apply to these three views. The algorithms are specified in
 [web/docs/technical/](../../web/docs/technical/README.md).
 
@@ -565,8 +620,8 @@ and restorable.
 In the Call Graph, node colour is the verification status: green for
 verified, dark green for transitively verified, purple for trusted, red for
 failed, grey for unverified, and blue for unknown (no status in the graph).
-The sidebar's Verification Legend shows them, and the File Map, Crate Map
-and Hierarchy draw their own legends. The exact colours are the
+The sidebar's Verification Legend shows them, and the File Map, Crate Map,
+Hierarchy and Packed Map draw their own legends. The exact colours are the
 `--pg-status-*` tokens in `web/style.css`.
 
 Click a legend's header to collapse or expand the legend. The header is

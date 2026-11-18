@@ -1,0 +1,317 @@
+{
+  "tool": {
+    "name": "probe-lean",
+    "version": "0.19.0",
+    "command": "extract"
+  },
+  "timestamp": "2026-11-17T00:00:00Z",
+  "source": {
+    "repo": "synthetic",
+    "package": "Demo",
+    "package-version": "0",
+    "language": "lean",
+    "commit": "0"
+  },
+  "schema-version": "3.0",
+  "schema": "probe-lean/extract",
+  "data": {
+    "probe:Demo.add": {
+      "verification-status": "transitively-verified",
+      "type-dependencies": [],
+      "term-dependencies": [],
+      "language": "lean",
+      "kind": "def",
+      "is-relevant": true,
+      "is-lean-generated": false,
+      "is-in-package": true,
+      "is-ignored": false,
+      "is-hidden": false,
+      "is-aeneas-generated": false,
+      "display-name": "add",
+      "dependencies": [],
+      "code-text": {
+        "lines-start": 1,
+        "lines-end": 3
+      },
+      "code-path": "Demo/Basic.lean",
+      "code-module": "Demo.Basic"
+    },
+    "probe:Demo.Point": {
+      "verification-status": "transitively-verified",
+      "type-dependencies": [],
+      "term-dependencies": [],
+      "language": "lean",
+      "kind": "structure",
+      "is-relevant": true,
+      "is-lean-generated": false,
+      "is-in-package": true,
+      "is-ignored": false,
+      "is-hidden": false,
+      "is-aeneas-generated": false,
+      "display-name": "Point",
+      "dependencies": [],
+      "code-text": {
+        "lines-start": 5,
+        "lines-end": 7
+      },
+      "code-path": "Demo/Basic.lean",
+      "code-module": "Demo.Basic"
+    },
+    "probe:Demo.Point.x": {
+      "verification-status": "transitively-verified",
+      "type-dependencies": [
+        "probe:Demo.Point"
+      ],
+      "term-dependencies": [],
+      "language": "lean",
+      "kind": "projection",
+      "is-relevant": true,
+      "is-lean-generated": true,
+      "is-in-package": true,
+      "is-ignored": false,
+      "is-hidden": true,
+      "is-aeneas-generated": false,
+      "display-name": "x",
+      "dependencies": [
+        "probe:Demo.Point"
+      ],
+      "code-text": {
+        "lines-start": 6,
+        "lines-end": 8
+      },
+      "code-path": "Demo/Basic.lean",
+      "code-module": "Demo.Basic"
+    },
+    "probe:Demo.lonely": {
+      "verification-status": "transitively-verified",
+      "type-dependencies": [],
+      "term-dependencies": [],
+      "language": "lean",
+      "kind": "def",
+      "is-relevant": true,
+      "is-lean-generated": false,
+      "is-in-package": true,
+      "is-ignored": false,
+      "is-hidden": false,
+      "is-aeneas-generated": false,
+      "display-name": "lonely",
+      "dependencies": [],
+      "code-text": {
+        "lines-start": 10,
+        "lines-end": 12
+      },
+      "code-path": "Demo/Basic.lean",
+      "code-module": "Demo.Basic"
+    },
+    "probe:Demo.choice": {
+      "verification-status": "trusted",
+      "type-dependencies": [],
+      "term-dependencies": [],
+      "language": "lean",
+      "kind": "axiom",
+      "is-relevant": true,
+      "is-lean-generated": false,
+      "is-in-package": true,
+      "is-ignored": false,
+      "is-hidden": false,
+      "is-aeneas-generated": false,
+      "display-name": "choice",
+      "dependencies": [],
+      "code-text": {
+        "lines-start": 14,
+        "lines-end": 16
+      },
+      "code-path": "Demo/Basic.lean",
+      "code-module": "Demo.Basic"
+    },
+    "probe:Demo.add_comm": {
+      "verification-status": "transitively-verified",
+      "type-dependencies": [
+        "probe:Demo.add"
+      ],
+      "term-dependencies": [
+        "probe:Demo.add"
+      ],
+      "language": "lean",
+      "kind": "theorem",
+      "is-relevant": true,
+      "is-lean-generated": false,
+      "is-in-package": true,
+      "is-ignored": false,
+      "is-hidden": false,
+      "is-aeneas-generated": false,
+      "display-name": "add_comm",
+      "dependencies": [
+        "probe:Demo.add"
+      ],
+      "code-text": {
+        "lines-start": 1,
+        "lines-end": 3
+      },
+      "code-path": "Demo/Proofs/Spec.lean",
+      "code-module": "Demo.Proofs.Spec"
+    },
+    "probe:Demo.hidden_ok": {
+      "verification-status": "transitively-verified",
+      "type-dependencies": [
+        "probe:Demo.add"
+      ],
+      "term-dependencies": [],
+      "language": "lean",
+      "kind": "theorem",
+      "is-relevant": true,
+      "is-lean-generated": false,
+      "is-in-package": true,
+      "is-ignored": false,
+      "is-hidden": true,
+      "is-aeneas-generated": false,
+      "display-name": "hidden_ok",
+      "dependencies": [
+        "probe:Demo.add"
+      ],
+      "code-text": {
+        "lines-start": 5,
+        "lines-end": 7
+      },
+      "code-path": "Demo/Proofs/Spec.lean",
+      "code-module": "Demo.Proofs.Spec"
+    },
+    "probe:Demo.hidden_sorry": {
+      "verification-status": "unverified",
+      "type-dependencies": [
+        "probe:Demo.add"
+      ],
+      "term-dependencies": [
+        "probe:Demo.choice"
+      ],
+      "language": "lean",
+      "kind": "theorem",
+      "is-relevant": true,
+      "is-lean-generated": false,
+      "is-in-package": true,
+      "is-ignored": false,
+      "is-hidden": true,
+      "is-aeneas-generated": false,
+      "display-name": "hidden_sorry",
+      "dependencies": [
+        "probe:Demo.add",
+        "probe:Demo.choice"
+      ],
+      "code-text": {
+        "lines-start": 9,
+        "lines-end": 11
+      },
+      "code-path": "Demo/Proofs/Spec.lean",
+      "code-module": "Demo.Proofs.Spec",
+      "status-origin": "kernel-taint"
+    },
+    "probe:Demo.uses_sorry": {
+      "verification-status": "verified",
+      "type-dependencies": [
+        "probe:Demo.add"
+      ],
+      "term-dependencies": [
+        "probe:Demo.hidden_sorry"
+      ],
+      "language": "lean",
+      "kind": "theorem",
+      "is-relevant": true,
+      "is-lean-generated": false,
+      "is-in-package": true,
+      "is-ignored": false,
+      "is-hidden": false,
+      "is-aeneas-generated": false,
+      "display-name": "uses_sorry",
+      "dependencies": [
+        "probe:Demo.add",
+        "probe:Demo.hidden_sorry"
+      ],
+      "code-text": {
+        "lines-start": 13,
+        "lines-end": 15
+      },
+      "code-path": "Demo/Proofs/Spec.lean",
+      "code-module": "Demo.Proofs.Spec",
+      "status-origin": "kernel-taint"
+    },
+    "probe:Demo.clean_skip": {
+      "verification-status": "verified",
+      "type-dependencies": [
+        "probe:Demo.add"
+      ],
+      "term-dependencies": [
+        "probe:Demo.add_comm"
+      ],
+      "language": "lean",
+      "kind": "theorem",
+      "is-relevant": true,
+      "is-lean-generated": false,
+      "is-in-package": true,
+      "is-ignored": false,
+      "is-hidden": false,
+      "is-aeneas-generated": false,
+      "display-name": "clean_skip",
+      "dependencies": [
+        "probe:Demo.add",
+        "probe:Demo.add_comm"
+      ],
+      "code-text": {
+        "lines-start": 17,
+        "lines-end": 19
+      },
+      "code-path": "Demo/Proofs/Spec.lean",
+      "code-module": "Demo.Proofs.Spec"
+    },
+    "probe:Demo.trusted_def": {
+      "verification-status": "trusted",
+      "type-dependencies": [],
+      "term-dependencies": [
+        "probe:Demo.add"
+      ],
+      "language": "lean",
+      "kind": "def",
+      "is-relevant": true,
+      "is-lean-generated": false,
+      "is-in-package": true,
+      "is-ignored": false,
+      "is-hidden": false,
+      "is-aeneas-generated": false,
+      "display-name": "trusted_def",
+      "dependencies": [
+        "probe:Demo.add"
+      ],
+      "code-text": {
+        "lines-start": 1,
+        "lines-end": 3
+      },
+      "code-path": "Demo/Trust/Base.lean",
+      "code-module": "Demo.Trust.Base"
+    },
+    "probe:Demo.trust_bad": {
+      "verification-status": "verified",
+      "type-dependencies": [
+        "probe:Demo.hidden_sorry"
+      ],
+      "term-dependencies": [],
+      "language": "lean",
+      "kind": "def",
+      "is-relevant": true,
+      "is-lean-generated": false,
+      "is-in-package": true,
+      "is-ignored": false,
+      "is-hidden": false,
+      "is-aeneas-generated": false,
+      "display-name": "trust_bad",
+      "dependencies": [
+        "probe:Demo.hidden_sorry"
+      ],
+      "code-text": {
+        "lines-start": 5,
+        "lines-end": 7
+      },
+      "code-path": "Demo/Trust/Base.lean",
+      "code-module": "Demo.Trust.Base",
+      "status-origin": "kernel-taint"
+    }
+  }
+}

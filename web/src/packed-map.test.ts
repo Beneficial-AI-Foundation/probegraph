@@ -1,16 +1,25 @@
 /**
- * Unit tests for the Packed Map pure helpers (packed-map.ts): the `exec`
+ * Unit tests for the Packed Map pure helpers (packed-map.ts): the candidate
  * rule, the graph restriction, connectivity, the pack input tree, the
- * camera fit, the label rules, the edges and the keyboard order.
+ * camera fit, the label rules, the edges and the keyboard order. The Lean
+ * tests (Phase 4) run the filter step on the synthetic fixture
+ * test-data/probe-lean-packed-map.json.
  */
 
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import * as d3 from 'd3';
 import {
-  isPackedMapNode, hasPackedMapNodes, restrictToPackedNodes, connectivity, buildPackData, PackDatum,
+  isPackedMapCandidate, hasPackedMapNodes, restrictToPackedNodes, connectivity, buildPackData, PackDatum,
   fitCamera, visibleGroupLabels, fitLabel, edgesOf, nextFocusIndex, edgeCurve, edgeBends, functionOrder, zoomInTarget, minZoomScale,
+  packedArcStatus, packedMapText,
 } from './packed-map';
-import { D3Graph, D3Node, D3Link } from './types';
+import { D3Graph, D3Node, D3Link, FilterOptions, ProjectLanguage, detectProjectLanguage, extractCrateName } from './types';
+import { parseAndNormalizeGraph } from './graph-loader';
+import { applyFilters, ViewRestriction } from './filters';
+import { defaultFilters } from './url-state';
+import { textIntent } from './intent';
 
 function node(id: string, crate: string, relativePath: string, kind?: string): D3Node {
   return {
@@ -51,23 +60,47 @@ function find(d: PackDatum, id: string): PackDatum | undefined {
   return undefined;
 }
 
-describe('isPackedMapNode', () => {
-  it('keeps exec and nodes with no kind (older graphs)', () => {
-    expect(isPackedMapNode(node('a', 'c', 'src/a.rs', 'exec'))).toBe(true);
-    expect(isPackedMapNode(node('b', 'c', 'src/a.rs', undefined))).toBe(true);
-    expect(isPackedMapNode(node('c', 'c', 'src/a.rs', ''))).toBe(true);
+describe('isPackedMapCandidate', () => {
+  it('Verus, mixed and unknown: keeps exec and nodes with no kind (older graphs)', () => {
+    for (const lang of ['verus', 'mixed', 'unknown'] as ProjectLanguage[]) {
+      expect(isPackedMapCandidate(node('a', 'c', 'src/a.rs', 'exec'), lang)).toBe(true);
+      expect(isPackedMapCandidate(node('b', 'c', 'src/a.rs', undefined), lang)).toBe(true);
+      expect(isPackedMapCandidate(node('c', 'c', 'src/a.rs', ''), lang)).toBe(true);
+    }
   });
 
-  it('drops proofs, specs and Lean kinds', () => {
-    expect(isPackedMapNode(node('a', 'c', 'src/a.rs', 'proof'))).toBe(false);
-    expect(isPackedMapNode(node('b', 'c', 'src/a.rs', 'spec'))).toBe(false);
-    expect(isPackedMapNode(node('c', 'c', 'A/B.lean', 'theorem'))).toBe(false);
+  it('Verus, mixed and unknown: drops proofs, specs and Lean kinds', () => {
+    for (const lang of ['verus', 'mixed', 'unknown'] as ProjectLanguage[]) {
+      expect(isPackedMapCandidate(node('a', 'c', 'src/a.rs', 'proof'), lang)).toBe(false);
+      expect(isPackedMapCandidate(node('b', 'c', 'src/a.rs', 'spec'), lang)).toBe(false);
+      expect(isPackedMapCandidate(node('c', 'c', 'A/B.lean', 'theorem'), lang)).toBe(false);
+      expect(isPackedMapCandidate(node('d', 'c', 'A/B.lean', 'def'), lang)).toBe(false);
+    }
   });
 
-  it('hasPackedMapNodes is false for a graph with no Rust code', () => {
-    expect(hasPackedMapNodes(graph([node('t', 'A', 'A/B.lean', 'theorem')], []))).toBe(false);
-    expect(hasPackedMapNodes(graph([node('f', 'c', 'src/a.rs', 'exec')], []))).toBe(true);
-    expect(hasPackedMapNodes(null)).toBe(false);
+  it('Lean: every declaration without is_hidden, and a hidden one with a sorry', () => {
+    const decl = (kind: string, hidden: boolean, status?: string): D3Node =>
+      ({ ...node('x', 'A/B', 'A/B/C.lean', kind), is_hidden: hidden || undefined, verification_status: status as D3Node['verification_status'] });
+    for (const kind of ['def', 'theorem', 'axiom', 'structure', 'projection', 'instance', 'abbrev', 'opaque']) {
+      expect(isPackedMapCandidate(decl(kind, false), 'lean')).toBe(true);
+      expect(isPackedMapCandidate(decl(kind, true, 'transitively-verified'), 'lean')).toBe(false);
+      expect(isPackedMapCandidate(decl(kind, true, 'verified'), 'lean')).toBe(false);
+      expect(isPackedMapCandidate(decl(kind, true, 'unverified'), 'lean')).toBe(true);
+    }
+  });
+
+  it('blueprint: nothing', () => {
+    expect(isPackedMapCandidate(node('a', 'c', 'blueprint/x', 'blueprint-theorem'), 'blueprint')).toBe(false);
+    expect(isPackedMapCandidate(node('b', 'c', 'src/a.rs', 'exec'), 'blueprint')).toBe(false);
+  });
+
+  it('hasPackedMapNodes follows the language', () => {
+    const lean = graph([node('t', 'A', 'A/B.lean', 'theorem')], []);
+    expect(hasPackedMapNodes(lean, 'verus')).toBe(false);
+    expect(hasPackedMapNodes(lean, 'lean')).toBe(true);
+    expect(hasPackedMapNodes(lean, 'blueprint')).toBe(false);
+    expect(hasPackedMapNodes(graph([node('f', 'c', 'src/a.rs', 'exec')], []), 'verus')).toBe(true);
+    expect(hasPackedMapNodes(null, 'lean')).toBe(false);
   });
 });
 
@@ -77,7 +110,7 @@ describe('restrictToPackedNodes', () => {
       [node('f', 'c', 'src/a.rs', 'exec'), node('g', 'c', 'src/a.rs', 'exec'), node('p', 'c', 'src/a.rs', 'proof')],
       [['f', 'g'], ['f', 'p'], ['p', 'g']],
     );
-    const r = restrictToPackedNodes(g);
+    const r = restrictToPackedNodes(g, 'verus');
     expect(r.nodes.map(n => n.id)).toEqual(['f', 'g']);
     expect(r.links).toHaveLength(1);
     expect(r.metadata).toBe(g.metadata);
@@ -85,14 +118,14 @@ describe('restrictToPackedNodes', () => {
 
   it('returns the same graph when everything is exec', () => {
     const g = graph([node('f', 'c', 'src/a.rs', 'exec')], []);
-    expect(restrictToPackedNodes(g)).toBe(g);
+    expect(restrictToPackedNodes(g, 'verus')).toBe(g);
   });
 
   it('handles links whose endpoints are node objects', () => {
     const f = node('f', 'c', 'src/a.rs', 'exec');
     const p = node('p', 'c', 'src/a.rs', 'proof');
     const g: D3Graph = { ...graph([f, p], []), links: [{ source: f, target: p, type: 'inner' }] };
-    expect(restrictToPackedNodes(g).links).toHaveLength(0);
+    expect(restrictToPackedNodes(g, 'verus').links).toHaveLength(0);
   });
 });
 
@@ -359,5 +392,186 @@ describe('minZoomScale', () => {
     expect(min).toBeCloseTo(0.25);
     // Copilot's example: a radius-290 group fitted into 400 x 300
     expect(fitCamera(400, 300, 290, 400, 300).k).toBeGreaterThan(min);
+  });
+});
+
+// ============================================================================
+// Phase 4: pure Lean projects
+// ============================================================================
+
+/** Load a probe graph the way main.ts does: parse, then fill crate_name. */
+function loadFixture(name: string): { graph: D3Graph; language: ProjectLanguage } {
+  const graph = parseAndNormalizeGraph(JSON.parse(readFileSync(resolve(__dirname, 'test-data', name), 'utf8')));
+  const language = detectProjectLanguage(graph);
+  for (const n of graph.nodes) n.crate_name = extractCrateName(n, language);
+  return { graph, language };
+}
+
+function packedView(language: ProjectLanguage): ViewRestriction {
+  return { restrict: g => restrictToPackedNodes(g, language), inventory: true };
+}
+
+/** Ids of the nodes the Packed Map draws for `filters`, sorted, without the `probe:Demo.` prefix. */
+function drawn(g: D3Graph, language: ProjectLanguage, filters: Partial<FilterOptions> = {}): string[] {
+  const result = applyFilters(g, { ...defaultFilters(), ...filters }, language, packedView(language));
+  return result.nodes.map(n => n.id.replace('probe:Demo.', '')).sort();
+}
+
+describe('Packed Map on a pure Lean graph (probe-lean-packed-map.json)', () => {
+  const { graph: lean, language } = loadFixture('probe-lean-packed-map.json');
+
+  it('detects a Lean graph and shows the button', () => {
+    expect(language).toBe('lean');
+    expect(hasPackedMapNodes(lean, language)).toBe(true);
+  });
+
+  it('default filters: every visible declaration, the hidden sorry, and the isolated definition', () => {
+    expect(drawn(lean, language)).toEqual([
+      'add', 'add_comm', 'choice', 'clean_skip', 'hidden_sorry', 'lonely', 'trust_bad', 'trusted_def', 'uses_sorry',
+    ]);
+  });
+
+  it('Definitions off', () => {
+    expect(drawn(lean, language, { showExecFunctions: false })).toEqual([
+      'add_comm', 'choice', 'clean_skip', 'hidden_sorry', 'uses_sorry',
+    ]);
+  });
+
+  it('Theorems off', () => {
+    expect(drawn(lean, language, { showProofFunctions: false })).toEqual([
+      'add', 'choice', 'lonely', 'trust_bad', 'trusted_def',
+    ]);
+  });
+
+  it('Types on adds the structure', () => {
+    expect(drawn(lean, language, { showTypes: true })).toEqual([
+      'Point', 'add', 'add_comm', 'choice', 'clean_skip', 'hidden_sorry', 'lonely', 'trust_bad', 'trusted_def', 'uses_sorry',
+    ]);
+  });
+
+  it('Projections on still leaves out the hidden projection', () => {
+    expect(drawn(lean, language, { showProjections: true, showTypes: true })).not.toContain('Point.x');
+  });
+
+  it('a text query keeps the order: cleanup, then restriction', () => {
+    // add has links, so it stays; lonely has none and the query does not reach it
+    const ids = drawn(lean, language, { intent: textIntent('add_comm', '') });
+    expect(ids).toEqual(['add', 'add_comm']);
+  });
+
+  it('groups a file two levels deep as a top-level circle, and deeper files under their crate', () => {
+    const filtered = applyFilters(lean, defaultFilters(), language, packedView(language));
+    const root = buildPackData(filtered, language);
+    expect(root.children!.map(c => c.id)).toEqual(['g:Demo/Basic.lean', 'g:Demo/Proofs', 'g:Demo/Trust']);
+    const basic = find(root, 'g:Demo/Basic.lean')!;
+    expect(basic.kind).toBe('crate');
+    expect(basic.children!.every(c => c.kind === 'fn')).toBe(true);
+    expect(basic.children!.map(c => c.label).sort()).toEqual(['add', 'choice', 'lonely']);
+    const proofs = find(root, 'g:Demo/Proofs')!;
+    expect(proofs.children!.map(c => c.id)).toEqual(['g:Demo/Proofs/Spec.lean']);
+    expect(find(root, 'g:Demo/Proofs/Spec.lean')!.kind).toBe('file');
+  });
+
+  it('the Lean arc counts only transitively-verified and trusted', () => {
+    const filtered = applyFilters(lean, defaultFilters(), language, packedView(language));
+    const counts = (lang: ProjectLanguage) => Object.fromEntries(
+      buildPackData(filtered, lang).children!.map(c => [c.id, [c.group!.verifiedCount, c.group!.fnCount]]),
+    );
+    expect(counts('lean')).toEqual({
+      'g:Demo/Basic.lean': [3, 3],
+      'g:Demo/Proofs': [1, 4],
+      'g:Demo/Trust': [1, 2],
+    });
+    // The Verus rule would count `verified` too
+    expect(counts('verus')).toEqual({
+      'g:Demo/Basic.lean': [3, 3],
+      'g:Demo/Proofs': [3, 4],
+      'g:Demo/Trust': [2, 2],
+    });
+  });
+
+  it('sizes by dependency links after the filters', () => {
+    const filtered = applyFilters(lean, defaultFilters(), language, packedView(language));
+    const deg = connectivity(filtered);
+    expect(deg.get('probe:Demo.lonely')).toBe(0);
+    // add_comm, hidden_sorry, uses_sorry, clean_skip, trusted_def
+    expect(deg.get('probe:Demo.add')).toBe(5);
+    const noTheorems = applyFilters(lean, { ...defaultFilters(), showProofFunctions: false }, language, packedView(language));
+    expect(connectivity(noTheorems).get('probe:Demo.add')).toBe(1);
+  });
+
+  it('a graph with only structures keeps the button; with Types off nothing is drawn', () => {
+    const structs = { ...lean, nodes: lean.nodes.filter(n => n.kind === 'structure'), links: [] };
+    expect(hasPackedMapNodes(structs, 'lean')).toBe(true);
+    expect(drawn(structs, 'lean')).toEqual([]);
+    expect(drawn(structs, 'lean', { showTypes: true })).toEqual(['Point']);
+  });
+});
+
+describe('packedArcStatus', () => {
+  it('Lean counts transitively-verified and trusted only', () => {
+    expect(packedArcStatus('transitively-verified', 'lean')).toBe(true);
+    expect(packedArcStatus('trusted', 'lean')).toBe(true);
+    expect(packedArcStatus('verified', 'lean')).toBe(false);
+    expect(packedArcStatus('unverified', 'lean')).toBe(false);
+    expect(packedArcStatus(undefined, 'lean')).toBe(false);
+  });
+
+  it('Verus counts verified too, as before', () => {
+    expect(packedArcStatus('verified', 'verus')).toBe(true);
+    expect(packedArcStatus('transitively-verified', 'verus')).toBe(true);
+    expect(packedArcStatus('trusted', 'verus')).toBe(true);
+    expect(packedArcStatus('failed', 'verus')).toBe(false);
+  });
+});
+
+describe('packedMapText', () => {
+  it('uses "declarations" for Lean and "functions" otherwise', () => {
+    expect(packedMapText('lean').many).toBe('declarations');
+    expect(packedMapText('lean').empty).toBe('No Lean declarations match the filters.');
+    expect(packedMapText('lean').ariaLabel).toContain('Packed Map declarations');
+    expect(packedMapText('verus').many).toBe('functions');
+    expect(packedMapText('verus').empty).toBe('No Rust functions match the filters.');
+    expect(packedMapText('mixed').many).toBe('functions');
+  });
+});
+
+describe('edgesOf with a type map', () => {
+  it('merges an inner and a spec link between the same nodes into one dependency', () => {
+    const links = [
+      { source: 't', target: 'd', type: 'inner' },
+      { source: 't', target: 'd', type: 'spec' },
+    ];
+    const ids = new Set(['t', 'd']);
+    expect(edgesOf(links, 't', ids)).toHaveLength(2);
+    expect(edgesOf(links, 't', ids, () => 'inner')).toEqual([{ source: 't', target: 'd', type: 'inner' }]);
+  });
+});
+
+describe('Packed Map on a Rust graph after Phase 4', () => {
+  // f's only link goes to the proof p; iso has no links; g calls h
+  const rust = graph(
+    [
+      node('f', 'c', 'src/a.rs', 'exec'), node('p', 'c', 'src/a.rs', 'proof'),
+      node('iso', 'c', 'src/a.rs', 'exec'), node('g', 'c', 'src/b.rs', 'exec'), node('h', 'c', 'src/b.rs', 'exec'),
+    ],
+    [['f', 'p'], ['g', 'h']],
+  );
+  const ids = (filters: Partial<FilterOptions>) =>
+    applyFilters(rust, { ...defaultFilters(), ...filters }, 'verus', packedView('verus')).nodes.map(n => n.id).sort();
+
+  it('without a query, draws exec functions with no links left (the inventory)', () => {
+    expect(ids({})).toEqual(['f', 'g', 'h', 'iso']);
+    // Before Phase 4 the cleanup dropped iso
+    const old = restrictToPackedNodes(applyFilters(rust, defaultFilters(), 'verus'), 'verus');
+    expect(old.nodes.map(n => n.id).sort()).toEqual(['f', 'g', 'h']);
+  });
+
+  it('a text query keeps an exec function whose only link goes to a proof', () => {
+    expect(ids({ intent: textIntent('f', '') })).toEqual(['f']);
+  });
+
+  it('other views keep the cleanup', () => {
+    expect(applyFilters(rust, defaultFilters(), 'verus').nodes.map(n => n.id).sort()).toEqual(['f', 'g', 'h', 'p']);
   });
 });
