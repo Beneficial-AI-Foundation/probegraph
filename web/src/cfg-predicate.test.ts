@@ -30,6 +30,20 @@ describe('isTestOnlyCfg', () => {
     expect(isTestOnlyCfg('not(test, unix)')).toBe(false);
   });
 
+  it('accepts a trailing comma at the top level and in lists', () => {
+    expect(isTestOnlyCfg('test ,')).toBe(true);
+    expect(isTestOnlyCfg('all(test, unix ,)')).toBe(true);
+    expect(isTestOnlyCfg('not(test) ,')).toBe(false);
+    expect(isTestOnlyCfg('test , ,')).toBe(false);
+  });
+
+  it('reads raw strings as values', () => {
+    expect(isTestOnlyCfg('all(test, feature = r"std")')).toBe(true);
+    expect(isTestOnlyCfg('all(test, feature = r#"a"b"#)')).toBe(true);
+    expect(isTestOnlyCfg('any(test, feature = r##"x"#y"##)')).toBe(false);
+    expect(isTestOnlyCfg('all(test, feature = r#"open")')).toBe(false);
+  });
+
   it('reads escaped quotes inside strings', () => {
     expect(isTestOnlyCfg('all(test, feature = "a\\"b")')).toBe(true);
   });

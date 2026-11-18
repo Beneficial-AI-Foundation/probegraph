@@ -36,6 +36,18 @@ function tokenize(s: string): Token[] | null {
       tokens.push({ t: 'str', v });
       continue;
     }
+    // Raw string: r"..." or r#"..."#, closed by a quote and the same number
+    // of hashes, with no escapes
+    const raw = /^r(#*)"/.exec(s.slice(i));
+    if (raw) {
+      const close = '"' + raw[1];
+      const start = i + raw[0].length;
+      const end = s.indexOf(close, start);
+      if (end < 0) return null;
+      tokens.push({ t: 'str', v: s.slice(start, end) });
+      i = end + close.length;
+      continue;
+    }
     const m = /^[A-Za-z_][A-Za-z0-9_]*/.exec(s.slice(i));
     if (!m) return null;
     tokens.push({ t: 'ident', v: m[0] });
@@ -79,6 +91,8 @@ function parseCfg(s: string): CfgExpr | null {
   }
 
   const result = expr();
+  // `#[cfg(test,)]` is valid Rust: allow one trailing comma at the top level
+  if (peek()?.t === ',') pos++;
   return result && pos === tokens.length ? result : null;
 }
 
