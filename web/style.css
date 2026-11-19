@@ -321,10 +321,92 @@ body {
 
 /* Sidebars */
 .sidebar {
+  position: relative;
+  display: flex;
+  flex-direction: column;
   width: 320px;
   background: var(--pg-surface);
-  overflow-y: auto;
+  overflow: hidden;
   z-index: 10;
+}
+
+.sidebar-scroll {
+  flex: 1;
+  overflow-y: auto;
+}
+
+/* Fold button: a small tab in the inner top corner of an open sidebar,
+   and the whole strip of a folded one */
+.sidebar-fold {
+  position: absolute;
+  top: 0.4rem;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border: 1px solid var(--pg-border-soft);
+  border-radius: var(--pg-radius-md);
+  background: var(--pg-surface);
+  color: var(--pg-text-muted);
+  font: inherit;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.sidebar-left .sidebar-fold { right: 0.4rem; }
+.sidebar-right .sidebar-fold { left: 0.4rem; }
+
+.sidebar-fold:hover {
+  color: var(--pg-text);
+  background: var(--pg-surface-muted);
+  border-color: var(--pg-border);
+}
+
+.sidebar-fold:focus-visible {
+  outline: 2px solid var(--pg-accent);
+  outline-offset: 1px;
+}
+
+.sidebar-fold-label {
+  display: none;
+}
+
+.sidebar.folded {
+  flex-shrink: 0;
+  width: 1.75rem;
+}
+
+.sidebar.folded .sidebar-scroll {
+  display: none;
+}
+
+.sidebar.folded .sidebar-fold {
+  position: static;
+  flex-direction: column;
+  justify-content: flex-start;
+  width: 100%;
+  height: 100%;
+  padding-top: 0.6rem;
+  border: none;
+  border-radius: 0;
+}
+
+.sidebar.folded .sidebar-fold-label {
+  display: block;
+  writing-mode: vertical-rl;
+  font-size: 0.8rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+/* Room for the fold button beside the tabs */
+.sidebar-right .right-sidebar-tabs {
+  padding-left: 2.1rem;
 }
 
 .sidebar-left {
@@ -1224,23 +1306,23 @@ select.search-input {
 }
 
 /* Scrollbar Styling */
-.sidebar::-webkit-scrollbar,
+.sidebar-scroll::-webkit-scrollbar,
 .node-list::-webkit-scrollbar {
   width: 6px;
 }
 
-.sidebar::-webkit-scrollbar-track,
+.sidebar-scroll::-webkit-scrollbar-track,
 .node-list::-webkit-scrollbar-track {
   background: var(--pg-border-soft);
 }
 
-.sidebar::-webkit-scrollbar-thumb,
+.sidebar-scroll::-webkit-scrollbar-thumb,
 .node-list::-webkit-scrollbar-thumb {
   background: var(--pg-text-faint);
   border-radius: 3px;
 }
 
-.sidebar::-webkit-scrollbar-thumb:hover,
+.sidebar-scroll::-webkit-scrollbar-thumb:hover,
 .node-list::-webkit-scrollbar-thumb:hover {
   background: var(--pg-text-muted);
 }

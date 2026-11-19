@@ -614,6 +614,19 @@ A toast button acts on the view in which the toast appeared. A new query,
 a filter or Back changes the view. After such a change, a click only shows
 "The view changed, so this action no longer applies".
 
+## Folding the side panels
+
+Each side panel has a fold button in its inner top corner. The left panel
+holds the filters, statistics and legend. The right panel holds Node details
+and the Guide tab. A folded panel becomes a thin strip with its name,
+Filters or Details. Click the strip to open the panel again. The graph takes
+the free space.
+
+If no text field has the keyboard focus, `[` folds or opens the left panel and
+`]` folds or opens the right panel. The viewer keeps the state of each panel in
+the browser storage, so a folded panel stays folded after a reload. Copy Link
+does not include this state.
+
 ## Sidebar filters
 
 **Source → Sink** is the main query. Source alone shows what a function calls,

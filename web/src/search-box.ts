@@ -394,7 +394,7 @@ export class SearchBox {
   }
 }
 
-function isTextField(target: EventTarget | null): boolean {
+export function isTextField(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   return target.isContentEditable || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT'
     || (target.tagName === 'INPUT' && !['checkbox', 'radio', 'button', 'range', 'file'].includes((target as HTMLInputElement).type));

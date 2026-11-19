@@ -58,7 +58,12 @@
     <!-- Main Content -->
     <div class="main-content">
       <!-- Left Sidebar - Controls -->
-      <aside class="sidebar sidebar-left">
+      <aside class="sidebar sidebar-left" id="sidebar-left">
+        <button id="fold-left" class="sidebar-fold" type="button" aria-controls="sidebar-left-content" aria-expanded="true" title="Fold the filters panel ([)">
+          <span class="sidebar-fold-icon" aria-hidden="true">&#x2039;</span>
+          <span class="sidebar-fold-label">Filters</span>
+        </button>
+        <div class="sidebar-scroll" id="sidebar-left-content">
         <section class="panel">
           <h2>Filters</h2>
           
@@ -332,6 +337,7 @@
             </div>
           </div>
         </section>
+        </div>
       </aside>
 
       <!-- Center - Graph Visualization -->
@@ -365,7 +371,12 @@
       </main>
 
       <!-- Right Sidebar - Node Info + Guide -->
-      <aside class="sidebar sidebar-right">
+      <aside class="sidebar sidebar-right" id="sidebar-right">
+        <button id="fold-right" class="sidebar-fold" type="button" aria-controls="sidebar-right-content" aria-expanded="true" title="Fold the details panel (])">
+          <span class="sidebar-fold-icon" aria-hidden="true">&#x203A;</span>
+          <span class="sidebar-fold-label">Details</span>
+        </button>
+        <div class="sidebar-scroll" id="sidebar-right-content">
         <div class="right-sidebar-tabs">
           <button id="tab-node-details" class="sidebar-tab active">Node Details</button>
           <button id="tab-guide" class="sidebar-tab">Guide <small style="opacity:0.7">(testing)</small></button>
@@ -385,6 +396,7 @@
             <div id="guide-suggested-queries" class="guide-suggested-queries"></div>
           </div>
         </section>
+        </div>
       </aside>
     </div>
 
