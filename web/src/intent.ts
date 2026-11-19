@@ -181,3 +181,32 @@ export function vscodeSetQueryIntent(
   const keep = current.kind === 'text' ? current : { source: '', sink: '' };
   return textIntent(source ?? keep.source, sink ?? keep.sink);
 }
+
+/** A direction the Callers, Both and Callees buttons beside the query label can pick. */
+export type DirectionChoice = Exclude<IdDirection, 'none'>;
+
+/**
+ * The direction button to select for an intent: the direction of an exact
+ * ID set that traverses, null otherwise. A focus set, an exact set without
+ * direction and a paths intent get no buttons.
+ */
+export function directionChoice(intent: QueryIntent): DirectionChoice | null {
+  if (intent.kind !== 'ids' || isFocusIntent(intent) || intent.dir === 'none') return null;
+  return intent.dir;
+}
+
+/**
+ * The intent after the user picks `dir`: the same IDs, label and origin
+ * with the new direction. The same object when `dir` is already the
+ * direction or the intent has no buttons.
+ */
+export function intentWithDirection(intent: QueryIntent, dir: DirectionChoice): QueryIntent {
+  const current = directionChoice(intent);
+  if (current === null || current === dir || intent.kind !== 'ids' || isFocusIntent(intent)) return intent;
+  return { ...intent, ids: [...intent.ids] as [string, ...string[]], dir };
+}
+
+/** Whether `to` keeps a subset of what `from` draws (one direction of `both`). */
+export function isNarrowerDirection(from: DirectionChoice, to: DirectionChoice): boolean {
+  return from === 'both' && to !== 'both';
+}

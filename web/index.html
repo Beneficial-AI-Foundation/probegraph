@@ -336,7 +336,16 @@
 
       <!-- Center - Graph Visualization -->
       <main class="graph-section">
-        <div id="query-label" class="query-label" style="display: none;"></div>
+        <div class="query-bar">
+          <div id="query-label" class="query-label" style="display: none;"></div>
+          <div id="query-direction" class="query-direction" role="radiogroup"
+               aria-label="Direction of the query from its nodes" hidden>
+            <span class="query-direction-caption">Show</span>
+            <label title="Show what calls the queried nodes"><input type="radio" name="query-dir" value="callers" id="query-dir-callers"> Callers</label>
+            <label title="Show callers and callees of the queried nodes"><input type="radio" name="query-dir" value="both" id="query-dir-both"> Both</label>
+            <label title="Show what the queried nodes call"><input type="radio" name="query-dir" value="callees" id="query-dir-callees"> Callees</label>
+          </div>
+        </div>
         <div id="graph-container" class="graph-container">
           <!-- D3 visualization will be rendered here -->
         </div>

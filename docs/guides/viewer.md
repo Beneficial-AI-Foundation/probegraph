@@ -269,6 +269,37 @@ then has no visible edge to the target, but it is still one of the nearest.
 For example, "callers of t" with verified nodes hidden can show callers of a
 hidden verified function, with no edge from them to t.
 
+## Query label
+
+The bar above the graph names the query that the graph shows, for example
+`query: callees from decompress depth=2` or `query: paths encode → decode`.
+
+### Callers, Both and Callees buttons
+
+Three buttons follow the word Show at the right end of the bar: Callers,
+Both and Callees. They show in the Call Graph when the query is a fixed set
+of nodes with a direction. For example, a node that you open from the
+search box, from a double-click in the Packed Map, or from a blueprint
+entry. Callers keeps what calls the nodes. Callees keeps what the nodes
+call. Both keeps the two, and the label then says `neighborhood of`.
+
+Pick a button to change the direction. Exactly one button is always
+selected, so you can go from Callers to Callees in one step. The nodes,
+their label and the depth stay the same, and Node Details keeps its node.
+Each change is one history entry, so Back restores the previous direction.
+The change also sets `dir` in the URL.
+
+If you raised the render limit with **Draw all N nodes** in the action
+toast, a change from Both to Callers or Callees keeps the raised limit,
+because the new query draws a part of the old one. A change to Both, or
+from Callers to Callees, goes back to the 200-node limit.
+
+The buttons do not show in the other views. They also do not show for a
+text query from Source and Sink, a `?focus=` set, a set of nodes without a
+direction (such as `top` or **Show all in the Call Graph**), a `paths`
+query or a crate boundary. To change the direction of a text query, edit
+Source or Sink.
+
 ## Search box
 
 The search box in the header finds a declaration by name and shows it in
@@ -319,7 +350,8 @@ Each row has three buttons:
 - The row itself (or Enter in the search box, for the top row) shows the
   node. If the current query already reaches the node, the query stays.
   If not, the viewer queries the node, its callers and its callees at the
-  current depth.
+  current depth. The [Callers, Both and Callees buttons](#callers-both-and-callees-buttons)
+  then keep one of the two.
 - **as source** adds the node to the current source set. A source set
   alone shows what the sources call.
 - **as sink** adds the node to the current sink set. A sink set alone
@@ -859,7 +891,7 @@ non-default values are included. All parameters:
 | `layer` | `code` or `blueprint`; default is the blueprint layer when the graph has one |
 | `view` | `file-map`, `crate-map`, `hierarchy` or `packed-map`; default is Call Graph. The old `view=blueprint` opens the File Map |
 | `source`, `sink` | the Source → Sink query |
-| `id` (repeated), `dir`, `label` | an exact node set from a Guide suggestion, drill-down or cross-layer link; `dir` is `none`, `callers`, `callees` or `both`, `label` the text shown in the inputs |
+| `id` (repeated), `dir`, `label` | an exact node set from a Guide suggestion, drill-down or cross-layer link; `dir` is `none`, `callers`, `callees` or `both` (the Callers, Both and Callees buttons change it), `label` the text shown in the inputs |
 | `source-id`, `sink-id` (both repeated), `source-label`, `sink-label` | the paths from a source set to a sink set, from the search box |
 | `boundary-source`, `boundary-target` | a crate boundary query (from the Guide or the Crate Map) |
 | `sel` (repeated) | IDs of clicked (selected) nodes |

@@ -451,6 +451,26 @@ test.describe('revealNode from search', () => {
     await expect.poll(async () => (await shownIds(page)).length).toBe(200);
   });
 
+  test('a raised cap stays when a direction button narrows the query, not when it widens it', async ({ page }) => {
+    // h has no callers, so its callees draw the same 301 nodes as both directions
+    await open(page, `&id=${encodeURIComponent('probe:h')}&dir=both&label=h&depth=1`);
+    await expect.poll(async () => (await shownIds(page)).length).toBe(200);
+    const shown = new Set(await shownIds(page));
+    const cut = LEAVES.find(l => !shown.has(l))!;
+
+    await reveal(page, cut);
+    await toastAction(page, 'Draw all 301 nodes').click();
+    await expect.poll(async () => (await shownIds(page)).length).toBe(301);
+
+    await page.locator('#query-dir-callees').check();
+    await expect(page.locator('#query-label')).toContainText('callees from h');
+    await expect.poll(async () => (await shownIds(page)).length).toBe(301);
+
+    await page.locator('#query-dir-both').check();
+    await expect(page.locator('#query-label')).toContainText('neighborhood of h');
+    await expect.poll(async () => (await shownIds(page)).length).toBe(200);
+  });
+
   test('a cap raised with no query ends when a query is run and cleared', async ({ page }) => {
     // With no query the filters let 303 nodes through, and the cap draws 200
     await open(page, '');

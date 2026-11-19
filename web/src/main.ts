@@ -29,6 +29,7 @@ import { StatusGroup, exactStatusFilter, groupCheckState, withGroupChecked } fro
 import {
   QueryIntent, NONE_INTENT, textIntent, focusIntent, boundaryIntent, exactIntent,
   isFocusIntent, inputsForIntent, intentAfterInputEdit, vscodeIntent, vscodeSetQueryIntent,
+  directionChoice, intentWithDirection, isNarrowerDirection, type DirectionChoice,
 } from './intent';
 import { ActiveView, Layer, defaultFilters, readURLState, writeURLState } from './url-state';
 
@@ -1185,6 +1186,9 @@ function setupUIHandlers(): void {
   });
 
   document.getElementById('source-input')?.addEventListener('input', () => handleIntentInput('source'));
+  for (const dir of DIRECTION_CHOICES) {
+    document.getElementById(`query-dir-${dir}`)?.addEventListener('change', () => handleDirectionPick(dir));
+  }
   
   // Handle Enter key to trigger immediate filter or deferred graph loading
   document.getElementById('source-input')?.addEventListener('keydown', (e) => {
@@ -2713,10 +2717,55 @@ function setQueryLabel(parts: LabelPart[]): void {
     }
   }
   el.style.display = '';
+  updateDirectionButtons();
 }
 
 function updateQueryLabel(q: GraphQuery): void {
   setQueryLabel(queryLabelParts(q));
+}
+
+const DIRECTION_CHOICES: readonly DirectionChoice[] = ['callers', 'both', 'callees'];
+
+/**
+ * Show the Callers, Both and Callees buttons beside a visible query label
+ * in the Call Graph, for an exact ID set with a direction.
+ */
+function updateDirectionButtons(): void {
+  const group = document.getElementById('query-direction');
+  if (!group) return;
+  const label = document.getElementById('query-label');
+  const choice = activeView === 'callgraph' && label?.style.display !== 'none'
+    ? directionChoice(state.filters.intent) : null;
+  group.hidden = !choice;
+  if (!choice) return;
+  for (const dir of DIRECTION_CHOICES) {
+    const input = document.getElementById(`query-dir-${dir}`) as HTMLInputElement | null;
+    if (input) input.checked = dir === choice;
+  }
+}
+
+/**
+ * A direction button was picked: the same nodes in the new direction, one
+ * history entry. Node details keep their node. A render cap the reveal
+ * raised stays when the new query draws a subset of the old one.
+ */
+function handleDirectionPick(dir: DirectionChoice): void {
+  const from = directionChoice(state.filters.intent);
+  const intent = intentWithDirection(state.filters.intent, dir);
+  if (!from || intent === state.filters.intent) {
+    updateDirectionButtons();
+    return;
+  }
+  const selected = state.selectedNode;
+  const cap = isNarrowerDirection(from, dir) ? renderCap() : MAX_RENDERED_NODES;
+  setIntent(intent, {
+    history: 'push',
+    pushed: true,
+    before: () => {
+      state.selectedNode = selected;
+      if (cap !== MAX_RENDERED_NODES) raisedCap = { generation: intentGeneration, cap };
+    },
+  });
 }
 
 /**
@@ -2778,6 +2827,7 @@ function applyFiltersAndUpdate(): void {
         queryLabel.style.display = 'none';
       }
     }
+    updateDirectionButtons();
     visualization?.update(state.filteredGraph);
     updateStats();
     updateNodeInfo();
