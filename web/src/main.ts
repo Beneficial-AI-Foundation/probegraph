@@ -29,6 +29,7 @@ import { StatusGroup, exactStatusFilter, groupCheckState, withGroupChecked } fro
 import {
   QueryIntent, NONE_INTENT, textIntent, focusIntent, boundaryIntent, exactIntent,
   isFocusIntent, inputsForIntent, intentAfterInputEdit, vscodeIntent, vscodeSetQueryIntent,
+  directionChoice, intentWithDirection, type DirectionChoice,
 } from './intent';
 import { ActiveView, Layer, defaultFilters, readURLState, writeURLState } from './url-state';
 
@@ -1185,6 +1186,10 @@ function setupUIHandlers(): void {
   });
 
   document.getElementById('source-input')?.addEventListener('input', () => handleIntentInput('source'));
+  for (const box of ['callers', 'callees'] as const) {
+    const input = document.getElementById(`query-dir-${box}`) as HTMLInputElement | null;
+    input?.addEventListener('change', () => handleDirectionBox(box, input.checked));
+  }
   
   // Handle Enter key to trigger immediate filter or deferred graph loading
   document.getElementById('source-input')?.addEventListener('keydown', (e) => {
@@ -2713,10 +2718,43 @@ function setQueryLabel(parts: LabelPart[]): void {
     }
   }
   el.style.display = '';
+  updateDirectionBoxes();
 }
 
 function updateQueryLabel(q: GraphQuery): void {
   setQueryLabel(queryLabelParts(q));
+}
+
+/**
+ * Show the Callers and Callees boxes beside a visible query label in the
+ * Call Graph, for an exact ID set with a direction. The only checked box is
+ * disabled, so the two are never both off.
+ */
+function updateDirectionBoxes(): void {
+  const group = document.getElementById('query-direction');
+  if (!group) return;
+  const label = document.getElementById('query-label');
+  const choice = activeView === 'callgraph' && label?.style.display !== 'none'
+    ? directionChoice(state.filters.intent) : null;
+  group.hidden = !choice;
+  if (!choice) return;
+  const only = choice.callers !== choice.callees;
+  for (const box of ['callers', 'callees'] as const) {
+    const input = document.getElementById(`query-dir-${box}`) as HTMLInputElement | null;
+    if (!input) continue;
+    input.checked = choice[box];
+    input.disabled = only && choice[box];
+  }
+}
+
+/** A Callers or Callees box changed: the same nodes in the new direction, one history entry. */
+function handleDirectionBox(box: keyof DirectionChoice, checked: boolean): void {
+  const intent = intentWithDirection(state.filters.intent, box, checked);
+  if (intent === state.filters.intent) {
+    updateDirectionBoxes();
+    return;
+  }
+  setIntent(intent, { history: 'push', pushed: true });
 }
 
 /**
@@ -2778,6 +2816,7 @@ function applyFiltersAndUpdate(): void {
         queryLabel.style.display = 'none';
       }
     }
+    updateDirectionBoxes();
     visualization?.update(state.filteredGraph);
     updateStats();
     updateNodeInfo();

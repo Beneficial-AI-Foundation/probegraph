@@ -181,3 +181,42 @@ export function vscodeSetQueryIntent(
   const keep = current.kind === 'text' ? current : { source: '', sink: '' };
   return textIntent(source ?? keep.source, sink ?? keep.sink);
 }
+
+/** State of the Callers and Callees boxes beside the query label. */
+export interface DirectionChoice {
+  callers: boolean;
+  callees: boolean;
+}
+
+/**
+ * The Callers and Callees boxes for an intent: set for an exact ID set that
+ * traverses (`callers`, `callees` or `both`), null otherwise. A focus set,
+ * an exact set without direction and a paths intent get no boxes.
+ */
+export function directionChoice(intent: QueryIntent): DirectionChoice | null {
+  if (intent.kind !== 'ids' || isFocusIntent(intent) || intent.dir === 'none') return null;
+  return {
+    callers: intent.dir === 'callers' || intent.dir === 'both',
+    callees: intent.dir === 'callees' || intent.dir === 'both',
+  };
+}
+
+/**
+ * The intent after one box changes to `checked`: the same IDs, label and
+ * origin with the new direction. Unchecking the only checked box keeps it
+ * checked, so the intent stays as it is (the same object). Also the same
+ * object when the box already has that value or the intent has no boxes.
+ */
+export function intentWithDirection(
+  intent: QueryIntent, box: keyof DirectionChoice, checked: boolean,
+): QueryIntent {
+  const choice = directionChoice(intent);
+  if (!choice || intent.kind !== 'ids' || isFocusIntent(intent)) return intent;
+  const next = { ...choice, [box]: checked };
+  const dir: IdDirection | null = next.callers && next.callees ? 'both'
+    : next.callers ? 'callers'
+    : next.callees ? 'callees'
+    : null;
+  if (dir === null || dir === intent.dir) return intent;
+  return { ...intent, ids: [...intent.ids] as [string, ...string[]], dir };
+}

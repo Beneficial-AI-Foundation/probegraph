@@ -266,6 +266,56 @@ test('the query label renders URL params as text', async ({ page }) => {
   await expect(page.locator('#label-injected')).toHaveCount(0);
 });
 
+test.describe('Callers and Callees boxes', () => {
+  const callers = (page: Page) => page.locator('#query-dir-callers');
+  const callees = (page: Page) => page.locator('#query-dir-callees');
+
+  test('narrow an exact set to one direction, and Back restores both', async ({ page }) => {
+    await serve(page);
+    await open(page, `&id=${encodeURIComponent(B)}&dir=both&label=func_b&depth=1`);
+    await expect.poll(() => shownIds(page)).toEqual([A, B, C].sort());
+    await expect(page.locator('#query-direction')).toBeVisible();
+    await expect(callers(page)).toBeChecked();
+    await expect(callees(page)).toBeChecked();
+    await expect(callers(page)).toBeEnabled();
+    await expect(callees(page)).toBeEnabled();
+
+    const before = await page.evaluate(() => window.history.length);
+    await callers(page).uncheck();
+    await expect.poll(() => shownIds(page)).toEqual([B, C].sort());
+    await expect(page.locator('#query-label')).toHaveText('query: callees from func_b depth=1');
+    expect(new URL(page.url()).searchParams.get('dir')).toBe('callees');
+    expect(await page.evaluate(() => window.history.length)).toBe(before + 1);
+    // The only checked box cannot be unchecked
+    await expect(callees(page)).toBeChecked();
+    await expect(callees(page)).toBeDisabled();
+
+    await page.goBack();
+    await expect.poll(() => shownIds(page)).toEqual([A, B, C].sort());
+    await expect(callers(page)).toBeChecked();
+    await expect(callees(page)).toBeEnabled();
+
+    await callees(page).uncheck();
+    await expect.poll(() => shownIds(page)).toEqual([A, B].sort());
+    await expect(page.locator('#query-label')).toHaveText('query: callers of func_b depth=1');
+    await expect(callers(page)).toBeDisabled();
+    await callees(page).check();
+    await expect.poll(() => shownIds(page)).toEqual([A, B, C].sort());
+    expect(new URL(page.url()).searchParams.get('dir')).toBe('both');
+  });
+
+  test('are hidden without an exact set that has a direction', async ({ page }) => {
+    await serve(page);
+    await open(page, '&source=func_a');
+    await expect(page.locator('#query-label')).toContainText('callees');
+    await expect(page.locator('#query-direction')).toBeHidden();
+
+    await open(page, `&id=${encodeURIComponent(A)}&dir=none&label=func_a`);
+    await expect(page.locator('#query-label')).toContainText('nodes');
+    await expect(page.locator('#query-direction')).toBeHidden();
+  });
+});
+
 // Two unrelated boundaries: p → q and r → s
 function boundaryGraph() {
   const pairs: [string, string][] = [['probe:p/f', 'probe:q/g'], ['probe:r/h', 'probe:s/k']];

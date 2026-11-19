@@ -7,7 +7,7 @@ import { describe, it, expect } from 'vitest';
 import {
   QueryIntent, NONE_INTENT, textIntent, focusIntent, exactIntent, boundaryIntent,
   inputsForIntent, intentAfterInputEdit, vscodeIntent, vscodeSetQueryIntent,
-  isDirectionalIntent, idPathsIntent, anchorIds,
+  isDirectionalIntent, idPathsIntent, anchorIds, directionChoice, intentWithDirection,
 } from './intent';
 import { URLViewState, defaultFilters, readURLState, writeURLState } from './url-state';
 import { exactStatusFilter } from './status-filter';
@@ -508,5 +508,55 @@ describe('compileQuery from the intent', () => {
     const f = filtersWith({ includeFiles: 'c.rs', intent: exactIntent(['a', 'c'], 'none', 'two', { type: 'guide' }) });
     expect(compileQuery(f).traversalPredicates.includeFilePatterns.length).toBe(1);
     expect(compileQuery(f).resultFilePatterns).toEqual([]);
+  });
+});
+
+describe('Callers and Callees boxes', () => {
+  const both = exactIntent(['a', 'b'], 'both', 'a, b', { type: 'search' });
+
+  it('show for an exact set with a direction', () => {
+    expect(directionChoice(both)).toEqual({ callers: true, callees: true });
+    expect(directionChoice(exactIntent(['a'], 'callers', 'a', { type: 'drilldown' })))
+      .toEqual({ callers: true, callees: false });
+    expect(directionChoice(exactIntent(['a'], 'callees', 'a', { type: 'guide' })))
+      .toEqual({ callers: false, callees: true });
+  });
+
+  it('do not show for other intents', () => {
+    expect(directionChoice(NONE_INTENT)).toBeNull();
+    expect(directionChoice(textIntent('a', ''))).toBeNull();
+    expect(directionChoice(focusIntent('f.json', ['a'], 'f'))).toBeNull();
+    expect(directionChoice(exactIntent(['a'], 'none', 'a', { type: 'search' }))).toBeNull();
+    expect(directionChoice(idPathsIntent(['a'], ['c'], 'a', 'c', { type: 'search' }))).toBeNull();
+    expect(directionChoice(boundaryIntent('x', 'xy'))).toBeNull();
+  });
+
+  it('keep IDs, label and origin when the direction changes', () => {
+    const callees = intentWithDirection(both, 'callers', false);
+    expect(callees).toEqual({ ...both, dir: 'callees' });
+    const callers = intentWithDirection(both, 'callees', false);
+    expect(callers).toEqual({ ...both, dir: 'callers' });
+    expect(intentWithDirection(callers, 'callees', true)).toEqual(both);
+    expect(intentWithDirection(callees, 'callers', true)).toEqual(both);
+  });
+
+  it('never uncheck both boxes', () => {
+    const callers = exactIntent(['a'], 'callers', 'a', { type: 'drilldown' });
+    expect(intentWithDirection(callers, 'callers', false)).toBe(callers);
+  });
+
+  it('leave the intent as it is when nothing changes', () => {
+    expect(intentWithDirection(both, 'callers', true)).toBe(both);
+    const focus = focusIntent('f.json', ['a'], 'f');
+    expect(intentWithDirection(focus, 'callers', true)).toBe(focus);
+    const none = exactIntent(['a'], 'none', 'a', { type: 'search' });
+    expect(intentWithDirection(none, 'callees', true)).toBe(none);
+  });
+
+  it('compile to the query of the new direction', () => {
+    const type = (i: QueryIntent) => compileQuery(filtersWith({ intent: i })).query.type;
+    expect(type(both)).toBe('neighborhood');
+    expect(type(intentWithDirection(both, 'callees', false))).toBe('callers');
+    expect(type(intentWithDirection(both, 'callers', false))).toBe('callees');
   });
 });

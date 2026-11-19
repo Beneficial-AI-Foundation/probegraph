@@ -466,10 +466,20 @@ test.describe('Packed Map: open in the Call Graph', () => {
     await expect.poll(() => shownIds(page)).toEqual(['probe:h', left]);
     await expect(page.locator('#node-info h3')).toHaveText(left.slice('probe:'.length));
 
+    // The Callers and Callees boxes narrow the query to one direction
+    await expect(page.locator('#query-direction')).toBeVisible();
+    await page.locator('#query-dir-callers').uncheck();
+    await expect.poll(() => shownIds(page)).toEqual([left]);
+    expect(new URL(page.url()).searchParams.get('dir')).toBe('callees');
+    await page.goBack();
+    await expect.poll(() => shownIds(page)).toEqual(['probe:h', left]);
+    expect(new URL(page.url()).searchParams.get('dir')).toBe('both');
+
     await page.goBack();
     await expect(page.locator('#view-packed-map')).toHaveClass(/active/);
     await expect(page.locator('.pm-fn').first()).toBeVisible();
     expect(new URL(page.url()).searchParams.get('id')).toBeNull();
+    await expect(page.locator('#query-direction')).toBeHidden();
   });
 
   test('double-click queries a function the capped overview draws, and Back returns', async ({ page }) => {
