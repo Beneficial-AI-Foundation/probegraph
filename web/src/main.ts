@@ -24,6 +24,7 @@ import {
 } from './reveal';
 import { showActionToast } from './action-toast';
 import { SearchBox } from './search-box';
+import { setupSidebarFolds } from './sidebar-fold';
 import { escapeHtml } from './html';
 import { StatusGroup, exactStatusFilter, groupCheckState, withGroupChecked } from './status-filter';
 import {
@@ -822,6 +823,9 @@ function init(): void {
   } else if (viewParam === 'packed-map') {
     activeView = 'packed-map';
   }
+
+  // Fold the sidebars before the first view measures its container
+  setupSidebarFolds(handleResize);
 
   // Initialize visualization for the active view
   createVisualization(graphContainer);
