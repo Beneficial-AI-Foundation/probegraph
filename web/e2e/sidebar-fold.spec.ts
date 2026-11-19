@@ -44,4 +44,37 @@ test.describe('sidebar folds', () => {
     await expect(right).not.toHaveClass(/folded/);
     await expect(page.locator('#sidebar-left-content')).toBeVisible();
   });
+
+  test('a key fold moves the focus to the button, ignores repeats, and works with AltGr or Option', async ({ page }) => {
+    await page.goto('/probegraph/');
+    await page.evaluate(() => localStorage.removeItem('probegraph.foldedSidebars'));
+    await page.reload();
+    await page.waitForSelector('#graph-container svg');
+    const left = page.locator('#sidebar-left');
+
+    // The focus leaves the hidden content for the fold button
+    await page.locator('#sidebar-left-content input[type="checkbox"]:visible').first().focus();
+    await page.keyboard.press('[');
+    await expect(left).toHaveClass(/folded/);
+    await expect(page.locator('#fold-left')).toBeFocused();
+
+    const send = (init: KeyboardEventInit) => page.evaluate(i => {
+      document.body.dispatchEvent(new KeyboardEvent('keydown', { key: '[', bubbles: true, cancelable: true, ...i }));
+    }, init);
+
+    // A repeat of a held key does nothing
+    await send({ repeat: true });
+    await expect(left).toHaveClass(/folded/);
+
+    // AltGr, as Windows reports it, and Option on macOS still toggle
+    await send({ ctrlKey: true, altKey: true, modifierAltGraph: true } as KeyboardEventInit);
+    await expect(left).not.toHaveClass(/folded/);
+    await send({ altKey: true });
+    await expect(left).toHaveClass(/folded/);
+
+    // A real Ctrl or Cmd does not
+    await send({ ctrlKey: true });
+    await send({ metaKey: true });
+    await expect(left).toHaveClass(/folded/);
+  });
 });

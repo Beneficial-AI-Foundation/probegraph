@@ -55,7 +55,11 @@ export function setupSidebarFolds(onResize: () => void): void {
   const toggle = (side: Side): void => {
     if (folded.has(side)) folded.delete(side); else folded.add(side);
     saveFolded(folded);
+    // Focus in the content would fall to the body when the content hides
+    const focusInside = document.getElementById(`sidebar-${side}-content`)
+      ?.contains(document.activeElement) ?? false;
     apply(side);
+    if (folded.has(side) && focusInside) document.getElementById(`fold-${side}`)?.focus();
     onResize();
   };
 
@@ -66,7 +70,10 @@ export function setupSidebarFolds(onResize: () => void): void {
 
   document.addEventListener('keydown', e => {
     const side = KEYS[e.key];
-    if (!side || e.ctrlKey || e.metaKey || e.altKey || isTextField(e.target)) return;
+    // Some layouts type `[` and `]` with AltGr, which Windows reports as
+    // Ctrl+Alt, or with Option on macOS, so only a real Ctrl or Cmd blocks
+    const ctrl = e.ctrlKey && !e.getModifierState('AltGraph');
+    if (!side || e.repeat || ctrl || e.metaKey || isTextField(e.target)) return;
     e.preventDefault();
     toggle(side);
   });
