@@ -909,7 +909,7 @@ select.search-input {
   color: var(--pg-text-faint);
 }
 
-/* Callers and Callees boxes beside the query label */
+/* Callers, Both and Callees buttons beside the query label */
 .query-direction {
   display: flex;
   align-items: center;
@@ -933,8 +933,8 @@ select.search-input {
   cursor: pointer;
 }
 
-.query-direction label:has(input:disabled) {
-  cursor: default;
+.query-direction-caption {
+  color: var(--pg-text-faint);
 }
 
 .graph-container {

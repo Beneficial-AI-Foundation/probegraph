@@ -266,50 +266,82 @@ test('the query label renders URL params as text', async ({ page }) => {
   await expect(page.locator('#label-injected')).toHaveCount(0);
 });
 
-test.describe('Callers and Callees boxes', () => {
-  const callers = (page: Page) => page.locator('#query-dir-callers');
-  const callees = (page: Page) => page.locator('#query-dir-callees');
+test.describe('Callers, Both and Callees buttons', () => {
+  const pick = (page: Page, dir: string) => page.locator(`#query-dir-${dir}`);
+  const dirParam = (page: Page) => new URL(page.url()).searchParams.get('dir');
 
-  test('narrow an exact set to one direction, and Back restores both', async ({ page }) => {
+  test('switch the direction of an exact set, one history entry each', async ({ page }) => {
     await serve(page);
     await open(page, `&id=${encodeURIComponent(B)}&dir=both&label=func_b&depth=1`);
     await expect.poll(() => shownIds(page)).toEqual([A, B, C].sort());
     await expect(page.locator('#query-direction')).toBeVisible();
-    await expect(callers(page)).toBeChecked();
-    await expect(callees(page)).toBeChecked();
-    await expect(callers(page)).toBeEnabled();
-    await expect(callees(page)).toBeEnabled();
+    await expect(pick(page, 'both')).toBeChecked();
 
     const before = await page.evaluate(() => window.history.length);
-    await callers(page).uncheck();
+    await pick(page, 'callees').check();
     await expect.poll(() => shownIds(page)).toEqual([B, C].sort());
     await expect(page.locator('#query-label')).toHaveText('query: callees from func_b depth=1');
-    expect(new URL(page.url()).searchParams.get('dir')).toBe('callees');
+    expect(dirParam(page)).toBe('callees');
     expect(await page.evaluate(() => window.history.length)).toBe(before + 1);
-    // The only checked box cannot be unchecked
-    await expect(callees(page)).toBeChecked();
-    await expect(callees(page)).toBeDisabled();
 
-    await page.goBack();
-    await expect.poll(() => shownIds(page)).toEqual([A, B, C].sort());
-    await expect(callers(page)).toBeChecked();
-    await expect(callees(page)).toBeEnabled();
-
-    await callees(page).uncheck();
+    // Straight to the other direction, without passing through both
+    await pick(page, 'callers').check();
     await expect.poll(() => shownIds(page)).toEqual([A, B].sort());
     await expect(page.locator('#query-label')).toHaveText('query: callers of func_b depth=1');
-    await expect(callers(page)).toBeDisabled();
-    await callees(page).check();
+    expect(await page.evaluate(() => window.history.length)).toBe(before + 2);
+
+    await page.goBack();
+    await expect.poll(() => shownIds(page)).toEqual([B, C].sort());
+    await expect(pick(page, 'callees')).toBeChecked();
+    await page.goBack();
     await expect.poll(() => shownIds(page)).toEqual([A, B, C].sort());
-    expect(new URL(page.url()).searchParams.get('dir')).toBe('both');
+    await expect(pick(page, 'both')).toBeChecked();
+    await page.goForward();
+    await expect.poll(() => shownIds(page)).toEqual([B, C].sort());
+    await expect(pick(page, 'callees')).toBeChecked();
+
+    await page.reload();
+    await expect.poll(() => shownIds(page)).toEqual([B, C].sort());
+    await expect(pick(page, 'callees')).toBeChecked();
+    const url = new URL(page.url());
+    expect(url.searchParams.getAll('id')).toEqual([B]);
+    expect(url.searchParams.get('label')).toBe('func_b');
+    await expect(page.locator('#depth-value')).toHaveText('1');
   });
 
-  test('are hidden without an exact set that has a direction', async ({ page }) => {
+  test('keep the node in node details', async ({ page }) => {
     await serve(page);
-    await open(page, '&source=func_a');
-    await expect(page.locator('#query-label')).toContainText('callees');
-    await expect(page.locator('#query-direction')).toBeHidden();
+    await open(page, `&id=${encodeURIComponent(B)}&dir=both&label=func_b&depth=1`);
+    await expect.poll(() => shownIds(page)).toEqual([A, B, C].sort());
+    await clickNode(page, B);
+    await expect(page.locator('#node-info h3')).toHaveText('func_b');
 
+    await pick(page, 'callers').check();
+    await expect.poll(() => shownIds(page)).toEqual([A, B].sort());
+    await expect(page.locator('#node-info h3')).toHaveText('func_b');
+  });
+
+  test('hide when the query stops being an exact set with a direction', async ({ page }) => {
+    await serve(page);
+    await open(page, `&id=${encodeURIComponent(A)}&id=${encodeURIComponent(D)}&dir=callees&label=two`);
+    await expect.poll(() => shownIds(page)).toEqual([A, B, C, D].sort());
+    await expect(page.locator('#query-direction')).toBeVisible();
+
+    // Other views have no buttons
+    await page.locator('#view-file-map').click();
+    await expect(page.locator('#query-direction')).toBeHidden();
+    await page.locator('#view-callgraph').click();
+    await expect(page.locator('#query-direction')).toBeVisible();
+    await expect(pick(page, 'callees')).toBeChecked();
+
+    // Typing in Source replaces the exact set with a text query
+    await page.locator('#source-input').fill('func_a');
+    await expect(page.locator('#query-label')).toContainText('callees from func_a');
+    await expect(page.locator('#query-direction')).toBeHidden();
+  });
+
+  test('are hidden for an exact set without a direction', async ({ page }) => {
+    await serve(page);
     await open(page, `&id=${encodeURIComponent(A)}&dir=none&label=func_a`);
     await expect(page.locator('#query-label')).toContainText('nodes');
     await expect(page.locator('#query-direction')).toBeHidden();

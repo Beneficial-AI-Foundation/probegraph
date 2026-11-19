@@ -229,6 +229,14 @@ test('double-clicking a blueprint entry opens its bound declarations', async ({ 
   expect(shownIds).toEqual(expect.arrayContaining(['probe:collatzStep', 'probe:collatzTerminatesAtOne']));
   // No single target is selected, and the hovered blueprint entry is gone
   await expect(page.locator('#node-info')).toContainText('Click or hover over a node');
+  // The direction buttons keep both bound declarations, in one direction
+  await expect(page.locator('#query-dir-both')).toBeChecked();
+  await page.locator('#query-dir-callees').check();
+  await expect.poll(() => new URL(page.url()).searchParams.get('dir')).toBe('callees');
+  expect(new URL(page.url()).searchParams.getAll('id'))
+    .toEqual(['probe:collatzStep', 'probe:collatzTerminatesAtOne']);
+  await page.goBack();
+  await expect(page.locator('#query-dir-both')).toBeChecked();
 
   await page.goBack();
   await expect(page.locator('#layer-blueprint')).toHaveClass(/active/);

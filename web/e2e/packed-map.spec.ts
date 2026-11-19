@@ -466,11 +466,12 @@ test.describe('Packed Map: open in the Call Graph', () => {
     await expect.poll(() => shownIds(page)).toEqual(['probe:h', left]);
     await expect(page.locator('#node-info h3')).toHaveText(left.slice('probe:'.length));
 
-    // The Callers and Callees boxes narrow the query to one direction
+    // The direction buttons narrow the query; node details keep the function
     await expect(page.locator('#query-direction')).toBeVisible();
-    await page.locator('#query-dir-callers').uncheck();
+    await page.locator('#query-dir-callees').check();
     await expect.poll(() => shownIds(page)).toEqual([left]);
     expect(new URL(page.url()).searchParams.get('dir')).toBe('callees');
+    await expect(page.locator('#node-info h3')).toHaveText(left.slice('probe:'.length));
     await page.goBack();
     await expect.poll(() => shownIds(page)).toEqual(['probe:h', left]);
     expect(new URL(page.url()).searchParams.get('dir')).toBe('both');
