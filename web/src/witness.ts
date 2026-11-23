@@ -50,13 +50,13 @@ export interface Witness { sourceId: string; targetId: string; types: string[] }
  * The witnesses of one aggregated edge: its links in the order of
  * `sortWitnesses`, with the links of one caller and callee merged into one
  * witness. A function that calls another and also names it in a `requires`
- * clause is one witness with two types. The legacy type `calls` counts as
- * `inner`, as in the link filter (`linkTypeShown`).
+ * clause is one witness with two types. The legacy type `calls` and an
+ * empty type count as `inner`, as in the link filter (`linkTypeShown`).
  */
 export function witnessesOf(calls: ReadonlyArray<WitnessCall>, nameOf: NameOf): Witness[] {
   const out: Witness[] = [];
   for (const call of sortWitnesses(calls, nameOf)) {
-    const type = call.type === 'calls' ? 'inner' : call.type;
+    const type = !call.type || call.type === 'calls' ? 'inner' : call.type;
     const last = out[out.length - 1];
     if (last && last.sourceId === call.sourceId && last.targetId === call.targetId) {
       if (!last.types.includes(type)) last.types.push(type);

@@ -78,6 +78,12 @@ describe('witnessesOf', () => {
     ]);
   });
 
+  it('counts an empty type as a body call', () => {
+    const calls = [call('a', 'y', ''), call('a', 'y', 'spec')];
+    expect(witnessesOf(calls, self)).toEqual([{ sourceId: 'a', targetId: 'y', types: ['inner', 'spec'] }]);
+    expect(witnessTooltip('A', 'B', calls, self)).toContain('a → y (call, spec)');
+  });
+
   it('counts the legacy type "calls" as a body call', () => {
     const calls = [call('a', 'y', 'calls'), call('a', 'y'), call('b', 'x', 'calls')];
     expect(witnessesOf(calls, self)).toEqual([
