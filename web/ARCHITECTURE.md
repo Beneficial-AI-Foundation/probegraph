@@ -158,6 +158,7 @@ target on the other layer. User-facing behaviour is in
 | `src/file-map.ts` | File Map view (dagre compound layout, border/fill colouring) |
 | `src/crate-map.ts` | Crate / Namespace / Chapter Map (quotient graph, drill-down and boundary modes) |
 | `src/hierarchy.ts`, `src/hierarchy-map.ts` | Hierarchy view: tree, cut computation, rendering |
+| `src/witness.ts` | Witness edges: order, tooltip and details panel for the links behind an aggregated edge (Crate Map, Hierarchy) |
 | `src/packed-map.ts` | Packed Map view: `exec` restriction, circle packing of the hierarchy tree, camera, labels, edges |
 | `src/graph-utils.ts` | Seed tiers and budgeted expansion for the seeded view, transitive reduction |
 | `src/blueprint-details.ts` | Node-details section for blueprint entries and cross-layer links |

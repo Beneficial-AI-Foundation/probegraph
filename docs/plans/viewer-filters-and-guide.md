@@ -440,6 +440,46 @@ Plan:
   not rendered, legacy `view=blueprint` URL, blueprint theorems visible
   with code-layer Definitions unchecked.
 
+## Witness edges (Crate Map and Hierarchy)
+
+Added 2026-11-23. Not one of the numbered phases.
+
+Problem. An aggregated edge says "crate A calls crate B 40 times" but not
+which functions make the calls. To find one, the user had to expand the
+edge or drill down. The Riemann proof atlas
+(https://nasqret.github.io/riemann-proof-atlas/) names one witness
+declaration on each edge between two bundles. This feature does the same.
+
+Decisions and reasons:
+
+- Views. Only the Crate Map (`buildCrateGraph`) and the Hierarchy
+  (`computeCut`) aggregate links. The File Map and the Packed Map draw
+  links between functions, so they need no witness.
+- Data. Both aggregations already kept every link of an edge in `calls`.
+  So the feature keeps the full list and adds no field. `src/witness.ts`
+  sorts the list when it is shown.
+- Order. By caller name, callee name, the two ids, then link type, with
+  code-unit comparison. The order of `graph.links` and the locale do not
+  change the first witness, so it is the same on every render.
+- One witness per caller and callee. The links of one pair (a body call
+  and a `requires` link, for example) are one row with the types in
+  parentheses. Two rows with the same names looked like a bug. The count
+  stays the number of links, to agree with the label on the edge.
+- Where it shows. A native SVG `<title>` tooltip for hover, because the
+  two views have no tooltip code. A click writes the panel into node
+  details, as a click on a crate does in the Crate Map. The Crate Map
+  keeps its click behavior (expand the edge) and adds the panel.
+- Hierarchy edges had no pointer events. Each edge now has a second path,
+  12px wide with no paint, that takes the hover and the click. The drawn
+  line can be 1.5px wide and dashed, which is hard to hit.
+- A click on a name sets `selectedNode` through `onStateChange`, the same
+  call as a click on a function box in these two views. It does not
+  change the view or the filters.
+- Caps. Three witnesses in the tooltip and ten in the panel, with **Show
+  all N** for the rest. An edge of the dalek fixture has 1,861 links.
+
+Not done: the selected edge has no highlight, and the URL does not keep it.
+
 ## Later: structural abstraction (not scheduled)
 
 - **Surface contraction:** on the code layer, keep only blueprint-bound (or

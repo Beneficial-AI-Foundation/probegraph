@@ -1,12 +1,13 @@
 import * as d3 from 'd3';
 import dagreModule from '@dagrejs/dagre';
 const dagre = dagreModule as any;
-import { D3Graph, GraphState } from './types';
+import { D3Graph, D3Node, GraphState } from './types';
 import {
-  HierarchyTree, HierarchyGroup, CutMember,
+  HierarchyTree, HierarchyGroup, CutMember, CutEdge,
   buildHierarchyTree, computeCut, pruneExpanded, descendantGroupIds,
   expandedForReveal,
 } from './hierarchy';
+import { WITNESS_LIST_CAP, bindWitnessPanel, callCountText, witnessNameOf, witnessPanelHtml, witnessTooltip } from './witness';
 import { STATUS_COLORS as THEME_STATUS, edgeTypeColor, groupColors } from './theme';
 
 // --- Color palette (matches the Crate Map look) ---
@@ -283,8 +284,15 @@ export class HierarchyMapVisualization {
       if (info) posMap.set(member.id, { x: info.x, y: info.y });
     }
     const maxCalls = Math.max(1, ...cut.edges.map(e => e.callCount));
+    const nodeById = new Map<string, D3Node>();
+    for (const node of this.lastFilteredGraph.nodes) nodeById.set(node.id, node);
+    const memberById = new Map(cut.members.map(m => [m.id, m]));
+    const labelOf = (id: string) => {
+      const member = memberById.get(id);
+      return member?.group?.label ?? member?.node?.display_name ?? id;
+    };
     for (const edge of cut.edges) {
-      this.renderEdge(edge, posMap, memberWidths, maxCalls);
+      this.renderEdge(edge, posMap, memberWidths, maxCalls, labelOf, nodeById);
     }
 
     // Member boxes on top.
@@ -351,10 +359,12 @@ export class HierarchyMapVisualization {
   }
 
   private renderEdge(
-    edge: { source: string; target: string; callCount: number; calls: Array<{ type: string }> },
+    edge: CutEdge,
     posMap: Map<string, { x: number; y: number }>,
     widths: Map<string, number>,
     maxCalls: number,
+    labelOf: (memberId: string) => string,
+    nodeById: Map<string, D3Node>,
   ): void {
     const sp = posMap.get(edge.source);
     const tp = posMap.get(edge.target);
@@ -374,7 +384,8 @@ export class HierarchyMapVisualization {
       : 'none';
     const strokeW = 1.5 + (edge.callCount / maxCalls) * 3.5;
 
-    this.g.append('path')
+    const d = `M${sp.x + sw},${sp.y} C${sp.x + sw + dx * 0.4},${sp.y} ${tp.x - tw - dx * 0.4},${tp.y} ${tp.x - tw},${tp.y}`;
+    const path = this.g.append('path')
       .datum({ source: edge.source, target: edge.target })
       .attr('class', 'hm-edge')
       .attr('fill', 'none')
@@ -383,7 +394,28 @@ export class HierarchyMapVisualization {
       .attr('stroke-width', strokeW)
       .attr('stroke-dasharray', dashArray)
       .attr('marker-end', 'url(#hm-arrow)')
-      .attr('d', `M${sp.x + sw},${sp.y} C${sp.x + sw + dx * 0.4},${sp.y} ${tp.x - tw - dx * 0.4},${tp.y} ${tp.x - tw},${tp.y}`);
+      .attr('pointer-events', 'none')
+      .attr('d', d);
+
+    // The drawn line can be 1.5px wide and dashed. A wider line with no
+    // paint takes the hover and the click, for the witnesses (witness.ts).
+    const sourceLabel = labelOf(edge.source);
+    const targetLabel = labelOf(edge.target);
+    const hit = this.g.append('path')
+      .attr('class', 'hm-edge-hit')
+      .attr('fill', 'none')
+      .attr('stroke', 'transparent')
+      .attr('stroke-width', Math.max(12, strokeW + 8))
+      .attr('pointer-events', 'stroke')
+      .attr('d', d)
+      .style('cursor', 'pointer');
+    hit.append('title').text(witnessTooltip(sourceLabel, targetLabel, edge.calls, witnessNameOf(nodeById)));
+    hit.on('mouseenter', () => path.attr('stroke-opacity', 0.9));
+    hit.on('mouseleave', () => path.attr('stroke-opacity', 0.55));
+    hit.on('click', (event: MouseEvent) => {
+      event.stopPropagation();
+      this.showEdgeInfo(edge, sourceLabel, targetLabel, nodeById);
+    });
 
     if (edge.callCount > 1) {
       this.g.append('text')
@@ -395,8 +427,33 @@ export class HierarchyMapVisualization {
         .attr('font-family', 'system-ui, sans-serif')
         .attr('fill', '#555')
         .attr('pointer-events', 'none')
-        .text(`${edge.callCount} calls`);
+        .text(callCountText(edge.callCount));
     }
+  }
+
+  /**
+   * Details panel of an edge: its call count and its witnesses, the
+   * function-level calls behind it. A click on a name selects that
+   * function, as a click on a function box does.
+   */
+  private showEdgeInfo(
+    edge: CutEdge, sourceLabel: string, targetLabel: string,
+    nodeById: Map<string, D3Node>, limit: number = WITNESS_LIST_CAP,
+  ): void {
+    const nodeInfoDiv = document.getElementById('node-info');
+    if (!nodeInfoDiv) return;
+    nodeInfoDiv.innerHTML = witnessPanelHtml(sourceLabel, targetLabel, edge.calls, witnessNameOf(nodeById), limit);
+    bindWitnessPanel(
+      nodeInfoDiv,
+      id => {
+        const node = nodeById.get(id);
+        if (!node) return;
+        const newState = { ...this.state, selectedNode: node };
+        this.state = newState;
+        this.onStateChange(newState, true);
+      },
+      () => this.showEdgeInfo(edge, sourceLabel, targetLabel, nodeById, Infinity),
+    );
   }
 
   private renderGroupBox(member: CutMember, pos: { x: number; y: number }, w: number): void {
@@ -546,6 +603,7 @@ export class HierarchyMapVisualization {
         <div class="hm-legend-item"><span style="font-size:0.75rem; color:var(--pg-text-muted);">Click group: expand in place</span></div>
         <div class="hm-legend-item"><span style="font-size:0.75rem; color:var(--pg-text-muted);">Click container border: collapse</span></div>
         <div class="hm-legend-item"><span style="font-size:0.75rem; color:var(--pg-text-muted);">Click function: details panel</span></div>
+        <div class="hm-legend-item"><span style="font-size:0.75rem; color:var(--pg-text-muted);">Click edge: the calls behind it</span></div>
         <div class="hm-legend-item"><span style="font-size:0.75rem; color:var(--pg-text-muted);">Esc: collapse all</span></div>
       </div>
     `;

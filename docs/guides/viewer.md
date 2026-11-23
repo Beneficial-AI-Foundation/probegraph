@@ -51,12 +51,16 @@ see [web/ARCHITECTURE.md](../../web/ARCHITECTURE.md#input-formats).
   the source crate (the captions inside the Crate Map say the opposite, see
   [#60](https://github.com/Beneficial-AI-Foundation/probegraph/issues/60)).
   Double-click a crate to open its files in the Call Graph.
+  Hover or click an edge to see the calls behind it (see
+  [Witness edges](#witness-edges)).
 - **Hierarchy (testing)** — one box per crate to start. Click a collapsed
   group to expand it in place (crate → directory → file → function), click
   an expanded group's background to collapse it, and press Esc to collapse
   everything. Click a function for its details. Group boxes show rollup
   counts and a verified-fraction bar, and edges are aggregated between the
-  visible boxes. The expanded groups are kept in `?expanded=`.
+  visible boxes. Hover or click an edge to see the calls behind it (see
+  [Witness edges](#witness-edges)). The expanded groups are kept in
+  `?expanded=`.
 - **Packed Map (testing)** — a bird's-eye view of the code, drawn as
   a circle packing (the nested-circle layout of `d3.pack`). Crates,
   directories and files are nested circles, and the smallest circles are
@@ -210,6 +214,29 @@ Crate Map and Hierarchy aggregate the whole graph into groups. The Packed
 Map draws every function (or Lean declaration) of the graph. The large-graph limits below don't
 apply to these three views. The algorithms are specified in
 [web/docs/technical/](../../web/docs/technical/README.md).
+
+### Witness edges
+
+In the Crate Map and the Hierarchy, one line between two boxes stands for
+all the links between their functions. A witness is one caller and one
+callee behind that line. The File Map and the Packed Map draw each link
+between two functions as its own line, so they have no witnesses.
+
+| Element | Caption |
+|---|---|
+| Edge tooltip | Hover an edge. The tooltip shows the two boxes, the number of calls, and the first three witnesses as `caller → callee`. |
+| Edge panel | Click an edge. Node details shows the number of calls and the first ten witnesses. In the Crate Map, the click also expands the edge into its functions, as before. |
+| Witness name | Click a caller or a callee in the panel to select that function. Node details then shows the function, as after a click on a function box. |
+| **Show all N** | Lists every witness of the edge. The button appears when the edge has more than ten witnesses. |
+| Words in parentheses | The link types of a witness that is not only a body call, for example `(requires)` or `(call, spec)`. |
+
+The number of calls counts links. If a function calls another function and also
+names it in a `requires` clause, that is two calls and one witness. Then
+the panel also shows the number of function pairs.
+
+The witnesses are in alphabetical order by caller name, then by callee
+name. The order does not change between renders. The list follows the
+sidebar filters, as the edges do.
 
 Below the filters, **Reset Filters** restores the defaults, **Clear
 Selection** drops clicked nodes, and **Copy Link** copies a shareable URL
