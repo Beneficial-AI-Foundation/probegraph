@@ -470,7 +470,7 @@ Decisions and reasons:
   details, as a click on a crate does in the Crate Map. The Crate Map
   keeps its click behavior (expand the edge) and adds the panel.
 - Hierarchy edges had no pointer events. Each edge now has a second path,
-  12px wide with no paint, that takes the hover and the click. The drawn
+  12 to 13px wide with no paint, that takes the hover and the click. The drawn
   line can be 1.5px wide and dashed, which is hard to hit.
 - A click on a name sets `selectedNode` through `onStateChange`, the same
   call as a click on a function box in these two views. It does not
