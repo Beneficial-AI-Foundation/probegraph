@@ -453,8 +453,11 @@ declaration on each edge between two bundles. This feature does the same.
 Decisions and reasons:
 
 - Views. Only the Crate Map (`buildCrateGraph`) and the Hierarchy
-  (`computeCut`) aggregate links. The File Map and the Packed Map draw
-  links between functions, so they need no witness.
+  (`computeCut`) draw one edge between two groups for the links of their
+  functions. In the File Map and the Packed Map, every line joins two
+  functions, so its two ends already name the caller and the callee. (The
+  Packed Map draws a Lean `inner` and `spec` link between the same two
+  declarations as one line. That line still joins two declarations.)
 - Data. Both aggregations already kept every link of an edge in `calls`.
   So the feature keeps the full list and adds no field. `src/witness.ts`
   sorts the list when it is shown.
