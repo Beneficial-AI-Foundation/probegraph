@@ -124,6 +124,32 @@ test.describe('Witness edges', () => {
     await expect(page.locator('#node-info')).toContainText(name);
   });
 
+  test('Hierarchy: the two directions of a two-way edge are drawn apart', async ({ page }) => {
+    await page.goto(DEFAULT_URL);
+    const crate = page.locator('.hm-group', { has: page.locator('text', { hasText: /^curve25519-dalek$/ }) });
+    await expect(crate).toBeVisible({ timeout: 30000 });
+    await crate.dispatchEvent('click');
+    await expect(page.locator('.hm-container')).toHaveCount(1);
+
+    // On the source box of a two-way edge, one direction starts and the
+    // other ends. The gap between the two heights is twice the shift.
+    const gaps = await page.locator('.hm-edge').evaluateAll(paths => {
+      const edges = paths.map(path => {
+        const d = path.getAttribute('d') ?? '';
+        const { source, target } = (path as unknown as { __data__: { source: string; target: string } }).__data__;
+        return { source, target, startY: Number(/^M[^,]+,([^ ]+) /.exec(d)?.[1]), endY: Number(/,([^ ,]+)$/.exec(d)?.[1]) };
+      });
+      const out: number[] = [];
+      for (const edge of edges) {
+        const back = edges.find(e => e.source === edge.target && e.target === edge.source);
+        if (back && edge.source < edge.target) out.push(Math.abs(edge.startY - back.endY));
+      }
+      return out;
+    });
+    expect(gaps.length).toBeGreaterThan(0);
+    for (const gap of gaps) expect(gap).toBe(14);
+  });
+
   test('Crate Map: an edge lists its calls, and a name selects that function', async ({ page }) => {
     await page.goto('/probegraph/?json=./graph_backup_dalek.json&view=crate-map&stubs=1');
     await expect(page.locator('.cm-edge').first()).toBeAttached({ timeout: 30000 });

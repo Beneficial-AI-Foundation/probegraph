@@ -238,6 +238,9 @@ The witnesses are in alphabetical order by caller name, then by callee
 name. The order does not change between renders. The list follows the
 sidebar filters, as the edges do.
 
+If two boxes have links in both directions, the view draws two lines, one
+above the other. Each line has its own tooltip and its own panel.
+
 Below the filters, **Reset Filters** restores the defaults, **Clear
 Selection** drops clicked nodes, and **Copy Link** copies a shareable URL
 (see Sharing). **Reset View** works in the Call Graph only: it fits the graph

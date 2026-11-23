@@ -4,7 +4,7 @@ const dagre = dagreModule as any;
 import { D3Graph, D3Node, GraphState, CrateNode, CrateEdge, CrateGraph, crateMapLabel, crateNoun } from './types';
 import { edgeTypeColor, groupColors, ACCENT } from './theme';
 import { escapeHtml } from './html';
-import { WITNESS_LIST_CAP, bindWitnessPanel, callCountText, witnessNameOf, witnessPanelHtml, witnessTooltip } from './witness';
+import { WITNESS_LIST_CAP, bindWitnessPanel, callCountText, twoWayShift, witnessNameOf, witnessPanelHtml, witnessTooltip } from './witness';
 
 // --- Color palette for crate boxes ---
 
@@ -250,10 +250,15 @@ export class CrateMapVisualization {
     // Render edges first (behind nodes)
     const maxCalls = Math.max(1, ...cg.edges.map(e => e.callCount));
     const nameOf = witnessNameOf(this.nodeById());
+    const shiftOf = twoWayShift(cg.edges);
     for (const edge of cg.edges) {
       const sp = posMap.get(edge.source);
       const tp = posMap.get(edge.target);
       if (!sp || !tp) continue;
+      // Keeps the two directions of a two-way edge apart (see witness.ts)
+      const shift = shiftOf(edge.source, edge.target);
+      const sy = sp.y + shift;
+      const ty = tp.y + shift;
 
       const sw = sp.w / 2;
       const tw = tp.w / 2;
@@ -268,7 +273,7 @@ export class CrateMapVisualization {
         .attr('marker-end', 'url(#cm-arrow)')
         .attr('d', () => {
           const dx = tp.x - sp.x;
-          return `M${sp.x + sw},${sp.y} C${sp.x + sw + dx * 0.4},${sp.y} ${tp.x - tw - dx * 0.4},${tp.y} ${tp.x - tw},${tp.y}`;
+          return `M${sp.x + sw},${sy} C${sp.x + sw + dx * 0.4},${sy} ${tp.x - tw - dx * 0.4},${ty} ${tp.x - tw},${ty}`;
         })
         .style('cursor', 'pointer');
 
@@ -290,7 +295,7 @@ export class CrateMapVisualization {
 
       // Edge label
       const mx = (sp.x + sw + tp.x - tw) / 2;
-      const my = (sp.y + tp.y) / 2 - 10;
+      const my = (sy + ty) / 2 + (shift > 0 ? 16 : -10);
       this.g.append('text')
         .attr('class', 'cm-edge-label')
         .attr('x', mx)

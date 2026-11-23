@@ -8,7 +8,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   WITNESS_LIST_CAP, WITNESS_TOOLTIP_CAP, WitnessCall,
-  callCountText, sortWitnesses, witnessNameOf, witnessPanelHtml, witnessTooltip, witnessTypeLabel, witnessesOf,
+  TWO_WAY_SHIFT, callCountText, sortWitnesses, twoWayShift, witnessNameOf, witnessPanelHtml, witnessTooltip, witnessTypeLabel, witnessesOf,
 } from './witness';
 import { buildCrateGraph } from './crate-map';
 import { buildHierarchyTree, computeCut } from './hierarchy';
@@ -78,11 +78,22 @@ describe('witnessesOf', () => {
     ]);
   });
 
+  it('counts the legacy type "calls" as a body call', () => {
+    const calls = [call('a', 'y', 'calls'), call('a', 'y'), call('b', 'x', 'calls')];
+    expect(witnessesOf(calls, self)).toEqual([
+      { sourceId: 'a', targetId: 'y', types: ['inner'] },
+      { sourceId: 'b', targetId: 'x', types: ['inner'] },
+    ]);
+    expect(witnessTooltip('A', 'B', calls, self).split('\n').slice(1, 3)).toEqual(['a → y', 'b → x']);
+  });
+
   it('names the link types, except for body calls only', () => {
     expect(witnessTypeLabel(['inner'])).toBe('');
     expect(witnessTypeLabel(['precondition'])).toBe('requires');
     expect(witnessTypeLabel(['inner', 'spec'])).toBe('call, spec');
     expect(witnessTypeLabel(['mapping', 'postcondition'])).toBe('mapping, ensures');
+    // A type with no label stands for itself, also a name that Object has
+    expect(witnessTypeLabel(['constructor'])).toBe('constructor');
   });
 });
 
@@ -155,6 +166,23 @@ describe('witnessPanelHtml', () => {
     expect(html).toContain('&lt;A&gt;');
     expect(html).toContain('data-node-id="a&quot;&lt;x&gt;"');
     expect(html).not.toContain('<x>');
+  });
+
+  it('escapes a link type from the graph file', () => {
+    const html = witnessPanelHtml('A', 'B', [call('a', 'g', '<img src=x onerror=alert(1)>')], self);
+    expect(html).toContain('<em>(&lt;img src=x onerror=alert(1)&gt;)</em>');
+    expect(html).not.toContain('<img');
+  });
+});
+
+describe('twoWayShift', () => {
+  it('moves the two directions of a two-way edge to opposite sides', () => {
+    const shiftOf = twoWayShift([
+      { source: 'a', target: 'b' }, { source: 'b', target: 'a' }, { source: 'a', target: 'c' },
+    ]);
+    expect(shiftOf('a', 'b')).toBe(-TWO_WAY_SHIFT);
+    expect(shiftOf('b', 'a')).toBe(TWO_WAY_SHIFT);
+    expect(shiftOf('a', 'c')).toBe(0);
   });
 });
 

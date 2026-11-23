@@ -2,10 +2,10 @@
  * Witness edges: the function-level links behind one aggregated edge.
  *
  * The Crate Map and the Hierarchy draw one line between two groups for many
- * links. A witness is one of those links, named caller and callee, so the
- * user can see what the line stands for. This module orders the links,
- * and renders the tooltip text and the details panel. It has no d3 and no
- * state, so the two views share it.
+ * links. A witness is one caller and one callee behind that line, with the
+ * links of the pair merged, so the user can see what the line stands for.
+ * This module orders the links, and renders the tooltip text and the details
+ * panel. It has no d3 and no state, so the two views share it.
  */
 
 import { escapeHtml } from './html';
@@ -50,38 +50,61 @@ export interface Witness { sourceId: string; targetId: string; types: string[] }
  * The witnesses of one aggregated edge: its links in the order of
  * `sortWitnesses`, with the links of one caller and callee merged into one
  * witness. A function that calls another and also names it in a `requires`
- * clause is one witness with two types.
+ * clause is one witness with two types. The legacy type `calls` counts as
+ * `inner`, as in the link filter (`linkTypeShown`).
  */
 export function witnessesOf(calls: ReadonlyArray<WitnessCall>, nameOf: NameOf): Witness[] {
   const out: Witness[] = [];
   for (const call of sortWitnesses(calls, nameOf)) {
+    const type = call.type === 'calls' ? 'inner' : call.type;
     const last = out[out.length - 1];
     if (last && last.sourceId === call.sourceId && last.targetId === call.targetId) {
-      if (!last.types.includes(call.type)) last.types.push(call.type);
+      if (!last.types.includes(type)) last.types.push(type);
     } else {
-      out.push({ sourceId: call.sourceId, targetId: call.targetId, types: [call.type] });
+      out.push({ sourceId: call.sourceId, targetId: call.targetId, types: [type] });
     }
   }
   return out;
 }
 
-const TYPE_LABELS: Record<string, string> = {
-  inner: 'call',
-  precondition: 'requires',
-  postcondition: 'ensures',
-};
+const TYPE_LABELS = new Map([
+  ['inner', 'call'],
+  ['precondition', 'requires'],
+  ['postcondition', 'ensures'],
+]);
 
 /**
  * The words after a witness, for example "requires" or "call, spec". Empty
- * for a witness with body calls only, which is the usual case.
+ * for a witness with body calls only, which is the usual case. A type with
+ * no label stands for itself. It comes from the graph file, so escape the
+ * result before it goes into HTML.
  */
 export function witnessTypeLabel(types: ReadonlyArray<string>): string {
   if (types.every(type => type === 'inner')) return '';
-  return types.map(type => TYPE_LABELS[type] ?? type).join(', ');
+  return types.map(type => TYPE_LABELS.get(type) ?? type).join(', ');
 }
 
 export function callCountText(count: number): string {
   return `${count} call${count === 1 ? '' : 's'}`;
+}
+
+/** Pixels between a two-way edge and the middle line of its two boxes. */
+export const TWO_WAY_SHIFT = 7;
+
+/**
+ * Vertical shift of each edge, in pixels. If the edge in the opposite
+ * direction also exists, the two curves run between the same two boxes and
+ * cover each other, so only one takes the hover and the click. The shift
+ * moves one up and the other down. An edge with no opposite edge gets 0.
+ */
+export function twoWayShift(
+  edges: ReadonlyArray<{ source: string; target: string }>,
+): (source: string, target: string) => number {
+  const keys = new Set(edges.map(e => `${e.source}\0${e.target}`));
+  return (source, target) => {
+    if (!keys.has(`${target}\0${source}`)) return 0;
+    return source < target ? -TWO_WAY_SHIFT : TWO_WAY_SHIFT;
+  };
 }
 
 /**
@@ -123,7 +146,7 @@ export function witnessPanelHtml(
   const shown = witnesses.slice(0, limit);
   const rows = shown.map(w => {
     const type = witnessTypeLabel(w.types);
-    return `<li>${witnessLink(w.sourceId, nameOf)} → ${witnessLink(w.targetId, nameOf)}${type ? ` <em>(${type})</em>` : ''}</li>`;
+    return `<li>${witnessLink(w.sourceId, nameOf)} → ${witnessLink(w.targetId, nameOf)}${type ? ` <em>(${escapeHtml(type)})</em>` : ''}</li>`;
   }).join('');
   const more = witnesses.length > shown.length
     ? `<p><button type="button" class="witness-show-all">Show all ${witnesses.length}</button></p>`

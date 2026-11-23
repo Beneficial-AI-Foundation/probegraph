@@ -477,6 +477,13 @@ Decisions and reasons:
   change the view or the filters.
 - Caps. Three witnesses in the tooltip and ten in the panel, with **Show
   all N** for the rest. An edge of the dalek fixture has 1,861 links.
+- Two-way edges. If A has links to B and B has links to A, the two curves
+  ran between the same two boxes and covered each other. Then only the
+  edge drawn last took the hover and the click. `twoWayShift` moves one
+  curve 7px up and the other 7px down, with its label. The hit path is at
+  most 13px wide, so the two do not overlap where the curves are level.
+- Link types. The legacy type `calls` counts as `inner`, as in the link
+  filter. The type comes from the graph file, so the panel escapes it.
 
 Not done: the selected edge has no highlight, and the URL does not keep it.
 

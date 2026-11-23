@@ -7,7 +7,7 @@ import {
   buildHierarchyTree, computeCut, pruneExpanded, descendantGroupIds,
   expandedForReveal,
 } from './hierarchy';
-import { WITNESS_LIST_CAP, bindWitnessPanel, callCountText, witnessNameOf, witnessPanelHtml, witnessTooltip } from './witness';
+import { WITNESS_LIST_CAP, bindWitnessPanel, callCountText, twoWayShift, witnessNameOf, witnessPanelHtml, witnessTooltip } from './witness';
 import { STATUS_COLORS as THEME_STATUS, edgeTypeColor, groupColors } from './theme';
 
 // --- Color palette (matches the Crate Map look) ---
@@ -291,8 +291,9 @@ export class HierarchyMapVisualization {
       const member = memberById.get(id);
       return member?.group?.label ?? member?.node?.display_name ?? id;
     };
+    const shiftOf = twoWayShift(cut.edges);
     for (const edge of cut.edges) {
-      this.renderEdge(edge, posMap, memberWidths, maxCalls, labelOf, nodeById);
+      this.renderEdge(edge, posMap, memberWidths, maxCalls, labelOf, nodeById, shiftOf(edge.source, edge.target));
     }
 
     // Member boxes on top.
@@ -365,10 +366,14 @@ export class HierarchyMapVisualization {
     maxCalls: number,
     labelOf: (memberId: string) => string,
     nodeById: Map<string, D3Node>,
+    shift: number,
   ): void {
     const sp = posMap.get(edge.source);
     const tp = posMap.get(edge.target);
     if (!sp || !tp) return;
+    // Keeps the two directions of a two-way edge apart (see witness.ts)
+    const sy = sp.y + shift;
+    const ty = tp.y + shift;
 
     const sw = (widths.get(edge.source) || 100) / 2;
     const tw = (widths.get(edge.target) || 100) / 2;
@@ -384,7 +389,7 @@ export class HierarchyMapVisualization {
       : 'none';
     const strokeW = 1.5 + (edge.callCount / maxCalls) * 3.5;
 
-    const d = `M${sp.x + sw},${sp.y} C${sp.x + sw + dx * 0.4},${sp.y} ${tp.x - tw - dx * 0.4},${tp.y} ${tp.x - tw},${tp.y}`;
+    const d = `M${sp.x + sw},${sy} C${sp.x + sw + dx * 0.4},${sy} ${tp.x - tw - dx * 0.4},${ty} ${tp.x - tw},${ty}`;
     const path = this.g.append('path')
       .datum({ source: edge.source, target: edge.target })
       .attr('class', 'hm-edge')
@@ -421,7 +426,7 @@ export class HierarchyMapVisualization {
       this.g.append('text')
         .attr('class', 'hm-edge-label')
         .attr('x', (sp.x + sw + tp.x - tw) / 2)
-        .attr('y', (sp.y + tp.y) / 2 - 8)
+        .attr('y', (sy + ty) / 2 + (shift > 0 ? 14 : -8))
         .attr('text-anchor', 'middle')
         .attr('font-size', '10px')
         .attr('font-family', 'system-ui, sans-serif')
