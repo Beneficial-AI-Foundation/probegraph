@@ -219,8 +219,9 @@ apply to these three views. The algorithms are specified in
 
 In the Crate Map and the Hierarchy, one line between two boxes stands for
 all the links between their functions. A witness is one caller and one
-callee behind that line. The File Map and the Packed Map draw each link
-between two functions as its own line, so they have no witnesses.
+callee behind that line. In the File Map and the Packed Map, every line
+joins two functions and never two groups, so those views have no
+witnesses.
 
 | Element | Caption |
 |---|---|
