@@ -4,6 +4,7 @@ const dagre = dagreModule as any;
 import { D3Graph, D3Node, GraphState, CrateNode, CrateEdge, CrateGraph, crateMapLabel, crateNoun } from './types';
 import { edgeTypeColor, groupColors, ACCENT } from './theme';
 import { escapeHtml } from './html';
+import { WITNESS_LIST_CAP, bindWitnessPanel, callCountText, twoWayShift, witnessNameOf, witnessPanelHtml, witnessTooltip } from './witness';
 
 // --- Color palette for crate boxes ---
 
@@ -248,10 +249,16 @@ export class CrateMapVisualization {
 
     // Render edges first (behind nodes)
     const maxCalls = Math.max(1, ...cg.edges.map(e => e.callCount));
+    const nameOf = witnessNameOf(this.nodeById());
+    const shiftOf = twoWayShift(cg.edges);
     for (const edge of cg.edges) {
       const sp = posMap.get(edge.source);
       const tp = posMap.get(edge.target);
       if (!sp || !tp) continue;
+      // Keeps the two directions of a two-way edge apart (see witness.ts)
+      const shift = shiftOf(edge.source, edge.target);
+      const sy = sp.y + shift;
+      const ty = tp.y + shift;
 
       const sw = sp.w / 2;
       const tw = tp.w / 2;
@@ -266,12 +273,16 @@ export class CrateMapVisualization {
         .attr('marker-end', 'url(#cm-arrow)')
         .attr('d', () => {
           const dx = tp.x - sp.x;
-          return `M${sp.x + sw},${sp.y} C${sp.x + sw + dx * 0.4},${sp.y} ${tp.x - tw - dx * 0.4},${tp.y} ${tp.x - tw},${tp.y}`;
+          return `M${sp.x + sw},${sy} C${sp.x + sw + dx * 0.4},${sy} ${tp.x - tw - dx * 0.4},${ty} ${tp.x - tw},${ty}`;
         })
         .style('cursor', 'pointer');
 
+      // Hover: the count and the first witnesses (see witness.ts)
+      path.append('title').text(witnessTooltip(edge.source, edge.target, edge.calls, nameOf));
+
       path.on('click', (event: MouseEvent) => {
         event.stopPropagation();
+        this.showEdgeInfo(edge);
         this.expandEdge(edge.source, edge.target);
       });
 
@@ -284,7 +295,7 @@ export class CrateMapVisualization {
 
       // Edge label
       const mx = (sp.x + sw + tp.x - tw) / 2;
-      const my = (sp.y + tp.y) / 2 - 10;
+      const my = (sy + ty) / 2 + (shift > 0 ? 16 : -10);
       this.g.append('text')
         .attr('class', 'cm-edge-label')
         .attr('x', mx)
@@ -294,7 +305,7 @@ export class CrateMapVisualization {
         .attr('font-family', 'system-ui, sans-serif')
         .attr('fill', '#555')
         .attr('pointer-events', 'none')
-        .text(`${edge.callCount} calls`);
+        .text(callCountText(edge.callCount));
     }
 
     // Render crate boxes
@@ -990,6 +1001,35 @@ export class CrateMapVisualization {
     `;
   }
 
+  private nodeById(): Map<string, D3Node> {
+    const map = new Map<string, D3Node>();
+    for (const node of this.lastFilteredGraph?.nodes ?? []) map.set(node.id, node);
+    return map;
+  }
+
+  /**
+   * Details panel of a crate edge: its call count and its witnesses, the
+   * function-level calls behind it. A click on a name selects that
+   * function, as a click on its box in the expanded edge does.
+   */
+  private showEdgeInfo(edge: CrateEdge, limit: number = WITNESS_LIST_CAP): void {
+    const nodeInfoDiv = document.getElementById('node-info');
+    if (!nodeInfoDiv) return;
+    const nodeById = this.nodeById();
+    nodeInfoDiv.innerHTML = witnessPanelHtml(edge.source, edge.target, edge.calls, witnessNameOf(nodeById), limit);
+    bindWitnessPanel(
+      nodeInfoDiv,
+      id => {
+        const node = nodeById.get(id);
+        if (!node) return;
+        const newState = { ...this.state, selectedNode: node };
+        this.state = newState;
+        this.onStateChange(newState, true);
+      },
+      () => this.showEdgeInfo(edge, Infinity),
+    );
+  }
+
   private updateCrateSelectionStyle(): void {
     const self = this;
     this.g.selectAll<SVGGElement, unknown>('.cm-crate-group').each(function () {
@@ -1160,7 +1200,7 @@ export class CrateMapVisualization {
           <span style="font-size:0.75rem; color:var(--pg-text-muted);">Line width = call count</span>
         </div>
         <div class="cm-legend-section"><strong>Interactions</strong></div>
-        <div class="cm-legend-item"><span style="font-size:0.75rem; color:var(--pg-text-muted);">Click edge: expand functions</span></div>
+        <div class="cm-legend-item"><span style="font-size:0.75rem; color:var(--pg-text-muted);">Click edge: expand functions, list the calls</span></div>
         <div class="cm-legend-item"><span style="font-size:0.75rem; color:var(--pg-text-muted);">Click ${noun}: show info</span></div>
         <div class="cm-legend-item"><span style="font-size:0.75rem; color:var(--pg-text-muted);">Dbl-click ${noun}: open in Call Graph</span></div>
       </div>

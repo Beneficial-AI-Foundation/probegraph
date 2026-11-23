@@ -96,3 +96,82 @@ test.describe('Hierarchy view', () => {
     expect(page.url()).toContain('view=hierarchy');
   });
 });
+
+/**
+ * Witness edges: the calls behind an aggregated edge, in the details panel.
+ * The hit path of an edge sits over other shapes, so clicks are dispatched
+ * as in the tests above.
+ */
+test.describe('Witness edges', () => {
+  test('Hierarchy: an edge lists its calls, and a name selects that function', async ({ page }) => {
+    await page.goto(APP_URL);
+    await expect(page.locator('.hm-group').first()).toBeVisible({ timeout: 30000 });
+    const hit = page.locator('.hm-edge-hit').first();
+    await expect(hit.locator('title')).toHaveText(/→ .+: \d+ calls?\n.+ → .+/);
+
+    await hit.dispatchEvent('click');
+    const panel = page.locator('#node-info .witness-panel');
+    await expect(panel).toContainText(/\d+ calls? behind this edge/);
+    const first = panel.locator('.witness-list li').first();
+    await expect(first.locator('.witness-node')).toHaveCount(2);
+    // A click on an edge opens no group
+    await expect(page.locator('.hm-container')).toHaveCount(0);
+
+    const caller = first.locator('.witness-node').first();
+    const name = (await caller.textContent())!;
+    await caller.click();
+    await expect(page.locator('#node-info .witness-panel')).toHaveCount(0);
+    await expect(page.locator('#node-info')).toContainText(name);
+  });
+
+  test('Hierarchy: the two directions of a two-way edge are drawn apart', async ({ page }) => {
+    await page.goto(DEFAULT_URL);
+    const crate = page.locator('.hm-group', { has: page.locator('text', { hasText: /^curve25519-dalek$/ }) });
+    await expect(crate).toBeVisible({ timeout: 30000 });
+    await crate.dispatchEvent('click');
+    await expect(page.locator('.hm-container')).toHaveCount(1);
+
+    // On the source box of a two-way edge, one direction starts and the
+    // other ends. The gap between the two heights is twice the shift.
+    const gaps = await page.locator('.hm-edge').evaluateAll(paths => {
+      const edges = paths.map(path => {
+        const d = path.getAttribute('d') ?? '';
+        const { source, target } = (path as unknown as { __data__: { source: string; target: string } }).__data__;
+        return { source, target, startY: Number(/^M[^,]+,([^ ]+) /.exec(d)?.[1]), endY: Number(/,([^ ,]+)$/.exec(d)?.[1]) };
+      });
+      const out: number[] = [];
+      for (const edge of edges) {
+        const back = edges.find(e => e.source === edge.target && e.target === edge.source);
+        if (back && edge.source < edge.target) out.push(Math.abs(edge.startY - back.endY));
+      }
+      return out;
+    });
+    expect(gaps.length).toBeGreaterThan(0);
+    for (const gap of gaps) expect(gap).toBe(14);
+  });
+
+  test('Crate Map: an edge lists its calls, and a name selects that function', async ({ page }) => {
+    await page.goto('/probegraph/?json=./graph_backup_dalek.json&view=crate-map&stubs=1');
+    await expect(page.locator('.cm-edge').first()).toBeAttached({ timeout: 30000 });
+    // The edge with the fewest calls: a click also lays out its functions,
+    // which takes long for the largest edges of this fixture
+    const smallest = await page.locator('.cm-edge title').evaluateAll(titles => {
+      const counts = titles.map(t => Number(/: (\d+) call/.exec(t.textContent ?? '')?.[1]));
+      return counts.indexOf(Math.min(...counts));
+    });
+    const edge = page.locator('.cm-edge').nth(smallest);
+    await expect(edge.locator('title')).toHaveText(/→ .+: \d+ calls?\n.+ → .+/);
+
+    await edge.dispatchEvent('click');
+    const panel = page.locator('#node-info .witness-panel');
+    await expect(panel).toContainText(/\d+ calls? behind this edge/);
+    // The edge still expands into its functions
+    await expect(page.locator('.cm-fn-edge').first()).toBeAttached();
+
+    const callee = panel.locator('.witness-list li').first().locator('.witness-node').nth(1);
+    const name = (await callee.textContent())!;
+    await callee.click();
+    await expect(page.locator('#node-info .witness-panel')).toHaveCount(0);
+    await expect(page.locator('#node-info')).toContainText(name);
+  });
+});
